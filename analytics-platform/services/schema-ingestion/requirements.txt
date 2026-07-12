@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0.30
+psycopg[binary]>=3.2        # metadata repo + postgres sources
+pymysql>=1.1                # mysql sources
+pydantic>=2.7
+pydantic-settings>=2.3
+cryptography>=42.0          # Fernet credential encryption
+rq>=1.16                    # async job queue
+redis>=5.0
+structlog>=24.1

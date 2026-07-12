@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  schema-ingestion:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/schema-ingestion
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check app tests
+
+      - name: Unit tests with coverage floor
+        run: pytest tests/unit --cov=app --cov-report=term-missing --cov-fail-under=60
+
+      - name: Dependency vulnerability audit
+        # TODO(team): flip continue-on-error to false once the initial findings are triaged.
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
+      - name: License gate (no AGPL/SSPL)
+        run: |
+          pip install pip-licenses
+          pip-licenses --format=json > licenses.json
+          python - <<'PY'
+          import json, sys
+          banned = ("AGPL", "SSPL")
+          hits = [p for p in json.load(open("licenses.json"))
+                  if any(b in (p.get("License") or "") for b in banned)]
+          if hits:
+              print("Banned licenses found:", hits)
+              sys.exit(1)
+          print("License gate passed.")
+          PY
+
+  # Integration tests run the docker compose stack. Kept as a separate job so unit
+  # feedback stays fast; runs on PRs touching the service.
+  schema-ingestion-integration:
+    runs-on: ubuntu-latest
+    needs: schema-ingestion
+    defaults:
+      run:
+        working-directory: services/schema-ingestion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Start stack
+        run: |
+          cp .env.example .env
+          echo "ENCRYPTION_KEY=$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" >> .env
+          docker compose up -d metadata-db redis demo-source-db
+          sleep 10
+      - name: Integration tests
+        run: pytest tests/integration -m integration || [ $? -eq 5 ]  # exit 5 = no tests collected yet; acceptable until suite lands
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v

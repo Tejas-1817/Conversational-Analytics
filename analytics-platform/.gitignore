@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+CLAUDE.local.md
+.claude/settings.local.json
+node_modules/
+.DS_Store
+.ruff_cache/

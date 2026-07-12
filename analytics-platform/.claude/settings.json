@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pytest*)",
+      "Bash(ruff*)",
+      "Bash(pip install*)",
+      "Bash(docker compose*)",
+      "Read(**)",
+      "Edit(services/**)",
+      "Edit(docs/**)",
+      "Edit(.claude/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf*)",
+      "Bash(git push --force*)",
+      "Read(**/.env)",
+      "Edit(**/.env)"
+    ]
+  }
+}

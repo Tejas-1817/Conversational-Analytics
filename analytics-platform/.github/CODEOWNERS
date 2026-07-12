@@ -1,0 +1,12 @@
+# Every PR needs an approval from a code owner. Branch protection must enforce this.
+# TODO(shailesh): replace placeholders with real GitHub usernames.
+
+*                                           @shailesh-org/platform-leads
+
+# Security-critical paths require the designated senior reviewer explicitly.
+/services/schema-ingestion/app/connectors/  @shailesh-org/senior-reviewer
+/services/schema-ingestion/app/security/    @shailesh-org/senior-reviewer
+/services/schema-ingestion/app/ingestion/pii.py @shailesh-org/senior-reviewer
+/services/schema-ingestion/migrations/      @shailesh-org/senior-reviewer
+/.github/                                   @shailesh-org/senior-reviewer
+/.claude/rules/                             @shailesh-org/senior-reviewer
