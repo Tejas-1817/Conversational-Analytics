@@ -88,7 +88,7 @@ class RelationshipOut(BaseModel):
 class ReviewRequest(BaseModel):
     """Approve / edit / reject a metadata item."""
     action: Literal["approve", "reject", "needs_clarification", "edit"]
-    actor: str = Field(min_length=1, description="Who is reviewing (email/username)")
+    actor: str | None = Field(default=None, description="Who is reviewing (email/username)")
     # Optional edits applied when action == 'edit' (or alongside approve)
     business_name: str | None = None
     description: str | None = None

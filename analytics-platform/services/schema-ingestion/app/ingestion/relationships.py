@@ -8,6 +8,7 @@ Confidence-ordered detectors:
 
 Every candidate stores its evidence so reviewers can see WHY before approving.
 """
+import uuid
 import structlog
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -15,6 +16,9 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import ColumnMeta, DataSource, Relationship, TableMeta
+from app.llm.provider import get_llm_provider
+from pydantic import BaseModel, Field
+import json
 
 log = structlog.get_logger()
 
@@ -61,7 +65,7 @@ def run_relationship_detection(session: Session, source: DataSource, engine: Eng
             existing.add((col.id, target_pk.id))
             stats["overlap_confirmed"] += 1
 
-    stats["llm_candidates"] = _llm_suggestions_stub()
+    stats["llm_candidates"] = _llm_suggestions(session, tables, existing, engine)
     session.flush()
     return stats
 
@@ -107,13 +111,88 @@ def _score_by_value_overlap(engine: Engine, from_table, from_col, to_table, to_c
         return None, {}
 
 
-def _llm_suggestions_stub() -> int:
-    """TODO(team): wire an AI provider to suggest relationships the heuristics missed.
+class LLMRelationshipCandidate(BaseModel):
+    from_table: str
+    from_column: str
+    to_table: str
+    to_column: str
+    confidence: float = Field(ge=0, le=1)
+    evidence_reasoning: str
 
-    Contract when implemented:
-    - Input: table/column names + PII-masked sample values only.
-    - Output: Relationship rows with source='llm', modest confidence (<=0.7), status='draft'.
-    - Never auto-approve; reviewers see evidence explaining the suggestion.
-    """
-    log.info("llm_relationship_detection_not_implemented")
-    return 0
+class LLMRelationshipResponse(BaseModel):
+    candidates: list[LLMRelationshipCandidate]
+
+
+def _llm_suggestions(session: Session, tables: list[TableMeta], existing: set[tuple[uuid.UUID, uuid.UUID]], engine: Engine) -> int:
+    # 1. Gather context
+    table_context = []
+    col_by_name = {} # Map "table.col" -> col.id
+    pk_by_table = {}
+    
+    for t in tables:
+        cols = []
+        for c in t.columns:
+            if not c.is_active:
+                continue
+            key = f"{t.table_name}.{c.column_name}".lower()
+            col_by_name[key] = c
+            if c.is_primary_key:
+                pk_by_table[t.table_name.lower()] = c
+            
+            # Safe samples
+            samples = c.profile.get("sample_values", []) if c.profile else []
+            cols.append({
+                "name": c.column_name,
+                "type": c.data_type,
+                "is_pk": c.is_primary_key,
+                "samples": samples[:3] # Just a few samples
+            })
+        table_context.append({"table": t.table_name, "columns": cols})
+
+    if not table_context:
+        return 0
+
+    prompt = (
+        "You are an expert data architect analyzing a database schema. "
+        "Based on the following tables, columns, and sample values, suggest potential foreign key relationships "
+        "that are not explicitly declared. Focus on semantic matches where one column acts as a reference to another table's primary key.\n\n"
+        f"Schema Context:\n{json.dumps(table_context, indent=2)}\n\n"
+        "Return a list of candidates. Be conservative. Provide reasoning for each."
+    )
+
+    provider = get_llm_provider()
+    try:
+        response = provider.generate_structured(prompt, LLMRelationshipResponse)
+    except Exception as e:
+        log.error("llm_relationship_detection_failed", error=str(e))
+        return 0
+
+    added = 0
+    for cand in response.candidates:
+        from_key = f"{cand.from_table}.{cand.from_column}".lower()
+        to_key = f"{cand.to_table}.{cand.to_column}".lower()
+        
+        from_col = col_by_name.get(from_key)
+        to_col = col_by_name.get(to_key)
+        
+        if not from_col or not to_col:
+            continue
+            
+        # Ensure 'to' is a primary key, or at least a different table
+        if from_col.table_id == to_col.table_id:
+            continue
+            
+        if (from_col.id, to_col.id) in existing:
+            continue
+
+        session.add(Relationship(
+            from_column_id=from_col.id, to_column_id=to_col.id,
+            cardinality="many_to_one", source="llm",
+            confidence=round(min(cand.confidence, 0.7), 3), # Modest confidence
+            evidence={"reasoning": cand.evidence_reasoning}, status="draft",
+        ))
+        existing.add((from_col.id, to_col.id))
+        added += 1
+
+    return added
+

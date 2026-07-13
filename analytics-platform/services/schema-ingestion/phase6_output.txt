@@ -1,0 +1,75 @@
+c:\Users\Admin\Downloads\Analytics Tool\Analytics Tool\analytics-platform\services\schema-ingestion\venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient as TestClient  # noqa
+{"event": "rate_limiter_enabled", "timestamp": "2026-07-13T09:53:33.227749Z", "level": "info"}
+
+================================================================================
+PHASE 6 VERIFICATION SCRIPT STARTING
+================================================================================
+
+{"event_type": "LOGIN", "entity": "users", "entity_id": "89765ef6-ab1c-42c2-80e6-b3d7fa1ac300", "actor": "a_09099b@tenant.com", "tenant_id": "bcf3adb4-e2fa-42ba-af94-7d908f8881ea", "event": "audit_event"}
+{"email": "a_09099b@tenant.com", "event": "user_logged_in"}
+{"event_type": "LOGIN", "entity": "users", "entity_id": "06078692-a8a0-4069-bb42-558654819b87", "actor": "b_09099b@tenant.com", "tenant_id": "49e2ebd0-4944-4321-975b-2d46d96d8f87", "event": "audit_event"}
+{"email": "b_09099b@tenant.com", "event": "user_logged_in"}
+1. TENANT ISOLATION: DASHBOARDS
+   [User A -> Dashboard A]: 200
+   [User B -> Dashboard A]: 404 {'detail': 'Dashboard not found'}
+--------------------------------------------------
+2. TENANT ISOLATION: DATA SOURCES
+{"event": "secret_backend_fernet_env"}
+   [User A sources count]: 1
+   [User B sources count]: 0
+--------------------------------------------------
+4 & 5. RLS & COLUMN MASKING
+   [RLS Base Filters (No Policies)]: []
+   [RLS SQL Injection]: SELECT * FROM sales WHERE ("region" = 'US')
+   [CLS Base Masking (No Policies)]: cols=['name', 'salary'], salary=100000
+--------------------------------------------------
+6. OIDC SSO
+   [OIDC Redirect Status]: 503
+--------------------------------------------------
+7. RATE LIMITING
+   [Health endpoint 15 requests]: [200, 200, 200, 200, 200] ... [200, 200, 200]
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "0f2faa30-1deb-48f0-95d9-9ae07dbf394c", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "f59c9ae6-f581-453a-8316-40d3f0293765", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "81527abc-95a6-486b-857b-b85faf12cafa", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "c8ed5f09-fafb-41a4-81e1-9d59abb4ad95", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "fc072dd2-f4b7-4105-b529-c4047c1be3bb", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "bf07ad03-7c57-494c-8436-663e856d900f", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "301ad55a-79cc-4595-811c-938d174fdf1b", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "8e43eaa7-642f-450f-8c32-0b8e2ff2c6ea", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "960cfcc2-3bac-4112-81c0-1047f7515430", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "9ccad2bb-878a-495b-a0d1-5b6517e28f1f", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "d65c96ca-3c4f-457a-a373-9515fbc2ae49", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "be8e2b97-5e65-488f-8c1a-847278880336", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "682ec30e-7a91-4dc5-a094-ba11962d198e", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "89ee6ffe-c8eb-45bf-91a5-4654ccd9b5fb", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+{"event_type": "FAILED_LOGIN", "entity": "users", "entity_id": "07f645f2-b721-4487-b84f-2c34c772d5dc", "actor": "fake", "tenant_id": null, "event": "audit_event"}
+   [Login endpoint 15 requests]: [400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400]
+--------------------------------------------------
+8. SECURITY HEADERS
+   [X-Frame-Options]: DENY
+   [Strict-Transport-Security]: max-age=63072000; includeSubDomains; preload
+   [Content-Security-Policy]: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self';
+--------------------------------------------------
+9. API KEYS
+{"event_type": "API_KEY_CREATED", "entity": "api_keys", "entity_id": "40ca55c8-1d19-4dc2-b2ea-5be0b1aad54b", "actor": "a_09099b@tenant.com", "tenant_id": "bcf3adb4-e2fa-42ba-af94-7d908f8881ea", "event": "audit_event"}
+{"name": "test-key", "tenant_id": "bcf3adb4-e2fa-42ba-af94-7d908f8881ea", "event": "api_key_created"}
+   [Create Key]: 201
+   [Raw Key Length]: 55
+{"event_type": "API_KEY_REVOKED", "entity": "api_keys", "entity_id": "40ca55c8-1d19-4dc2-b2ea-5be0b1aad54b", "actor": "a_09099b@tenant.com", "tenant_id": "bcf3adb4-e2fa-42ba-af94-7d908f8881ea", "event": "audit_event"}
+{"key_id": "40ca55c8-1d19-4dc2-b2ea-5be0b1aad54b", "actor": "a_09099b@tenant.com", "event": "api_key_revoked"}
+   [Revoke Key]: 200
+--------------------------------------------------
+10. AUDIT LOGS
+   [Audit]: API_KEY_REVOKED by a_09099b@tenant.com (IP: testclient)
+   [Audit]: API_KEY_CREATED by a_09099b@tenant.com (IP: testclient)
+   [Audit]: FAILED_LOGIN by fake (IP: testclient)
+   [Audit]: FAILED_LOGIN by fake (IP: testclient)
+   [Audit]: FAILED_LOGIN by fake (IP: testclient)
+--------------------------------------------------
+11. SECRET ABSTRACTION
+   [Provider]: FernetEnvProvider
+   [Encrypted]: b'gAAAAABqVLWfikI'...
+   [Decrypted == original]: True
+--------------------------------------------------
+CLEANUP COMPLETE.

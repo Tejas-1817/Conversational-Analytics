@@ -1,32 +1,82 @@
-# Analytics Platform
+# Conversational Analytics Platform
 
-Conversational analytics platform: semantic layer over customer databases, files, and
-documents; natural-language questions answered with governed SQL, charts, and dashboards.
+An enterprise-grade, locally-deployable Conversational Analytics Platform. 
 
-## Structure
+## Features
+- **Conversational Analytics**: Ask questions in plain English and get SQL queries, answers, and auto-generated charts.
+- **Semantic Layer**: Define Metrics, Dimensions, Joins, and Business Glossary to govern AI query generation.
+- **Dynamic Dashboards**: Create, drag, resize, and export fully customizable widgets.
+- **AI Evaluation Framework**: Automated benchmarking and reliability testing for the LLM-to-SQL engine.
+- **Enterprise Multi-Tenancy**: Built-in tenant isolation, RBAC, and Row-Level Security capabilities.
+- **Local First**: Fully functional without requiring cloud infrastructure or distributed systems.
 
+## Prerequisites
+- Node.js (v18+)
+- Python (3.10+)
+- Local PostgreSQL (Optional, defaults to SQLite if not provided)
+
+## One-Command Startup (Local Deployment)
+
+### 1. Backend Setup
+Navigate to the `services/schema-ingestion` directory and set up the Python backend:
+
+```bash
+cd services/schema-ingestion
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# Mac/Linux:
+# source venv/bin/activate
+
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+
+# Run Database Migrations and Seed Demo Data
+python scripts/seed_demo.py
+
+# Start Backend Server
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-CLAUDE.md            Team instructions for AI-assisted development (committed)
-.claude/             Rules (binding), agent personas, slash commands, permissions
-.github/             CI (lint, tests, coverage floor, license gate), CODEOWNERS, PR template
-docs/adr/            Architecture Decision Records — read before structural changes
-services/
-  schema-ingestion/  Module 1: schema ingestion & semantic metadata (see its README)
+
+### 2. Frontend Setup
+In a new terminal window, navigate to the `apps/web` directory:
+
+```bash
+cd apps/web
+npm install
+
+# Start Frontend Development Server
+npm run dev
 ```
 
-Companion documents (project folder, outside the repo):
-`Conversational-Analytics-Platform-Architecture.md` (platform architecture) and
-`Schema-Ingestion-Module-Spec.docx` (Module 1 spec).
+The application will be available at `http://localhost:5173`.
 
-## Engineering gates (enforced, not aspirational)
+## Demo User Guide
 
-1. CI blocks merge: ruff, unit tests, coverage ≥60%, banned-license check.
-2. CODEOWNERS: security-critical paths need the designated senior reviewer.
-3. AI agents (`.claude/agents/`) run pre-PR; they advise, humans approve.
-4. Branch protection on `main` must be enabled in GitHub settings: require PR,
-   require CI green, require code-owner review, no force-push. (Repo settings,
-   cannot be committed — do this on day one.)
+The database seeding script (`scripts/seed_demo.py`) creates an initial tenant and two demo users for you to explore the platform.
 
-## Getting started
+### Demo Credentials
 
-See `services/schema-ingestion/README.md` for the quickstart.
+**Admin Account** (Has access to all Admin and Business features)
+- **Email**: `admin@company.com`
+- **Password**: `admin123`
+
+**Analyst Account** (Has access only to the Chat and Dashboards)
+- **Email**: `analyst@demo.com`
+- **Password**: `analyst123`
+
+### Exploring the Platform
+
+1. **Log in**: Use `admin@company.com`.
+2. **Semantic Layer**: Navigate to the Semantic Layer from the sidebar. You'll see pre-seeded metrics ("Total Revenue") and dimensions ("Region", "Sale Date"). You can create new metrics and test the formula validation.
+3. **Dashboards**: Click on Dashboards. You'll see an "Executive Summary" dashboard with pre-populated widgets. Click "Edit Layout" to drag and resize them. Click the vertical dots on a widget to export data to CSV or JSON.
+4. **Chat**: Ask a question like *"Show me revenue by region"* to see the AI generate a response, display a chart, and present the execution trace. You can also rename or search past conversations in the left sidebar.
+
+## Production Security Notes
+Although designed to run locally, the backend implements robust security middleware including:
+- OWASP-recommended HTTP security headers
+- Payload size limiting
+- Configurable Rate Limiting
+- Tenant-scoped database queries
+
+*Note: Docker and Docker Compose files are provided for convenience but are not required for local execution.*

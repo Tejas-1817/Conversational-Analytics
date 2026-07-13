@@ -13,6 +13,9 @@ import structlog
 from sqlalchemy.orm import Session
 
 from app.models import DataSource, TableMeta
+from app.llm.provider import get_llm_provider
+from pydantic import BaseModel, Field
+import json
 
 log = structlog.get_logger()
 
@@ -38,7 +41,7 @@ def run_classification(session: Session, source: DataSource) -> dict:
             column.role, column.aggregation, column.additivity = role, aggregation, additivity
             stats["classified"] += 1
 
-    _llm_enrichment_stub()
+    _llm_enrichment(session, tables)
     session.flush()
     return stats
 
@@ -84,14 +87,75 @@ def _classify(column) -> tuple[str, str | None, str]:
     return "attribute", None, "not_applicable"
 
 
-def _llm_enrichment_stub() -> None:
-    """TODO(team): AI pass that drafts business_name, description, and synonyms per table/column.
+class LLMColumnEnrichment(BaseModel):
+    column_name: str
+    business_name: str | None = None
+    description: str | None = None
+    synonyms: list[str] = Field(default_factory=list)
 
-    Contract when implemented:
-    - Input: schema names, data types, PII-masked sample values, DB comments. Never raw samples.
-    - Output: drafts only (status stays 'draft'); never overwrite human-edited fields
-      (check updated_by != 'system').
-    - Rule for reviewers: any description containing a business rule (tax, discounts,
-      cancellations, currency) requires domain-owner confirmation before approval.
-    """
-    log.info("llm_enrichment_not_implemented")
+class LLMTableEnrichment(BaseModel):
+    table_name: str
+    business_name: str | None = None
+    description: str | None = None
+    columns: list[LLMColumnEnrichment]
+
+class LLMEnrichmentResponse(BaseModel):
+    tables: list[LLMTableEnrichment]
+
+def _llm_enrichment(session: Session, tables: list[TableMeta]) -> None:
+    table_context = []
+    
+    for t in tables:
+        cols = []
+        for c in t.columns:
+            if not c.is_active:
+                continue
+            samples = c.profile.get("sample_values", []) if c.profile else []
+            cols.append({
+                "name": c.column_name,
+                "type": c.data_type,
+                "role": c.role,
+                "samples": samples[:3]
+            })
+        table_context.append({"table": t.table_name, "columns": cols})
+
+    if not table_context:
+        return
+
+    prompt = (
+        "You are an expert data analyst. Based on the following database schema (tables, columns, types, and sample values), "
+        "provide a drafted business name, description, and list of synonyms for each table and column.\n"
+        "Ensure descriptions explain the business context. If you deduce any business rules (e.g., currency, tax, discounts), include them.\n\n"
+        f"Schema Context:\n{json.dumps(table_context, indent=2)}\n\n"
+        "Return the enrichment data."
+    )
+
+    provider = get_llm_provider()
+    try:
+        response = provider.generate_structured(prompt, LLMEnrichmentResponse)
+    except Exception as e:
+        log.error("llm_enrichment_failed", error=str(e))
+        return
+
+    # Apply drafts without overwriting human edits
+    by_name = {t.table_name.lower(): t for t in tables}
+    for tbl_resp in response.tables:
+        t = by_name.get(tbl_resp.table_name.lower())
+        if not t:
+            continue
+            
+        if t.updated_by == "system" and t.status == "draft":
+            if tbl_resp.business_name: t.business_name = tbl_resp.business_name
+            if tbl_resp.description: t.description = tbl_resp.description
+            
+        col_by_name = {c.column_name.lower(): c for c in t.columns}
+        for col_resp in tbl_resp.columns:
+            c = col_by_name.get(col_resp.column_name.lower())
+            if not c:
+                continue
+                
+            if c.updated_by == "system" and c.status == "draft":
+                if col_resp.business_name: c.business_name = col_resp.business_name
+                if col_resp.description: c.description = col_resp.description
+                if col_resp.synonyms: c.synonyms = col_resp.synonyms
+

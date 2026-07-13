@@ -2,29 +2,40 @@
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_api_key
-from app.config import get_settings
+from app.api.deps import require_admin, require_permission, Permission, verify_tenant_owns
+from app.audit import audit, AuditEvent
+from app.models import User, DataSource
 from app.connectors.factory import build_engine, test_connection, verify_read_only
 from app.db import get_session
-from app.models import DataSource
 from app.schemas import DataSourceCreate, DataSourceOut
 from app.security.crypto import encrypt_secret
 
 log = structlog.get_logger()
-router = APIRouter(prefix="/sources", tags=["sources"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/sources", tags=["sources"])
 
 
 @router.post("", response_model=DataSourceOut, status_code=201)
-def create_source(payload: DataSourceCreate, session: Session = Depends(get_session)) -> DataSource:
+def create_source(
+    payload: DataSourceCreate,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+) -> DataSource:
     source = DataSource(
-        tenant_id=uuid.UUID(get_settings().default_tenant_id),
-        name=payload.name, type=payload.type, host=payload.host, port=payload.port,
-        database_name=payload.database_name, username=payload.username,
+        tenant_id=current_user.tenant_id,
+        name=payload.name,
+        type=payload.type,
+        host=payload.host,
+        port=payload.port,
+        database_name=payload.database_name,
+        username=payload.username,
         credentials_encrypted=encrypt_secret(payload.password),
-        options=payload.options, created_by="api", updated_by="api",
+        options=payload.options,
+        created_by=current_user.email,
+        updated_by=current_user.email,
     )
     session.add(source)
     session.flush()
@@ -46,20 +57,50 @@ def create_source(payload: DataSourceCreate, session: Session = Depends(get_sess
         raise HTTPException(status_code=400, detail=f"Connection test failed: {exc}") from exc
 
     source.status = "connected"
+
+    audit(
+        session,
+        tenant_id=current_user.tenant_id,
+        entity_type="data_sources",
+        entity_id=source.id,
+        action=AuditEvent.SOURCE_REGISTERED,
+        actor=current_user.email,
+        after={"name": source.name, "type": source.type, "host": source.host},
+        request=request,
+    )
+
+    session.commit()
     log.info("source_registered", source=payload.name, type=payload.type)
     return source
 
 
 @router.get("", response_model=list[DataSourceOut])
-def list_sources(session: Session = Depends(get_session)) -> list[DataSource]:
-    return session.query(DataSource).order_by(DataSource.created_at.desc()).all()
+def list_sources(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_permission(Permission.VIEW_SOURCES)),
+) -> list[DataSource]:
+    # SECURITY FIX: filter by tenant_id — previously returned ALL sources cross-tenant
+    return (
+        session.query(DataSource)
+        .filter(DataSource.tenant_id == current_user.tenant_id)
+        .order_by(DataSource.created_at.desc())
+        .all()
+    )
 
 
 @router.post("/{source_id}/test", response_model=dict)
-def test_source(source_id: uuid.UUID, session: Session = Depends(get_session)) -> dict:
+def test_source(
+    source_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+) -> dict:
     source = session.get(DataSource, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
+
+    # Tenant ownership check
+    verify_tenant_owns(source.tenant_id, current_user)
+
     engine = build_engine(source)
     try:
         test_connection(engine)
@@ -68,3 +109,32 @@ def test_source(source_id: uuid.UUID, session: Session = Depends(get_session)) -
     finally:
         engine.dispose()
     return {"ok": True}
+
+
+@router.delete("/{source_id}", status_code=204)
+def delete_source(
+    source_id: uuid.UUID,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+) -> None:
+    source = session.get(DataSource, source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    verify_tenant_owns(source.tenant_id, current_user)
+
+    audit(
+        session,
+        tenant_id=current_user.tenant_id,
+        entity_type="data_sources",
+        entity_id=source.id,
+        action=AuditEvent.SOURCE_DELETED,
+        actor=current_user.email,
+        before={"name": source.name, "type": source.type},
+        request=request,
+    )
+
+    session.delete(source)
+    session.commit()
+    log.info("source_deleted", source_id=str(source_id), actor=current_user.email)
