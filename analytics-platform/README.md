@@ -4,6 +4,7 @@ An enterprise-grade, locally-deployable Conversational Analytics Platform.
 
 ## Features
 - **Conversational Analytics**: Ask questions in plain English and get SQL queries, answers, and auto-generated charts.
+- **Intelligent Intent Router**: Seamlessly classifies chat messages to separate casual greetings, help requests, and analytics queries to prevent rigid NLU validation errors.
 - **Semantic Layer**: Define Metrics, Dimensions, Joins, and Business Glossary to govern AI query generation.
 - **Dynamic Dashboards**: Create, drag, resize, and export fully customizable widgets.
 - **AI Evaluation Framework**: Automated benchmarking and reliability testing for the LLM-to-SQL engine.
