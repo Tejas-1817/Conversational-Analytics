@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from typing import Optional
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -36,10 +35,10 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.audit import audit, AuditEvent
+from app.audit import AuditEvent, audit
 from app.config import get_settings
 from app.db import get_session
-from app.models import User, Tenant
+from app.models import User
 from app.security.auth import create_access_token, create_refresh_token, get_password_hash
 
 log = structlog.get_logger()
@@ -176,7 +175,8 @@ async def oidc_callback(
 
             # Decode claims from ID token (without full verification for simplicity)
             # Production: use authlib or PyJWT with JWKS verification
-            import base64, json
+            import base64
+            import json
             parts = id_token.split(".")
             if len(parts) < 2:
                 raise HTTPException(status_code=401, detail="Malformed ID token")

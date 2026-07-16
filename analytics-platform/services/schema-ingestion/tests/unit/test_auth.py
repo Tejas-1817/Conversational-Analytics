@@ -1,11 +1,12 @@
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 
+from app.db import get_session
 from app.main import app
 from app.models import User
 from app.security.auth import get_password_hash
-from app.db import get_session
 
 client = TestClient(app)
 

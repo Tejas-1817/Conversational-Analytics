@@ -15,9 +15,6 @@ Run with:
 import hashlib
 import uuid
 
-import pytest
-
-
 # ---------------------------------------------------------------------------
 # 1. RLS Engine Tests
 # ---------------------------------------------------------------------------
@@ -48,8 +45,9 @@ class TestRLSEngine:
 
     def test_missing_claim_produces_deny_filter(self):
         """If the required claim is missing from user_claims, inject a FALSE clause."""
-        from app.security.rls import RLSEngine
         from unittest.mock import MagicMock
+
+        from app.security.rls import RLSEngine
 
         mock_policy = MagicMock()
         mock_policy.name = "region_policy"
@@ -80,8 +78,9 @@ class TestRLSEngine:
 
     def test_valid_claim_produces_where_clause(self):
         """When a claim is present, inject a proper WHERE clause fragment."""
-        from app.security.rls import RLSEngine
         from unittest.mock import MagicMock
+
+        from app.security.rls import RLSEngine
 
         mock_policy = MagicMock()
         mock_policy.name = "region_policy"
@@ -161,8 +160,9 @@ class TestRLSEngine:
 
     def test_role_not_in_policy_applies_to_roles(self):
         """Policy should not be applied if the user's role is not in applies_to_roles."""
-        from app.security.rls import RLSEngine
         from unittest.mock import MagicMock
+
+        from app.security.rls import RLSEngine
 
         mock_policy = MagicMock()
         mock_policy.name = "finance_only"
@@ -210,8 +210,9 @@ class TestColumnSecurityEngine:
 
     def test_admin_sees_all_columns(self):
         """ADMIN role should bypass all column security policies."""
-        from app.security.column_security import ColumnSecurityEngine
         from unittest.mock import patch
+
+        from app.security.column_security import ColumnSecurityEngine
 
         columns = ["name", "salary", "ssn"]
         rows = [{"name": "Alice", "salary": "100000", "ssn": "123-45-6789"}]
@@ -232,8 +233,9 @@ class TestColumnSecurityEngine:
 
     def test_deny_removes_column(self):
         """Action 'deny' should remove the column from both columns and rows."""
-        from app.security.column_security import ColumnSecurityEngine
         from unittest.mock import patch
+
+        from app.security.column_security import ColumnSecurityEngine
 
         policy = self._make_policy("salary", "deny", applies_to_roles=["VIEWER"])
         columns = ["name", "salary", "department"]
@@ -256,8 +258,9 @@ class TestColumnSecurityEngine:
 
     def test_mask_replaces_all_chars(self):
         """Action 'mask' should replace all characters with the mask character."""
-        from app.security.column_security import ColumnSecurityEngine
         from unittest.mock import patch
+
+        from app.security.column_security import ColumnSecurityEngine
 
         policy = self._make_policy("ssn", "mask", applies_to_roles=["VIEWER"], mask_char="*")
         columns = ["name", "ssn"]
@@ -279,8 +282,9 @@ class TestColumnSecurityEngine:
 
     def test_partial_mask_shows_last_n_chars(self):
         """Action 'partial_mask' should show only the last N visible characters."""
-        from app.security.column_security import ColumnSecurityEngine
         from unittest.mock import patch
+
+        from app.security.column_security import ColumnSecurityEngine
 
         policy = self._make_policy("card_number", "partial_mask",
                                    applies_to_roles=["VIEWER", "ANALYST"],
@@ -303,8 +307,9 @@ class TestColumnSecurityEngine:
 
     def test_hash_produces_sha256(self):
         """Action 'hash' should produce a deterministic SHA-256 hex digest."""
-        from app.security.column_security import ColumnSecurityEngine
         from unittest.mock import patch
+
+        from app.security.column_security import ColumnSecurityEngine
 
         policy = self._make_policy("email", "hash", applies_to_roles=["ANALYST"])
         columns = ["email"]
@@ -320,7 +325,7 @@ class TestColumnSecurityEngine:
                 rows=rows,
             )
 
-        expected_hash = hashlib.sha256("user@example.com".encode()).hexdigest()
+        expected_hash = hashlib.sha256(b"user@example.com").hexdigest()
         assert out_rows[0]["email"] == expected_hash
 
 
@@ -332,7 +337,7 @@ class TestRBAC:
     """Test the permission matrix."""
 
     def test_admin_has_all_permissions(self):
-        from app.api.deps import has_permission, Permission
+        from app.api.deps import Permission, has_permission
 
         for perm in [
             Permission.MANAGE_USERS, Permission.MANAGE_TENANTS,
@@ -342,7 +347,7 @@ class TestRBAC:
             assert has_permission("ADMIN", perm), f"ADMIN should have {perm}"
 
     def test_viewer_cannot_manage_users(self):
-        from app.api.deps import has_permission, Permission
+        from app.api.deps import Permission, has_permission
 
         assert not has_permission("VIEWER", Permission.MANAGE_USERS)
         assert not has_permission("VIEWER", Permission.MANAGE_SOURCES)
@@ -350,20 +355,20 @@ class TestRBAC:
         assert not has_permission("VIEWER", Permission.MANAGE_API_KEYS)
 
     def test_analyst_can_save_insights(self):
-        from app.api.deps import has_permission, Permission
+        from app.api.deps import Permission, has_permission
 
         assert has_permission("ANALYST", Permission.SAVE_INSIGHTS)
         assert has_permission("ANALYST", Permission.USE_AI_CHAT)
         assert has_permission("ANALYST", Permission.EXPORT_DATA)
 
     def test_analyst_cannot_manage_users(self):
-        from app.api.deps import has_permission, Permission
+        from app.api.deps import Permission, has_permission
 
         assert not has_permission("ANALYST", Permission.MANAGE_USERS)
         assert not has_permission("ANALYST", Permission.MANAGE_TENANTS)
 
     def test_viewer_can_use_chat(self):
-        from app.api.deps import has_permission, Permission
+        from app.api.deps import Permission, has_permission
 
         assert has_permission("VIEWER", Permission.USE_AI_CHAT)
         assert has_permission("VIEWER", Permission.VIEW_DASHBOARDS)

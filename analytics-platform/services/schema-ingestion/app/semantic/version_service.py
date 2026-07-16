@@ -1,18 +1,13 @@
-import json
 import uuid
-from typing import Type
 
 from sqlalchemy.orm import Session
-from app.models import (
-    SemanticMetric, MetricVersion,
-    SemanticDimension, DimensionVersion,
-    SemanticJoin, JoinVersion
-)
+
+from app.models import DimensionVersion, JoinVersion, MetricVersion, SemanticDimension, SemanticJoin, SemanticMetric
 
 
 class VersionService:
     """Creates JSON snapshots of semantic objects for version history."""
-    
+
     @staticmethod
     def _model_to_dict(instance) -> dict:
         """Serialize a SQLAlchemy model instance to a dict."""
@@ -38,7 +33,7 @@ class VersionService:
             created_by=actor
         )
         db.add(version_record)
-        
+
     @classmethod
     def snapshot_dimension(cls, db: Session, dimension: SemanticDimension, change_reason: str, actor: str):
         snapshot_data = cls._model_to_dict(dimension)

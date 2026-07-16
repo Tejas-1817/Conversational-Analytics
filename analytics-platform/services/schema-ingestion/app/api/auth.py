@@ -3,16 +3,16 @@ import uuid
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.audit import audit, AuditEvent
-from app.db import get_session
-from app.models import User, RevokedToken
-from app.security.auth import verify_password, create_access_token, create_refresh_token, decode_token
 from app.api.deps import require_viewer
+from app.audit import AuditEvent, audit
+from app.db import get_session
+from app.models import RevokedToken, User
+from app.security.auth import create_access_token, create_refresh_token, decode_token, verify_password
 
 log = structlog.get_logger()
 router = APIRouter(prefix="/auth", tags=["auth"])

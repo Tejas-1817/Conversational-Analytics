@@ -11,15 +11,14 @@ from __future__ import annotations
 import secrets
 import uuid
 from datetime import datetime
-from typing import Optional, List
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.audit import audit, AuditEvent
-from app.api.deps import require_admin, require_permission, Permission
+from app.api.deps import Permission, require_permission
+from app.audit import AuditEvent, audit
 from app.db import get_session
 from app.models import ApiKey, User
 from app.security.auth import get_password_hash
@@ -41,8 +40,8 @@ def _generate_api_key() -> tuple[str, str, str]:
 
 class ApiKeyCreate(BaseModel):
     name: str
-    scopes: List[str] = []
-    expires_at: Optional[datetime] = None
+    scopes: list[str] = []
+    expires_at: datetime | None = None
 
 
 class ApiKeyCreatedOut(BaseModel):
@@ -50,8 +49,8 @@ class ApiKeyCreatedOut(BaseModel):
     name: str
     key: str          # Raw key — shown ONCE only
     key_prefix: str
-    scopes: List[str]
-    expires_at: Optional[datetime]
+    scopes: list[str]
+    expires_at: datetime | None
     created_at: datetime
 
     class Config:
@@ -62,10 +61,10 @@ class ApiKeyOut(BaseModel):
     id: uuid.UUID
     name: str
     key_prefix: str
-    scopes: List[str]
+    scopes: list[str]
     is_active: bool
-    last_used_at: Optional[datetime]
-    expires_at: Optional[datetime]
+    last_used_at: datetime | None
+    expires_at: datetime | None
     created_at: datetime
 
     class Config:
@@ -74,7 +73,7 @@ class ApiKeyOut(BaseModel):
 
 # --- Endpoints ---
 
-@router.get("/", response_model=List[ApiKeyOut])
+@router.get("/", response_model=list[ApiKeyOut])
 def list_api_keys(
     db: Session = Depends(get_session),
     user: User = Depends(require_permission(Permission.MANAGE_API_KEYS)),

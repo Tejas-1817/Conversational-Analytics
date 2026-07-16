@@ -1,7 +1,8 @@
 import uuid
-from typing import List, Dict, Any, Optional, Literal
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
 
 # --- LLM Structured Output Models ---
 
@@ -16,28 +17,36 @@ class NLUFilter(BaseModel):
     value: Any
 
 class NLUIntent(BaseModel):
-    intent: Literal["aggregate", "list", "clarify", "unknown"] = Field(default="unknown", description="The primary intent of the user")
-    metric: Optional[str] = Field(default=None, description="The primary metric requested, e.g., 'Revenue', 'Sales', 'Active Users'")
-    dimensions: List[str] = Field(default_factory=list, description="List of dimensions to group by, e.g., 'Region', 'Product'")
-    filters: List[NLUFilter] = Field(default_factory=list, description="List of filters to apply")
-    time_granularity: Optional[Literal["day", "week", "month", "quarter", "year"]] = Field(default=None)
-    sort_by: Optional[str] = Field(default=None)
-    sort_direction: Optional[Literal["ASC", "DESC"]] = Field(default=None)
-    limit: Optional[int] = Field(default=None)
+    intent: Literal["aggregate", "time_series", "comparison", "distribution", "top_n", "bottom_n", "trend", "list", "clarify", "unknown"] = Field(default="unknown", description="The primary intent of the user")
+    metric: str | None = Field(default=None, description="The primary metric requested, e.g., 'Revenue', 'Sales', 'Active Users'")
+    kpi: str | None = Field(default=None, description="The primary KPI requested, e.g., 'Net Profit Margin'")
+    dimensions: list[str] = Field(default_factory=list, description="List of dimensions to group by, e.g., 'Region', 'Product'")
+    filters: list[NLUFilter] = Field(default_factory=list, description="List of filters to apply")
+    time_granularity: Literal["day", "week", "month", "quarter", "year"] | None = Field(default=None)
+    time_intelligence: str | None = Field(default=None, description="E.g., 'YTD', 'MTD', 'Rolling 30 Days'")
+    sort_by: str | None = Field(default=None)
+    sort_direction: Literal["ASC", "DESC"] | None = Field(default=None)
+    limit: int | None = Field(default=None)
 
 class QueryPlanFilter(BaseModel):
     column_id: uuid.UUID
     operator: str
     value: Any
 
-class StructuredQueryPlan(BaseModel):
-    metric_id: uuid.UUID
-    dimension_ids: List[uuid.UUID] = Field(default_factory=list)
-    filters: List[QueryPlanFilter] = Field(default_factory=list)
-    time_granularity: Optional[str] = None
-    sort_column_id: Optional[uuid.UUID] = None
-    sort_direction: Optional[str] = None
-    limit: Optional[int] = None
+class LogicalQueryPlan(BaseModel):
+    intent: str
+    kpi_ids: list[uuid.UUID] = Field(default_factory=list)
+    metric_ids: list[uuid.UUID] = Field(default_factory=list)
+    dimension_ids: list[uuid.UUID] = Field(default_factory=list)
+    filters: list[QueryPlanFilter] = Field(default_factory=list)
+    time_granularity: str | None = None
+    time_intelligence: str | None = None
+    sort_column_id: uuid.UUID | None = None
+    sort_direction: Literal["ASC", "DESC"] | None = None
+    limit: int | None = None
+    chart_recommendation: str | None = None
+    confidence_score: float = Field(default=1.0)
+    reasoning: str | None = None
 
 # --- API Request/Response Models ---
 
@@ -49,27 +58,27 @@ class ChatMessageOut(BaseModel):
     role: str
     content: str
     created_at: datetime
-    route: Optional[str] = None
-    trace: Optional[Dict[str, Any]] = None
-    intent: Optional[Dict[str, Any]] = None
-    query_plan: Optional[Dict[str, Any]] = None
-    generated_sql: Optional[str] = None
-    execution_time_ms: Optional[int] = None
-    result_data: Optional[Dict[str, Any]] = None
-    chart_recommendation: Optional[str] = None
-    error: Optional[str] = None
-    confidence_score: Optional[float] = None
-    confidence_reason: Optional[str] = None
+    route: str | None = None
+    trace: dict[str, Any] | None = None
+    intent: dict[str, Any] | None = None
+    query_plan: dict[str, Any] | None = None
+    generated_sql: str | None = None
+    execution_time_ms: int | None = None
+    result_data: dict[str, Any] | None = None
+    chart_recommendation: str | None = None
+    error: str | None = None
+    confidence_score: float | None = None
+    confidence_reason: str | None = None
 
     class Config:
         from_attributes = True
 
 class ConversationOut(BaseModel):
     id: uuid.UUID
-    title: Optional[str] = None
+    title: str | None = None
     created_at: datetime
     updated_at: datetime
-    messages: List[ChatMessageOut] = []
+    messages: list[ChatMessageOut] = []
 
     class Config:
         from_attributes = True

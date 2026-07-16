@@ -4,15 +4,14 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from redis import Redis
 from rq import Queue
-from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin, require_viewer, verify_tenant_owns
-from app.models import User, DataSource
 from app.config import get_settings
 from app.db import get_session
 from app.ingestion.pipeline import run_pipeline
-from app.models import DataSource, IngestionJob
+from app.models import DataSource, IngestionJob, User
 from app.schemas import JobOut
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])

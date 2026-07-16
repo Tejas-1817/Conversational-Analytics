@@ -1,5 +1,5 @@
 import ast
-from typing import List, Set
+
 
 class InvalidExpressionError(Exception):
     pass
@@ -10,7 +10,7 @@ class CircularDependencyError(Exception):
 
 class MetricFormulaParser:
     """Parses and validates business formulas like 'Gross Revenue - Discount'."""
-    
+
     ALLOWED_NODES = (
         ast.Expression,
         ast.BinOp,
@@ -24,11 +24,11 @@ class MetricFormulaParser:
     )
 
     @classmethod
-    def extract_metrics(cls, expression: str) -> List[str]:
+    def extract_metrics(cls, expression: str) -> list[str]:
         """Returns a list of metric names referenced in the expression."""
         if not expression or not expression.strip():
             return []
-            
+
         try:
             # We use ast.parse to safely parse the math expression.
             # mode='eval' ensures it's a single expression, not arbitrary statements.
@@ -40,7 +40,7 @@ class MetricFormulaParser:
         for node in ast.walk(tree):
             if not isinstance(node, cls.ALLOWED_NODES):
                 raise InvalidExpressionError(f"Unsupported formula component: {type(node).__name__}. Only basic arithmetic is allowed.")
-            
+
             if isinstance(node, ast.Name):
                 metrics.add(node.id)
 
@@ -59,7 +59,7 @@ class MetricFormulaParser:
                 graph[m_name] = cls.extract_metrics(expr)
             else:
                 graph[m_name] = []
-                
+
         # Inject the proposed expression
         graph[metric_name] = cls.extract_metrics(expression)
 
@@ -72,14 +72,14 @@ class MetricFormulaParser:
                 return True
             if node in visited:
                 return False
-            
+
             visited.add(node)
             path.add(node)
-            
+
             for neighbor in graph.get(node, []):
                 if dfs(neighbor):
                     return True
-                    
+
             path.remove(node)
             return False
 

@@ -1,11 +1,12 @@
-import pytest
 import uuid
-from fastapi.testclient import TestClient
 from unittest.mock import patch
-from app.main import app
-from app.db import get_session
+
+import pytest
+from fastapi.testclient import TestClient
+
 from app.api.deps import get_current_user
-from app.models import SemanticMetric
+from app.db import get_session
+from app.main import app
 
 client = TestClient(app)
 
@@ -120,7 +121,7 @@ def test_create_glossary(mock_glossary_service):
         "business_definition": "Monthly Active Users"
     })
     assert res.status_code == 200
-    
+
 @patch("app.api.semantic.DimensionService")
 def test_create_dimension(mock_dim_service):
     mock_dim_service.create_dimension.return_value = {
@@ -166,13 +167,13 @@ def test_synonyms(mock_syn_service):
         synonym = "Sales"
     mock_syn_service.add_synonym.return_value = MockSyn()
     mock_syn_service.resolve_synonym.return_value = {"resolved": True, "target_type": "METRIC", "target_id": uuid.uuid4()}
-    
+
     res = client.post("/semantic/synonyms", json={
         "synonym_term": "Sales",
         "target_type": "metric",
         "target_id": str(uuid.uuid4())
     })
     assert res.status_code == 200
-    
+
     res = client.get("/semantic/synonyms/resolve?term=Sales")
     assert res.status_code == 200

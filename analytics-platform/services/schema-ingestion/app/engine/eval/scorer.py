@@ -15,6 +15,6 @@ class ReliabilityScorer:
         result = result or 0.0
         chart = chart or 0.0
         nl = nl or 0.0
-        
+
         score = (intent * 0.20) + (plan * 0.20) + (sql * 0.20) + (result * 0.20) + (chart * 0.10) + (nl * 0.10)
         return min(max(score, 0.0), 1.0)

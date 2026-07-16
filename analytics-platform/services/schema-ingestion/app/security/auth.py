@@ -1,7 +1,9 @@
-import jwt
-import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+import bcrypt
+import jwt
+
 from app.config import get_settings
 
 

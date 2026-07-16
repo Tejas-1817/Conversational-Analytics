@@ -13,7 +13,7 @@ from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from app.models import ColumnMeta, DataSource, Relationship, TableMeta
+from app.models import ColumnMeta, DataSource, Relationship, TableMeta, IndexMeta
 
 log = structlog.get_logger()
 
@@ -53,8 +53,11 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
             comment = (inspector.get_table_comment(table_name, schema=schema) or {}).get("text")
             if comment and not table.description:
                 table.description = comment  # DB comments seed drafts; approved text is never overwritten
+                table.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
 
-            _upsert_columns(session, inspector, table, schema, table_name, stats)
+            changed = _upsert_columns(session, inspector, table, schema, table_name, stats)
+            if changed:
+                table.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
 
     # Deactivate tables that disappeared (diff-aware, non-destructive)
     for key, table in existing_tables.items():
@@ -63,6 +66,9 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
             stats["tables_deactivated"] += 1
             log.info("table_deactivated", schema=key[0], table=key[1])
 
+        if table.is_active:
+            _upsert_indexes(session, inspector, table, key[0], key[1], stats)
+
     session.flush()
     _record_declared_fks(session, inspector, source, stats)
     session.flush()
@@ -70,33 +76,83 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
 
 
 def _upsert_columns(session: Session, inspector, table: TableMeta,
-                    schema: str, table_name: str, stats: dict) -> None:
+                    schema: str, table_name: str, stats: dict) -> bool:
     pk_cols = set((inspector.get_pk_constraint(table_name, schema=schema) or {}).get("constrained_columns") or [])
     existing = {c.column_name: c for c in session.query(ColumnMeta).filter_by(table_id=table.id)}
     seen: set[str] = set()
+    changed = False
 
     for position, col in enumerate(inspector.get_columns(table_name, schema=schema), start=1):
         name = col["name"]
         seen.add(name)
         stats["columns_seen"] += 1
         column = existing.get(name)
+        
+        is_new = False
         if column is None:
             column = ColumnMeta(table_id=table.id, column_name=name, data_type=str(col["type"]))
             session.add(column)
+            is_new = True
+            changed = True
+            
+        new_type = str(col["type"])
+        new_nullable = bool(col.get("nullable", True))
+        new_pk = name in pk_cols
+        
+        if not is_new:
+            if (column.data_type != new_type or 
+                column.is_nullable != new_nullable or 
+                column.is_primary_key != new_pk or
+                column.ordinal_position != position):
+                changed = True
+                
         # Technical facts: always refreshed
-        column.data_type = str(col["type"])
-        column.is_nullable = bool(col.get("nullable", True))
-        column.is_primary_key = name in pk_cols
+        column.data_type = new_type
+        column.is_nullable = new_nullable
+        column.is_primary_key = new_pk
         column.ordinal_position = position
-        column.is_active = True
+        
+        if not column.is_active:
+            column.is_active = True
+            changed = True
+            
         db_comment = col.get("comment")
         if db_comment and not column.description:
             column.description = db_comment
+            changed = True
 
     for name, column in existing.items():
         if name not in seen:
-            column.is_active = False
+            if column.is_active:
+                column.is_active = False
+                changed = True
+                
+    return changed
 
+def _upsert_indexes(session: Session, inspector, table: TableMeta, schema: str, table_name: str, stats: dict) -> None:
+    existing = {idx.index_name: idx for idx in session.query(IndexMeta).filter_by(table_id=table.id)}
+    seen = set()
+    
+    for idx in inspector.get_indexes(table_name, schema=schema):
+        name = idx["name"]
+        seen.add(name)
+        
+        index = existing.get(name)
+        if index is None:
+            index = IndexMeta(
+                table_id=table.id,
+                index_name=name,
+                column_names=idx["column_names"],
+                is_unique=idx["unique"]
+            )
+            session.add(index)
+        else:
+            index.column_names = idx["column_names"]
+            index.is_unique = idx["unique"]
+            
+    for name, index in existing.items():
+        if name not in seen:
+            session.delete(index)
 
 def _record_declared_fks(session: Session, inspector, source: DataSource, stats: dict) -> None:
     """Declared foreign keys are database facts -> stored as approved with confidence 1.0."""

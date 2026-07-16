@@ -1,18 +1,18 @@
 import uuid
-from typing import Optional
+
 from pydantic import BaseModel, ConfigDict
 
 
 class SemanticMetricCreate(BaseModel):
     name: str
-    business_name: Optional[str] = None
-    description: Optional[str] = None
+    business_name: str | None = None
+    description: str | None = None
     is_calculated: bool = False
     aggregation_type: str = "CUSTOM"
     expression: str
-    source_table_id: Optional[uuid.UUID] = None
-    source_column_id: Optional[uuid.UUID] = None
-    owner: Optional[str] = None
+    source_table_id: uuid.UUID | None = None
+    source_column_id: uuid.UUID | None = None
+    owner: str | None = None
 
 class SemanticMetricOut(SemanticMetricCreate):
     model_config = ConfigDict(from_attributes=True)
@@ -27,13 +27,13 @@ class MetricVersionOut(BaseModel):
     version: int
     snapshot: dict
     created_by: str
-    change_reason: Optional[str] = None
+    change_reason: str | None = None
 
 class SemanticDimensionCreate(BaseModel):
     business_name: str
-    description: Optional[str] = None
-    source_table_id: Optional[uuid.UUID] = None
-    source_column_id: Optional[uuid.UUID] = None
+    description: str | None = None
+    source_table_id: uuid.UUID | None = None
+    source_column_id: uuid.UUID | None = None
     data_type: str
     is_time_dimension: bool = False
     time_granularity: str = "NONE"
@@ -62,7 +62,7 @@ class SemanticJoinOut(SemanticJoinCreate):
 class BusinessGlossaryCreate(BaseModel):
     term: str
     business_definition: str
-    owner: Optional[str] = None
+    owner: str | None = None
 
 class BusinessGlossaryOut(BusinessGlossaryCreate):
     model_config = ConfigDict(from_attributes=True)

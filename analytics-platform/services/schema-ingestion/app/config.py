@@ -26,8 +26,18 @@ class Settings(BaseSettings):
     refresh_token_expire_minutes: int = 1440  # 24 hours
 
     # LLM Settings
-    llm_provider: str = "mock"  # options: "gemini", "mock", "none"
+    llm_provider: str = "mock"  # options: "gemini", "mock", "none", "huggingface"
     gemini_api_key: str = ""
+    
+    # Hugging Face Settings
+    huggingface_api_key: str = ""
+    hf_model: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    hf_max_tokens: int = 2048
+    hf_timeout: int = 30
+    hf_temperature: float = 0.0
+    hf_top_p: float = 0.95
+    hf_retry_count: int = 3
+
 
     # Credential encryption key (Fernet, urlsafe base64, 32 bytes).
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

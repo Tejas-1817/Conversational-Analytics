@@ -11,9 +11,7 @@ from __future__ import annotations
 
 import abc
 import base64
-import hashlib
 import os
-from typing import TYPE_CHECKING
 
 import structlog
 
@@ -53,6 +51,7 @@ class FernetEnvProvider(SecretProvider):
 
     def __init__(self) -> None:
         from cryptography.fernet import Fernet
+
         from app.config import get_settings
 
         key = get_settings().encryption_key
@@ -87,9 +86,8 @@ class VaultProvider(SecretProvider):
     _VAULT_SECRET_PATH = "analytics-platform/encryption-key"
 
     def __init__(self) -> None:
+
         from app.config import get_settings
-        import urllib.request
-        import json
 
         settings = get_settings()
         self._vault_addr = settings.vault_addr
@@ -101,7 +99,9 @@ class VaultProvider(SecretProvider):
         self._key = base64.b64decode(key_b64)
 
     def _vault_request(self, method: str, path: str, body: dict | None = None) -> dict:
-        import urllib.request, urllib.error, json
+        import json
+        import urllib.error
+        import urllib.request
         url = f"{self._vault_addr}/v1/{self._vault_mount}/data/{path}"
         data = json.dumps(body).encode() if body else None
         req = urllib.request.Request(url, data=data, method=method,

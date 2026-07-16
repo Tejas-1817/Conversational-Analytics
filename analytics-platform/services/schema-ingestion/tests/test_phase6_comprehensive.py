@@ -23,12 +23,10 @@ Or run as a standalone report:
     python tests/test_phase6_comprehensive.py
 """
 
-import hashlib
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONCERN 1: Every Table is Tenant-Scoped
@@ -196,7 +194,8 @@ class TestQueryEngineTenantInjection:
         so compile_plan can run without a real DB.
         """
         import uuid as _uuid
-        from app.models import SemanticMetric, ColumnMeta, TableMeta, SemanticDimension
+
+        from app.models import ColumnMeta, SemanticDimension, SemanticMetric, TableMeta
 
         metric_id = _uuid.uuid4()
         tbl_id = _uuid.uuid4()
@@ -318,7 +317,6 @@ class TestSemanticLayerIsolation:
     def test_metric_service_list_filters_by_tenant(self):
         """MetricService.list_metrics must filter SemanticMetric.tenant_id."""
         from app.semantic.metric_service import MetricService
-        from app.models import SemanticMetric
 
         tenant_id = uuid.uuid4()
         mock_session = MagicMock()
@@ -331,8 +329,9 @@ class TestSemanticLayerIsolation:
 
     def test_metric_service_get_raises_404_for_wrong_tenant(self):
         """MetricService.get_metric must 404 if tenant_id doesn't match."""
-        from app.semantic.metric_service import MetricService
         from fastapi import HTTPException
+
+        from app.semantic.metric_service import MetricService
 
         tenant_id = uuid.uuid4()
         wrong_tenant_id = uuid.uuid4()
@@ -368,6 +367,7 @@ class TestSemanticLayerIsolation:
     def test_resolver_passes_tenant_id_to_db_queries(self):
         """ResolverService must scope all lookups to tenant_id."""
         import inspect
+
         from app.engine import resolver_service as rs_module
         source = inspect.getsource(rs_module)
         assert "tenant_id" in source, \
@@ -392,8 +392,9 @@ class TestConversationIsolation:
 
     def test_conversation_model_has_unique_constraint(self):
         """Conversation has UNIQUE(tenant_id, id) ensuring no cross-tenant ID collision."""
-        from app.models import Conversation
         from sqlalchemy import UniqueConstraint
+
+        from app.models import Conversation
         constraints = [c for c in Conversation.__table__.constraints if isinstance(c, UniqueConstraint)]
         # Check any constraint contains both tenant_id and id
         found = any(
@@ -413,8 +414,8 @@ class TestConversationIsolation:
         tenant_id AND user_id — preventing cross-user leakage within same tenant.
         """
         import inspect
+
         from app.api import engine as engine_module
-        import ast
 
         source = inspect.getsource(engine_module.list_conversations)
         assert "tenant_id" in source, "list_conversations must filter by tenant_id"
@@ -422,6 +423,7 @@ class TestConversationIsolation:
 
     def test_engine_get_conversation_filters_tenant(self):
         import inspect
+
         from app.api import engine as engine_module
 
         source = inspect.getsource(engine_module.get_conversation)
@@ -433,6 +435,7 @@ class TestConversationIsolation:
         belongs to the requesting user's tenant.
         """
         import inspect
+
         from app.api import engine as engine_module
 
         source = inspect.getsource(engine_module.ask_question)
@@ -459,6 +462,7 @@ class TestDashboardPermissions:
     def test_dashboards_api_filters_by_tenant(self):
         """GET /dashboards/ must only return dashboards in the calling user's tenant."""
         import inspect
+
         from app.api import dashboards as dash_module
 
         source = inspect.getsource(dash_module.get_dashboards)
@@ -467,6 +471,7 @@ class TestDashboardPermissions:
     def test_get_dashboard_verifies_tenant_ownership(self):
         """GET /dashboards/{id} must 404 if tenant doesn't match."""
         import inspect
+
         from app.api import dashboards as dash_module
 
         source = inspect.getsource(dash_module.get_dashboard)
@@ -512,6 +517,7 @@ class TestBackgroundJobTenantContext:
         before enqueuing the job.
         """
         import inspect
+
         from app.api import jobs as jobs_module
         source = inspect.getsource(jobs_module.trigger_ingestion)
         assert "verify_tenant_owns" in source, \
@@ -522,6 +528,7 @@ class TestBackgroundJobTenantContext:
         GET /jobs must join to data_sources to enforce tenant scope.
         """
         import inspect
+
         from app.api import jobs as jobs_module
         source = inspect.getsource(jobs_module.list_jobs)
         assert "tenant_id" in source, "list_jobs must filter by tenant_id"
@@ -533,6 +540,7 @@ class TestBackgroundJobTenantContext:
         GET /jobs/{job_id} must join to data_sources to enforce tenant scope.
         """
         import inspect
+
         from app.api import jobs as jobs_module
         source = inspect.getsource(jobs_module.get_job)
         assert "tenant_id" in source, "get_job must filter by tenant_id"
@@ -543,7 +551,7 @@ class TestBackgroundJobTenantContext:
         but it FKs to data_sources which is tenant-scoped.
         Verify the FK chain is intact.
         """
-        from app.models import IngestionJob, DataSource
+        from app.models import DataSource, IngestionJob
         # IngestionJob → DataSource
         job_fk_tables = {fk.column.table.name for col in IngestionJob.__table__.columns for fk in col.foreign_keys}
         assert "data_sources" in job_fk_tables
@@ -559,6 +567,7 @@ class TestBackgroundJobTenantContext:
         This test documents the expected contract.
         """
         import inspect
+
         from app.ingestion import pipeline as pipeline_module
         source = inspect.getsource(pipeline_module.run_pipeline)
         assert "source_id" in source, "run_pipeline must accept source_id"
@@ -608,13 +617,13 @@ class TestRateLimiting:
         Simulate a 429 from slowapi by patching the limiter to deny.
         Verify the response code and Retry-After header structure.
         """
+
         from app.main import app
-        from fastapi.testclient import TestClient
 
         # Mock the limiter to always raise RateLimitExceeded
         try:
-            from slowapi.errors import RateLimitExceeded
             from slowapi import Limiter
+            from slowapi.errors import RateLimitExceeded
 
             # We can't easily force 429 without a real request counter,
             # but we verify the exception handler is registered
@@ -664,8 +673,9 @@ class TestOIDCConfiguration:
         from app.config import get_settings
         get_settings.cache_clear()
 
-        from app.main import app
         from fastapi.testclient import TestClient
+
+        from app.main import app
         c = TestClient(app)
         r = c.get("/auth/oidc/login")
         assert r.status_code == 503, \
@@ -676,6 +686,7 @@ class TestOIDCConfiguration:
     def test_oidc_login_route_exists(self):
         """The /auth/oidc/login endpoint must be declared in oidc.py."""
         import inspect
+
         from app.api import oidc as oidc_module
         source = inspect.getsource(oidc_module)
         assert '"/login"' in source or "'/login'" in source or '/login' in source, \
@@ -684,6 +695,7 @@ class TestOIDCConfiguration:
     def test_oidc_callback_route_exists(self):
         """The /auth/oidc/callback endpoint must be declared in oidc.py."""
         import inspect
+
         from app.api import oidc as oidc_module
         source = inspect.getsource(oidc_module)
         assert '"/callback"' in source or "'/callback'" in source or '/callback' in source, \
@@ -692,6 +704,7 @@ class TestOIDCConfiguration:
     def test_oidc_provider_options_documented(self):
         """Verify all major IdPs are documented in the OIDC endpoint."""
         import inspect
+
         from app.api import oidc as oidc_module
         source = inspect.getsource(oidc_module)
         for provider in ["azure", "google", "okta", "auth0", "keycloak"]:
@@ -771,7 +784,7 @@ class TestSecretProviderAbstraction:
         import app.security.secrets as s_mod
         s_mod._provider = None
 
-        from app.security.secrets import get_secret_provider, FernetEnvProvider
+        from app.security.secrets import FernetEnvProvider, get_secret_provider
         p = get_secret_provider()
         assert isinstance(p, FernetEnvProvider), \
             "get_secret_provider() must return FernetEnvProvider when SECRET_BACKEND=env"
@@ -782,6 +795,7 @@ class TestSecretProviderAbstraction:
     def test_crypto_module_routes_through_provider(self):
         """crypto.py must delegate to the SecretProvider abstraction."""
         import inspect
+
         from app.security import crypto
         src = inspect.getsource(crypto)
         assert "secrets" in src.lower() or "SecretProvider" in src or "encrypt_secret" in src, \
@@ -813,66 +827,77 @@ class TestAuditLogCompleteness:
 
     def test_auth_module_audits_login(self):
         import inspect
+
         from app.api import auth
         src = inspect.getsource(auth)
         assert "LOGIN" in src, "auth.py must audit LOGIN events"
 
     def test_auth_module_audits_failed_login(self):
         import inspect
+
         from app.api import auth
         src = inspect.getsource(auth)
         assert "FAILED_LOGIN" in src, "auth.py must audit FAILED_LOGIN events"
 
     def test_auth_module_audits_logout(self):
         import inspect
+
         from app.api import auth
         src = inspect.getsource(auth)
         assert "LOGOUT" in src, "auth.py must audit LOGOUT events"
 
     def test_auth_module_audits_token_refresh(self):
         import inspect
+
         from app.api import auth
         src = inspect.getsource(auth)
         assert "TOKEN_REFRESHED" in src, "auth.py must audit TOKEN_REFRESHED events"
 
     def test_sources_module_audits_source_registration(self):
         import inspect
+
         from app.api import sources
         src = inspect.getsource(sources)
         assert "SOURCE_REGISTERED" in src, "sources.py must audit SOURCE_REGISTERED"
 
     def test_sources_module_audits_source_deletion(self):
         import inspect
+
         from app.api import sources
         src = inspect.getsource(sources)
         assert "SOURCE_DELETED" in src, "sources.py must audit SOURCE_DELETED"
 
     def test_users_module_audits_user_creation(self):
         import inspect
+
         from app.api import users
         src = inspect.getsource(users)
         assert "USER_CREATED" in src, "users.py must audit USER_CREATED"
 
     def test_users_module_audits_user_disable(self):
         import inspect
+
         from app.api import users
         src = inspect.getsource(users)
         assert "USER_DISABLED" in src, "users.py must audit USER_DISABLED"
 
     def test_users_module_audits_role_change(self):
         import inspect
+
         from app.api import users
         src = inspect.getsource(users)
         assert "USER_ROLE_CHANGED" in src, "users.py must audit USER_ROLE_CHANGED"
 
     def test_api_keys_module_audits_creation(self):
         import inspect
+
         from app.api import api_keys
         src = inspect.getsource(api_keys)
         assert "API_KEY_CREATED" in src, "api_keys.py must audit API_KEY_CREATED"
 
     def test_api_keys_module_audits_revocation(self):
         import inspect
+
         from app.api import api_keys
         src = inspect.getsource(api_keys)
         assert "API_KEY_REVOKED" in src, "api_keys.py must audit API_KEY_REVOKED"
@@ -915,7 +940,8 @@ class TestAuditLogCompleteness:
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import subprocess, sys
+    import subprocess
+    import sys
     result = subprocess.run(
         [sys.executable, "-m", "pytest", __file__, "-v", "--tb=short"],
         cwd=__file__.replace("tests/test_phase6_comprehensive.py", "").replace("\\", "/").rstrip("/"),

@@ -1,19 +1,20 @@
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, ConfigDict
-from datetime import datetime
 import uuid
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 # --- Inputs for Datasets ---
 
 class EvaluationDatasetCreate(BaseModel):
     question: str
-    difficulty: Optional[str] = None
-    tags: List[str] = []
-    expected_intent: Optional[Dict[str, Any]] = None
-    expected_plan: Optional[Dict[str, Any]] = None
-    expected_sql: Optional[str] = None
-    expected_result: Optional[Dict[str, Any]] = None
-    expected_chart: Optional[str] = None
+    difficulty: str | None = None
+    tags: list[str] = []
+    expected_intent: dict[str, Any] | None = None
+    expected_plan: dict[str, Any] | None = None
+    expected_sql: str | None = None
+    expected_result: dict[str, Any] | None = None
+    expected_chart: str | None = None
 
 class EvaluationDatasetOut(EvaluationDatasetCreate):
     id: uuid.UUID
@@ -26,8 +27,8 @@ class EvaluationDatasetOut(EvaluationDatasetCreate):
 
 class BenchmarkCollectionCreate(BaseModel):
     name: str
-    description: Optional[str] = None
-    domain: Optional[str] = None
+    description: str | None = None
+    domain: str | None = None
 
 class BenchmarkCollectionOut(BenchmarkCollectionCreate):
     id: uuid.UUID
@@ -35,7 +36,7 @@ class BenchmarkCollectionOut(BenchmarkCollectionCreate):
     created_at: datetime
     updated_at: datetime
     created_by: str
-    datasets: List[EvaluationDatasetOut] = []
+    datasets: list[EvaluationDatasetOut] = []
     model_config = ConfigDict(from_attributes=True)
 
 class BenchmarkCollectionListOut(BenchmarkCollectionCreate):
@@ -52,28 +53,28 @@ class EvaluationResultOut(BaseModel):
     id: uuid.UUID
     run_id: uuid.UUID
     dataset_id: uuid.UUID
-    
-    generated_intent: Optional[Dict[str, Any]] = None
-    generated_plan: Optional[Dict[str, Any]] = None
-    generated_sql: Optional[str] = None
-    generated_result: Optional[Dict[str, Any]] = None
-    generated_chart: Optional[str] = None
-    generated_answer: Optional[str] = None
-    
-    execution_time_ms: Optional[int] = None
-    error: Optional[str] = None
-    
-    intent_score: Optional[float] = None
-    plan_score: Optional[float] = None
-    sql_score: Optional[float] = None
-    result_score: Optional[float] = None
-    chart_score: Optional[float] = None
-    nl_score: Optional[float] = None
-    
-    reliability_score: Optional[float] = None
-    is_pass: Optional[bool] = None
-    failure_reasons: List[str] = []
-    
+
+    generated_intent: dict[str, Any] | None = None
+    generated_plan: dict[str, Any] | None = None
+    generated_sql: str | None = None
+    generated_result: dict[str, Any] | None = None
+    generated_chart: str | None = None
+    generated_answer: str | None = None
+
+    execution_time_ms: int | None = None
+    error: str | None = None
+
+    intent_score: float | None = None
+    plan_score: float | None = None
+    sql_score: float | None = None
+    result_score: float | None = None
+    chart_score: float | None = None
+    nl_score: float | None = None
+
+    reliability_score: float | None = None
+    is_pass: bool | None = None
+    failure_reasons: list[str] = []
+
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -84,14 +85,14 @@ class EvaluationRunOut(BaseModel):
     tenant_id: uuid.UUID
     collection_id: uuid.UUID
     status: str
-    overall_score: Optional[float] = None
-    pass_rate: Optional[float] = None
-    avg_latency_ms: Optional[int] = None
-    error_rate: Optional[float] = None
+    overall_score: float | None = None
+    pass_rate: float | None = None
+    avg_latency_ms: int | None = None
+    error_rate: float | None = None
     started_at: datetime
-    finished_at: Optional[datetime] = None
+    finished_at: datetime | None = None
     triggered_by: str
     model_config = ConfigDict(from_attributes=True)
 
 class EvaluationRunDetailedOut(EvaluationRunOut):
-    results: List[EvaluationResultOut] = []
+    results: list[EvaluationResultOut] = []

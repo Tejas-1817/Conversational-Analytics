@@ -12,6 +12,7 @@ structlog>=24.1
 pyjwt>=2.8
 bcrypt>=4.1
 google-genai>=0.2.0
+huggingface_hub>=0.23.0
 tenacity>=8.3.0
 asgi-correlation-id>=4.3.1
 python-multipart

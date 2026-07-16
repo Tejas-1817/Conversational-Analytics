@@ -1,16 +1,15 @@
 """User management — fully tenant-scoped with audit logging."""
 import uuid
-from typing import List, Optional
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from sqlalchemy import select
-from pydantic import BaseModel, EmailStr
+from sqlalchemy.orm import Session
 
+from app.api.deps import Permission, require_admin, require_permission
+from app.audit import AuditEvent, audit
 from app.db import get_session
-from app.api.deps import require_admin, require_permission, Permission
-from app.audit import audit, AuditEvent
 from app.models import User
 from app.security.auth import get_password_hash
 
@@ -42,7 +41,7 @@ class UserRoleUpdate(BaseModel):
 
 # --- Endpoints ---
 
-@router.get("/", response_model=List[UserOut])
+@router.get("/", response_model=list[UserOut])
 def get_users(
     db: Session = Depends(get_session),
     admin: User = Depends(require_permission(Permission.VIEW_USERS)),

@@ -1,11 +1,12 @@
 import uuid
-from typing import List
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+
 from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.models import SemanticJoin
 from app.semantic.version_service import VersionService
+
 
 class JoinService:
     @staticmethod
@@ -19,7 +20,7 @@ class JoinService:
         )
         db.add(join)
         db.flush()
-        
+
         VersionService.snapshot_join(db, join, change_reason="Initial creation", actor=actor)
         db.commit()
         db.refresh(join)
@@ -34,7 +35,7 @@ class JoinService:
         if not join:
             raise HTTPException(status_code=404, detail="Join not found")
         return join
-        
+
     @staticmethod
-    def list_joins(db: Session, tenant_id: uuid.UUID) -> List[SemanticJoin]:
+    def list_joins(db: Session, tenant_id: uuid.UUID) -> list[SemanticJoin]:
         return db.scalars(select(SemanticJoin).where(SemanticJoin.tenant_id == tenant_id)).all()

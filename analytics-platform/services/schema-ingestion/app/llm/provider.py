@@ -1,16 +1,18 @@
 import abc
-from typing import Type, TypeVar, Any
-from pydantic import BaseModel
+from typing import Any, TypeVar
+
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential
+
 from app.config import get_settings
 
 T = TypeVar("T", bound=BaseModel)
 
 class LLMProvider(abc.ABC):
     @abc.abstractmethod
-    def generate_structured(self, prompt: str, schema: Type[T]) -> T:
+    def generate_structured(self, prompt: str, schema: type[T]) -> T:
         pass
 
 
@@ -18,10 +20,10 @@ class GeminiProvider(LLMProvider):
     def __init__(self):
         settings = get_settings()
         self.client = genai.Client(api_key=settings.gemini_api_key)
-        self.model_name = "gemini-2.5-pro" # Can be made configurable
-        
+        self.model_name = "gemini-2.0-flash" # Can be made configurable
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    def generate_structured(self, prompt: str, schema: Type[T]) -> T:
+    def generate_structured(self, prompt: str, schema: type[T]) -> T:
         response = self.client.models.generate_content(
             model=self.model_name,
             contents=prompt,
@@ -38,8 +40,8 @@ class MockProvider(LLMProvider):
     """Deterministic mock provider for CI testing."""
     def __init__(self, responses: dict[str, Any]):
         self.responses = responses
-        
-    def generate_structured(self, prompt: str, schema: Type[T]) -> T:
+
+    def generate_structured(self, prompt: str, schema: type[T]) -> T:
         # For simplicity, return a preconfigured response based on some simple keyword matching or just a single mock response
         # In a real setup, we might match on regex or prompt substrings
         for key, value in self.responses.items():
@@ -51,7 +53,7 @@ class MockProvider(LLMProvider):
 
 class NoOpProvider(LLMProvider):
     """Silent provider for when AI is disabled."""
-    def generate_structured(self, prompt: str, schema: Type[T]) -> T:
+    def generate_structured(self, prompt: str, schema: type[T]) -> T:
         # Return an empty/default instance of the schema
         # (This might fail if schema has required fields without defaults, but it prevents making calls)
         # For our use case, we should return an empty list response if possible.

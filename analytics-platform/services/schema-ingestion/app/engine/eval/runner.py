@@ -1,11 +1,14 @@
 import uuid
-from sqlalchemy.orm import Session
-from sqlalchemy import select
 from datetime import datetime
 
-from app.models import EvaluationRun, EvaluationDataset, EvaluationResult, BenchmarkCollection
-from app.schemas_eval import EvaluationDatasetOut, EvaluationResultOut
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import BenchmarkCollection, EvaluationDataset, EvaluationResult, EvaluationRun
+from app.schemas_eval import EvaluationDatasetOut
+
 from .evaluator import EvaluatorService
+
 
 class BenchmarkRunner:
     @staticmethod
@@ -17,11 +20,11 @@ class BenchmarkRunner:
         ))
         if not collection:
             raise ValueError("Collection not found or access denied")
-            
+
         datasets = db.scalars(select(EvaluationDataset).where(
             EvaluationDataset.collection_id == collection_id
         )).all()
-        
+
         # 2. Create Run Record
         run = EvaluationRun(
             tenant_id=tenant_id,
@@ -32,18 +35,18 @@ class BenchmarkRunner:
         db.add(run)
         db.commit()
         db.refresh(run)
-        
+
         results = []
         total_score = 0.0
         total_latency = 0
         passes = 0
         errors = 0
-        
+
         # 3. Evaluate each dataset
         for ds in datasets:
             ds_out = EvaluationDatasetOut.model_validate(ds)
             res_out = EvaluatorService.evaluate_dataset(db, tenant_id, ds_out)
-            
+
             # Save Result
             res = EvaluationResult(
                 run_id=run.id,
@@ -68,7 +71,7 @@ class BenchmarkRunner:
             )
             db.add(res)
             results.append(res_out)
-            
+
             if res_out.reliability_score is not None:
                 total_score += float(res_out.reliability_score)
             if res_out.execution_time_ms:
@@ -77,9 +80,9 @@ class BenchmarkRunner:
                 passes += 1
             if res_out.error:
                 errors += 1
-                
+
         db.commit()
-        
+
         # 4. Finalize Run
         n = len(datasets)
         run.status = "completed"
@@ -89,7 +92,7 @@ class BenchmarkRunner:
             run.pass_rate = passes / n
             run.avg_latency_ms = total_latency // n
             run.error_rate = errors / n
-            
+
         db.commit()
         db.refresh(run)
         return run

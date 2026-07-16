@@ -2,14 +2,22 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_viewer, require_analyst
-from app.models import ColumnMeta, DataSource, Relationship, TableMeta, User
+from app.api.deps import require_admin, require_analyst, require_viewer
+from app.api.jobs import trigger_ingestion
 from app.audit import record
 from app.db import get_session
-from app.models import ColumnMeta, DataSource, Relationship, TableMeta
+from app.models import ColumnMeta, DataSource, MetadataVersion, Relationship, TableMeta, User
 from app.schemas import ColumnOut, RelationshipOut, ReviewRequest, TableOut
+from app.schemas_metadata import (
+    ColumnMetaResponse,
+    SyncRequest,
+    SyncStatusResponse,
+    TableMetaDetailResponse,
+    TableMetaResponse,
+)
 
 router = APIRouter(prefix="/metadata", tags=["metadata"])
 
@@ -114,3 +122,124 @@ def review_relationship(relationship_id: uuid.UUID, req: ReviewRequest,
            entity_type="relationships", entity_id=rel.id, action=req.action, actor=current_user.email,
            before=before, after={"status": rel.status, "cardinality": rel.cardinality})
     return rel
+
+
+# =====================================================================
+# Phase 2 Endpoints
+# =====================================================================
+
+@router.get("/schemas", response_model=list[str])
+def get_schemas(
+    source_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_viewer),
+):
+    source = session.get(DataSource, source_id)
+    if not source or source.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    schemas = session.query(TableMeta.schema_name).filter(
+        TableMeta.source_id == source_id,
+        TableMeta.is_active.is_(True)
+    ).distinct().all()
+
+    return [s[0] for s in schemas]
+
+
+@router.get("/tables", response_model=list[TableMetaResponse])
+def get_metadata_tables(
+    source_id: uuid.UUID,
+    schema_name: str | None = None,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_viewer),
+):
+    source = session.get(DataSource, source_id)
+    if not source or source.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    query = session.query(TableMeta).filter(
+        TableMeta.source_id == source_id,
+        TableMeta.is_active.is_(True)
+    )
+    if schema_name:
+        query = query.filter(TableMeta.schema_name == schema_name)
+
+    return query.all()
+
+
+@router.get("/tables/{table_id}", response_model=TableMetaDetailResponse)
+def get_metadata_table_detail(
+    table_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_viewer),
+):
+    table = session.get(TableMeta, table_id)
+    if not table or table.source.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Table not found")
+    return table
+
+
+@router.get("/columns", response_model=list[ColumnMetaResponse])
+def get_metadata_columns(
+    table_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_viewer),
+):
+    table = session.get(TableMeta, table_id)
+    if not table or table.source.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    return [col for col in table.columns if col.is_active]
+
+
+@router.get("/dimensions", response_model=list[ColumnMetaResponse])
+def get_metadata_dimensions(
+    table_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_viewer),
+):
+    table = session.get(TableMeta, table_id)
+    if not table or table.source.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    return [col for col in table.columns if col.is_active and col.role == 'dimension']
+
+
+@router.get("/measures", response_model=list[ColumnMetaResponse])
+def get_metadata_measures(
+    table_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_viewer),
+):
+    table = session.get(TableMeta, table_id)
+    if not table or table.source.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Table not found")
+
+    return [col for col in table.columns if col.is_active and col.role == 'measure']
+
+
+@router.post("/sync", response_model=dict)
+def sync_metadata(
+    req: SyncRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+):
+    job = trigger_ingestion(req.source_id, session, current_user)
+    return {"job_id": job.id, "status": "queued"}
+
+
+@router.get("/sync-status", response_model=SyncStatusResponse)
+def get_sync_status(
+    source_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_viewer),
+):
+    source = session.get(DataSource, source_id)
+    if not source or source.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    latest_version = session.query(MetadataVersion).filter_by(source_id=source_id).order_by(desc(MetadataVersion.version_number)).first()
+    if not latest_version:
+        raise HTTPException(status_code=404, detail="No sync found for this source")
+
+    return latest_version

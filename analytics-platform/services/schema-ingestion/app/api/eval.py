@@ -1,28 +1,28 @@
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlalchemy.orm import Session
-from sqlalchemy import select
 
-from app.db import get_session as get_db
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.api.deps import get_current_user
-from app.models import User, BenchmarkCollection, EvaluationDataset, EvaluationRun, EvaluationResult
+from app.db import get_session as get_db
+from app.engine.eval.runner import BenchmarkRunner
+from app.models import BenchmarkCollection, EvaluationDataset, EvaluationRun, User
 from app.schemas_eval import (
     BenchmarkCollectionCreate,
-    BenchmarkCollectionOut,
     BenchmarkCollectionListOut,
+    BenchmarkCollectionOut,
     EvaluationDatasetCreate,
     EvaluationDatasetOut,
+    EvaluationRunDetailedOut,
     EvaluationRunOut,
-    EvaluationRunDetailedOut
 )
-from app.engine.eval.runner import BenchmarkRunner
 
 router = APIRouter(prefix="/eval", tags=["Evaluation"])
 
 # --- Collections ---
 
-@router.get("/collections", response_model=List[BenchmarkCollectionListOut])
+@router.get("/collections", response_model=list[BenchmarkCollectionListOut])
 def list_collections(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     collections = db.scalars(select(BenchmarkCollection).where(
         BenchmarkCollection.tenant_id == current_user.tenant_id
@@ -53,7 +53,7 @@ def add_dataset(collection_id: uuid.UUID, dataset: EvaluationDatasetCreate, db: 
     ))
     if not collection:
         raise HTTPException(status_code=404, detail="Collection not found")
-        
+
     db_dataset = EvaluationDataset(
         collection_id=collection_id,
         question=dataset.question,
@@ -80,13 +80,13 @@ def run_benchmark_background(tenant_id: uuid.UUID, collection_id: uuid.UUID, tri
 
 @router.post("/runs/{collection_id}", response_model=EvaluationRunOut)
 def trigger_run(collection_id: uuid.UUID, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Run the benchmark synchronously for now to ensure it completes, 
+    # Run the benchmark synchronously for now to ensure it completes,
     # but in a real app this should be enqueued via rq or background tasks.
     # We will just run it synchronously for simplicity of testing.
     run = BenchmarkRunner.run_collection(db, current_user.tenant_id, collection_id, current_user.email)
     return run
 
-@router.get("/runs", response_model=List[EvaluationRunOut])
+@router.get("/runs", response_model=list[EvaluationRunOut])
 def list_runs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     runs = db.scalars(select(EvaluationRun).where(
         EvaluationRun.tenant_id == current_user.tenant_id
@@ -101,5 +101,5 @@ def get_run_details(run_id: uuid.UUID, db: Session = Depends(get_db), current_us
     ))
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-        
+
     return run

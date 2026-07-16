@@ -5,11 +5,11 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_admin, require_permission, Permission, verify_tenant_owns
-from app.audit import audit, AuditEvent
-from app.models import User, DataSource
+from app.api.deps import Permission, require_admin, require_permission, verify_tenant_owns
+from app.audit import AuditEvent, audit
 from app.connectors.factory import build_engine, test_connection, verify_read_only
 from app.db import get_session
+from app.models import DataSource, User
 from app.schemas import DataSourceCreate, DataSourceOut
 from app.security.crypto import encrypt_secret
 
@@ -86,6 +86,40 @@ def list_sources(
         .order_by(DataSource.created_at.desc())
         .all()
     )
+
+@router.post("/test", response_model=dict)
+def test_new_source(
+    payload: DataSourceCreate,
+    current_user: User = Depends(require_admin),
+) -> dict:
+    source = DataSource(
+        tenant_id=current_user.tenant_id,
+        name=payload.name,
+        type=payload.type,
+        host=payload.host,
+        port=payload.port,
+        database_name=payload.database_name,
+        username=payload.username,
+        credentials_encrypted=encrypt_secret(payload.password),
+        options=payload.options,
+    )
+
+    try:
+        engine = build_engine(source)
+        try:
+            test_connection(engine)
+            verify_read_only(engine, source.type)
+        finally:
+            engine.dispose()
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        log.warning("connection_test_failed_preview", source=payload.name, error=str(exc))
+        raise HTTPException(status_code=400, detail=f"Connection test failed: {exc}") from exc
+
+    return {"ok": True}
 
 
 @router.post("/{source_id}/test", response_model=dict)

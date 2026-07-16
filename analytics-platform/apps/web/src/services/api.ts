@@ -40,5 +40,9 @@ export const fetchApi = async (endpoint: string, options: RequestInit = {}) => {
     throw new APIError(res.status, msg);
   }
   
+  if (res.status === 204) {
+    return null;
+  }
+  
   return res.json();
 };

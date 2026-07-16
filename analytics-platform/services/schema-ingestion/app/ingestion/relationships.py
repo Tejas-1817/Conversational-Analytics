@@ -8,17 +8,18 @@ Confidence-ordered detectors:
 
 Every candidate stores its evidence so reviewers can see WHY before approving.
 """
+import json
 import uuid
+
 import structlog
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import ColumnMeta, DataSource, Relationship, TableMeta
 from app.llm.provider import get_llm_provider
-from pydantic import BaseModel, Field
-import json
+from app.models import ColumnMeta, DataSource, Relationship, TableMeta
 
 log = structlog.get_logger()
 
@@ -128,7 +129,7 @@ def _llm_suggestions(session: Session, tables: list[TableMeta], existing: set[tu
     table_context = []
     col_by_name = {} # Map "table.col" -> col.id
     pk_by_table = {}
-    
+
     for t in tables:
         cols = []
         for c in t.columns:
@@ -138,7 +139,7 @@ def _llm_suggestions(session: Session, tables: list[TableMeta], existing: set[tu
             col_by_name[key] = c
             if c.is_primary_key:
                 pk_by_table[t.table_name.lower()] = c
-            
+
             # Safe samples
             samples = c.profile.get("sample_values", []) if c.profile else []
             cols.append({
@@ -171,17 +172,17 @@ def _llm_suggestions(session: Session, tables: list[TableMeta], existing: set[tu
     for cand in response.candidates:
         from_key = f"{cand.from_table}.{cand.from_column}".lower()
         to_key = f"{cand.to_table}.{cand.to_column}".lower()
-        
+
         from_col = col_by_name.get(from_key)
         to_col = col_by_name.get(to_key)
-        
+
         if not from_col or not to_col:
             continue
-            
+
         # Ensure 'to' is a primary key, or at least a different table
         if from_col.table_id == to_col.table_id:
             continue
-            
+
         if (from_col.id, to_col.id) in existing:
             continue
 

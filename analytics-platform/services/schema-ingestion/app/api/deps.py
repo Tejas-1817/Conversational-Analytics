@@ -16,9 +16,9 @@ Phase 6 additions:
 from __future__ import annotations
 
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 

@@ -1,10 +1,11 @@
 import uuid
-from typing import List, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import select, and_
-from fastapi import HTTPException
 
-from app.models import SemanticSynonym, SemanticMetric, SemanticDimension, SemanticJoin, BusinessGlossary
+from fastapi import HTTPException
+from sqlalchemy import and_, select
+from sqlalchemy.orm import Session
+
+from app.models import BusinessGlossary, SemanticDimension, SemanticJoin, SemanticMetric, SemanticSynonym
+
 
 class SynonymService:
     @staticmethod
@@ -51,9 +52,9 @@ class SynonymService:
         ))
         if syn:
             return {"resolved": True, "target_type": syn.entity_type, "target_id": syn.entity_id}
-            
+
         return {"resolved": False, "target_type": None, "target_id": None}
-        
+
     @staticmethod
-    def list_synonyms(db: Session, tenant_id: uuid.UUID) -> List[SemanticSynonym]:
+    def list_synonyms(db: Session, tenant_id: uuid.UUID) -> list[SemanticSynonym]:
         return db.scalars(select(SemanticSynonym).where(SemanticSynonym.tenant_id == tenant_id)).all()

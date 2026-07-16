@@ -1,11 +1,12 @@
-import pytest
 import uuid
+
+from app.engine.eval.chart_evaluator import ChartEvaluator
 from app.engine.eval.intent_evaluator import IntentEvaluator
 from app.engine.eval.plan_evaluator import PlanEvaluator
-from app.engine.eval.sql_evaluator import SQLEvaluator
 from app.engine.eval.result_evaluator import ResultEvaluator
-from app.engine.eval.chart_evaluator import ChartEvaluator
 from app.engine.eval.scorer import ReliabilityScorer
+from app.engine.eval.sql_evaluator import SQLEvaluator
+
 
 class TestEvaluators:
     def test_intent_evaluator(self):
@@ -13,7 +14,7 @@ class TestEvaluators:
         generated = {"intent": "query", "metric": "revenue", "dimensions": ["region"]}
         score = IntentEvaluator.evaluate(expected, generated)
         assert score == 1.0
-        
+
         gen2 = {"intent": "query", "metric": "revenue", "dimensions": []}
         score2 = IntentEvaluator.evaluate(expected, gen2)
         assert score2 == 0.8  # 4 out of 5 properties matched
@@ -48,6 +49,6 @@ class TestEvaluators:
     def test_reliability_scorer(self):
         score = ReliabilityScorer.calculate_score(1.0, 1.0, 1.0, 1.0, 1.0, 1.0)
         assert score == 1.0
-        
+
         score2 = ReliabilityScorer.calculate_score(1.0, 1.0, 1.0, 1.0, 0.0, 0.0)
         assert score2 == 0.8

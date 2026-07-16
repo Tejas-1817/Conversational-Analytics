@@ -1,27 +1,33 @@
-import json
-from app.llm.provider import get_llm_provider
+from app.llm.orchestrator import ai_orchestrator
 from app.schemas_engine import NLUIntent
+from app.engine.context_manager import ConversationContext
+import json
 
 class NLUService:
     @staticmethod
-    def parse_intent(query: str, chat_history: str = "") -> NLUIntent:
-        provider = get_llm_provider()
-        
+    def parse_intent(query: str, context: ConversationContext) -> NLUIntent:
         prompt = f"""
 You are an expert Data Analyst and Natural Language Understanding engine.
 Your task is to parse a user's analytical question into a structured intent representation.
+You MUST properly handle follow-up questions by inheriting metrics, dimensions, and filters from the previous query if the user does not explicitly change them.
 
 USER QUESTION: {query}
-CONVERSATION HISTORY: {chat_history}
+
+--- CONVERSATION CONTEXT ---
+CHAT HISTORY:
+{context.chat_history}
+
+PREVIOUS INTENT:
+{json.dumps(context.last_intent, indent=2) if context.last_intent else "None"}
+----------------------------
 
 Instructions:
-1. Identify the primary 'metric' requested (e.g. Revenue, Active Users).
-2. Identify all 'dimensions' to group by (e.g. Region, Product, Platform).
-3. Extract 'filters' (e.g. year = 2026 -> field: year, operator: =, value: 2026).
-4. Extract 'time_granularity' (e.g. "monthly" -> month, "daily" -> day).
-5. Extract 'sort_by' and 'sort_direction' if applicable.
-6. Extract 'limit' if requested (e.g. "top 5" -> limit: 5).
-7. Handle ambiguities. If the question is purely conversational or completely unclear, set intent="clarify" or "unknown".
+1. Identify the primary 'metric' or 'kpi'. If the user asks a follow-up (e.g. "What about by region?"), inherit the metric from PREVIOUS INTENT.
+2. Identify all 'dimensions' to group by. If follow-up, merge or replace based on user phrasing (e.g. "by product instead" replaces; "and by region" adds).
+3. Extract 'filters'. Merge with previous filters unless the user explicitly removes them (e.g. "for all regions").
+4. Extract 'time_granularity' (e.g. "monthly", "daily").
+5. Extract 'time_intelligence' (e.g. "YTD", "last year").
+6. Handle ambiguities. If completely unclear, set intent="clarify" or "unknown".
 """
         prompt += """
 If the user message is NOT an analytics query, the model MUST return:
@@ -32,11 +38,10 @@ It must NEVER return conversational text.
 It must NEVER return an empty JSON object.
 It must ALWAYS return valid JSON.
 """
-        
+
         try:
-            # We rely on provider.generate_structured which handles Pydantic validation
-            result = provider.generate_structured(prompt, NLUIntent)
+            result = ai_orchestrator.generate_structured(prompt, NLUIntent)
             return result
-        except Exception as e:
+        except Exception:
             # Fallback for Malformed output, ValidationError, JSONDecodeError
             return NLUIntent(intent="unknown")

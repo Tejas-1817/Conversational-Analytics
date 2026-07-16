@@ -1,20 +1,17 @@
 """FastAPI application entry point — Phase 6 hardened with security middleware."""
 import structlog
+from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api import jobs, metadata, sources, auth, semantic, engine, dashboards, users
-from app.api import tenants, api_keys, oidc, eval
+from app.api import api_keys, auth, dashboards, engine, eval, jobs, metadata, oidc, semantic, sources, tenants, users
+from app.config import get_settings
 from app.db import get_engine, session_scope
 from app.models import User
 from app.security.auth import get_password_hash
-from app.config import get_settings
-
-from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
-from starlette.middleware.base import BaseHTTPMiddleware
-
 
 # ---------------------------------------------------------------------------
 # Structured logging processors
@@ -100,8 +97,8 @@ def _setup_rate_limiter(app: FastAPI) -> None:
     """Configure slowapi rate limiter. Gracefully skip if not installed."""
     try:
         from slowapi import Limiter, _rate_limit_exceeded_handler
-        from slowapi.util import get_remote_address
         from slowapi.errors import RateLimitExceeded
+        from slowapi.util import get_remote_address
 
         limiter = Limiter(key_func=get_remote_address)
         app.state.limiter = limiter
@@ -209,7 +206,7 @@ def bootstrap_admin():
             session.flush()
 
             # Audit the bootstrap creation
-            from app.audit import audit, AuditEvent
+            from app.audit import AuditEvent, audit
             audit(
                 session,
                 tenant_id=new_admin.tenant_id,

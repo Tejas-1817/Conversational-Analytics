@@ -1,24 +1,28 @@
-from typing import List
 import uuid
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.db import get_session
 from app.api.deps import get_current_user, require_analyst
+from app.db import get_session
 from app.models import User
 from app.schemas_semantic import (
-    SemanticMetricCreate, SemanticMetricOut,
-    SemanticDimensionCreate, SemanticDimensionOut,
-    SemanticJoinCreate, SemanticJoinOut,
-    BusinessGlossaryCreate, BusinessGlossaryOut,
-    MetricVersionOut
+    BusinessGlossaryCreate,
+    BusinessGlossaryOut,
+    MetricVersionOut,
+    SemanticDimensionCreate,
+    SemanticDimensionOut,
+    SemanticJoinCreate,
+    SemanticJoinOut,
+    SemanticMetricCreate,
+    SemanticMetricOut,
 )
-from app.semantic.metric_service import MetricService
 from app.semantic.dimension_service import DimensionService
-from app.semantic.join_service import JoinService
 from app.semantic.glossary_service import GlossaryService
+from app.semantic.join_service import JoinService
+from app.semantic.metric_service import MetricService
 from app.semantic.synonym_service import SynonymService
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/semantic", tags=["semantic"])
 
@@ -32,7 +36,7 @@ def create_metric(req: SemanticMetricCreate, db: Session = Depends(get_session),
 def update_metric(metric_id: uuid.UUID, req: SemanticMetricCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return MetricService.update_metric(db, user.tenant_id, metric_id, user.email, **req.model_dump())
 
-@router.get("/metrics", response_model=List[SemanticMetricOut])
+@router.get("/metrics", response_model=list[SemanticMetricOut])
 def list_metrics(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return MetricService.list_metrics(db, user.tenant_id)
 
@@ -45,7 +49,7 @@ def delete_metric(metric_id: uuid.UUID, db: Session = Depends(get_session), user
     MetricService.delete_metric(db, user.tenant_id, metric_id, user.email)
     return {"status": "deleted"}
 
-@router.get("/metrics/{metric_id}/versions", response_model=List[MetricVersionOut])
+@router.get("/metrics/{metric_id}/versions", response_model=list[MetricVersionOut])
 def get_metric_versions(metric_id: uuid.UUID, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return MetricService.get_versions(db, user.tenant_id, metric_id)
 
@@ -60,7 +64,7 @@ def rollback_metric(metric_id: uuid.UUID, version: int, db: Session = Depends(ge
 def create_dimension(req: SemanticDimensionCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return DimensionService.create_dimension(db, user.tenant_id, user.email, **req.model_dump())
 
-@router.get("/dimensions", response_model=List[SemanticDimensionOut])
+@router.get("/dimensions", response_model=list[SemanticDimensionOut])
 def list_dimensions(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return DimensionService.list_dimensions(db, user.tenant_id)
 
@@ -88,7 +92,7 @@ def delete_dimension(dim_id: uuid.UUID, db: Session = Depends(get_session), user
 def create_join(req: SemanticJoinCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return JoinService.create_join(db, user.tenant_id, user.email, **req.model_dump())
 
-@router.get("/joins", response_model=List[SemanticJoinOut])
+@router.get("/joins", response_model=list[SemanticJoinOut])
 def list_joins(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return JoinService.list_joins(db, user.tenant_id)
 
@@ -116,7 +120,7 @@ def delete_join(join_id: uuid.UUID, db: Session = Depends(get_session), user: Us
 def create_term(req: BusinessGlossaryCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return GlossaryService.create_term(db, user.tenant_id, user.email, **req.model_dump())
 
-@router.get("/glossary", response_model=List[BusinessGlossaryOut])
+@router.get("/glossary", response_model=list[BusinessGlossaryOut])
 def list_terms(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return GlossaryService.list_terms(db, user.tenant_id)
 

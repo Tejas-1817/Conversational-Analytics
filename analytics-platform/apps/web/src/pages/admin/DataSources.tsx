@@ -1,18 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { fetchApi } from '../../services/api';
-import { Database, Plus, RefreshCw, MoreVertical, Play, Server, Clock } from 'lucide-react';
+import { Database, Plus, RefreshCw, MoreVertical, Play, Server, Clock, Trash2 } from 'lucide-react';
+import { ConnectionModal } from '../../components/ConnectionModal';
 
 export const DataSources = () => {
   const [sources, setSources] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadSources = () => {
+    setLoading(true);
     fetchApi('/sources')
       .then(data => {
         setSources(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadSources();
   }, []);
 
   const triggerIngest = async (id: string) => {
@@ -24,8 +32,23 @@ export const DataSources = () => {
     }
   };
 
+  const deleteSource = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this data source?')) return;
+    try {
+      await fetchApi(`/sources/${id}`, { method: 'DELETE' });
+      loadSources();
+    } catch (e: any) {
+      alert(`Failed to delete data source: ${e.message}`);
+    }
+  };
+
   return (
-    <div>
+    <div onClick={() => setOpenMenuId(null)}>
+      <ConnectionModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSuccess={loadSources} 
+      />
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="title" style={{ margin: 0 }}>
@@ -35,7 +58,7 @@ export const DataSources = () => {
             Manage connections to your data warehouses and databases.
           </p>
         </div>
-        <button><Plus size={18} /> Connect Data Source</button>
+        <button onClick={() => setIsModalOpen(true)}><Plus size={18} /> Connect Data Source</button>
       </div>
       
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -67,7 +90,7 @@ export const DataSources = () => {
                         <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>No Data Sources Connected</div>
                         <div>Connect your first data source to begin profiling metadata.</div>
                       </div>
-                      <button className="btn-secondary mt-2"><Plus size={18} /> Connect Data Source</button>
+                      <button className="btn-secondary mt-2" onClick={() => setIsModalOpen(true)}><Plus size={18} /> Connect Data Source</button>
                     </div>
                   </td>
                 </tr>
@@ -97,13 +120,41 @@ export const DataSources = () => {
                       </div>
                     </td>
                     <td>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 relative">
                         <button className="btn-ghost" title="Run Ingestion" onClick={() => triggerIngest(s.id)} style={{ padding: '0.5rem' }}>
                           <Play size={16} />
                         </button>
-                        <button className="btn-ghost" title="More Options" style={{ padding: '0.5rem' }}>
-                          <MoreVertical size={16} />
-                        </button>
+                        <div className="relative">
+                          <button 
+                            className="btn-ghost" 
+                            title="More Options" 
+                            style={{ padding: '0.5rem' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuId(openMenuId === s.id ? null : s.id);
+                            }}
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                          {openMenuId === s.id && (
+                            <div className="absolute right-0 mt-1 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-10" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+                              <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+                                <button
+                                  className="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 flex items-center gap-2"
+                                  style={{ color: '#ef4444' }}
+                                  role="menuitem"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteSource(s.id);
+                                    setOpenMenuId(null);
+                                  }}
+                                >
+                                  <Trash2 size={14} /> Delete
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>

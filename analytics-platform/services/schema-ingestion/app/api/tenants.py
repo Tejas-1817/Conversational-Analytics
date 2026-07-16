@@ -14,16 +14,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional, List
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.audit import audit, AuditEvent
-from app.api.deps import require_admin, get_current_user
-from app.config import get_settings
+from app.api.deps import require_admin
+from app.audit import audit
 from app.db import get_session
 from app.models import Tenant, TenantPolicy, User
 
@@ -48,7 +46,7 @@ def _require_super_admin(current_user: User = Depends(require_admin)) -> User:
 class TenantCreate(BaseModel):
     name: str
     slug: str
-    display_name: Optional[str] = None
+    display_name: str | None = None
     plan: str = "starter"
     max_users: int = 10
     max_sources: int = 5
@@ -58,7 +56,7 @@ class TenantOut(BaseModel):
     id: uuid.UUID
     name: str
     slug: str
-    display_name: Optional[str]
+    display_name: str | None
     plan: str
     is_active: bool
     max_users: int
@@ -85,17 +83,17 @@ class TenantPolicyOut(BaseModel):
 
 
 class TenantPolicyUpdate(BaseModel):
-    rate_chat_per_min: Optional[int] = None
-    rate_login_per_min: Optional[int] = None
-    max_query_rows: Optional[int] = None
-    allow_raw_sql: Optional[bool] = None
-    require_mfa: Optional[bool] = None
-    session_timeout_min: Optional[int] = None
+    rate_chat_per_min: int | None = None
+    rate_login_per_min: int | None = None
+    max_query_rows: int | None = None
+    allow_raw_sql: bool | None = None
+    require_mfa: bool | None = None
+    session_timeout_min: int | None = None
 
 
 # --- Endpoints ---
 
-@router.get("/", response_model=List[TenantOut])
+@router.get("/", response_model=list[TenantOut])
 def list_tenants(
     db: Session = Depends(get_session),
     _: User = Depends(_require_super_admin),

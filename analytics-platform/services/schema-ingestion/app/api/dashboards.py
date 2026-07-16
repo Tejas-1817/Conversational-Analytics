@@ -1,14 +1,14 @@
 import uuid
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import select
-
-from app.db import get_session
-from app.api.deps import get_current_user
-from app.models import User, Dashboard, DashboardWidget, SavedInsight
-from pydantic import BaseModel
 from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_current_user
+from app.db import get_session
+from app.models import Dashboard, DashboardWidget, SavedInsight, User
 
 router = APIRouter(prefix="/dashboards", tags=["dashboards"])
 
@@ -16,18 +16,18 @@ router = APIRouter(prefix="/dashboards", tags=["dashboards"])
 
 class InsightCreate(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     query: str
-    chart_config: Optional[dict] = None
+    chart_config: dict | None = None
 
 class InsightOut(BaseModel):
     id: uuid.UUID
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     query: str
-    chart_config: Optional[dict] = None
+    chart_config: dict | None = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -51,15 +51,15 @@ class WidgetOut(BaseModel):
 
 class DashboardCreate(BaseModel):
     name: str
-    description: Optional[str] = None
-    widgets: List[WidgetCreate] = []
+    description: str | None = None
+    widgets: list[WidgetCreate] = []
 
 class DashboardOut(BaseModel):
     id: uuid.UUID
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     created_at: datetime
-    widgets: List[WidgetOut] = []
+    widgets: list[WidgetOut] = []
 
     class Config:
         from_attributes = True
@@ -81,7 +81,7 @@ def create_insight(insight: InsightCreate, db: Session = Depends(get_session), u
     db.refresh(db_obj)
     return db_obj
 
-@router.get("/insights", response_model=List[InsightOut])
+@router.get("/insights", response_model=list[InsightOut])
 def get_insights(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return db.scalars(select(SavedInsight).where(SavedInsight.tenant_id == user.tenant_id)).all()
 
@@ -95,7 +95,7 @@ def create_dashboard(dash: DashboardCreate, db: Session = Depends(get_session), 
     )
     db.add(db_obj)
     db.commit()
-    
+
     for w in dash.widgets:
         db.add(DashboardWidget(
             dashboard_id=db_obj.id,
@@ -106,7 +106,7 @@ def create_dashboard(dash: DashboardCreate, db: Session = Depends(get_session), 
     db.refresh(db_obj)
     return db_obj
 
-@router.get("/", response_model=List[DashboardOut])
+@router.get("/", response_model=list[DashboardOut])
 def get_dashboards(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return db.scalars(select(Dashboard).where(Dashboard.tenant_id == user.tenant_id)).all()
 
