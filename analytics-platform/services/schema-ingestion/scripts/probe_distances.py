@@ -1,4 +1,9 @@
 """Probe real Chroma distance values to calibrate the RAG threshold."""
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath("."))
+
 from app.embeddings.chroma_store import ChromaStore
 from app.embeddings.registry import get_embedding_provider
 

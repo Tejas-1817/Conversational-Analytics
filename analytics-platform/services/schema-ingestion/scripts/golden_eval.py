@@ -67,18 +67,44 @@ def run_eval(mode: str):
     print(f"{'#':<3} | {'Question':<45} | {'Metric Match':<15} | {'Dim Match':<10} | {'Path':<10}")
     print("-" * 92)
 
+    # Simulates what an LLM NLU would extract from the RAW query language,
+    # deliberately preserving paraphrases to properly test the Resolver/RAG.
+    MOCK_NLU_EXTRACTIONS = {
+        "Show total revenue": ("total revenue", []),
+        "Revenue by region": ("revenue", ["region"]),
+        "Revenue by date": ("revenue", ["date"]),
+        "Monthly revenue": ("revenue", ["month"]),
+        "What is our total sales?": ("total sales", []),
+        "Break down revenue by geography": ("revenue", ["geography"]),
+        "Revenue trend over time": ("revenue", ["time"]),
+        "How much did we earn?": ("earn", []),
+        "Revenue split by area": ("revenue", ["area"]),
+        "Show me revenue for each date": ("revenue", ["date"]),
+        "What's the revenue broken down by region and date?": ("revenue", ["region", "date"]),
+        "Sales by region": ("sales", ["region"]),
+        "Income by geography": ("income", ["geography"]),
+        "Total earnings": ("total earnings", []),
+        "Revenue by sale date": ("revenue", ["sale date"]),
+        "How is revenue trending?": ("revenue", []),
+        "Show earnings by territory": ("earnings", ["territory"]),
+        "Revenue per date": ("revenue", ["date"]),
+        "Total income for all regions": ("total income", ["regions"]),
+        "Revenue breakdown": ("revenue", []),
+    }
+
     total_metric_score = 0
     total_dim_score = 0
     results = []
 
     with session_scope() as db:
         for idx, (question, exp_metric, exp_dims) in enumerate(QUESTIONS, 1):
-            # 1. Parse Intent (Mocked to avoid LLM rate limits and isolate resolver)
+            # 1. Parse Intent (Mocked to extract raw question language, NOT the expected answer key)
+            raw_metric, raw_dims = MOCK_NLU_EXTRACTIONS[question]
             from app.schemas_engine import NLUIntent
             intent = NLUIntent(
                 intent="aggregate",
-                metric=exp_metric,
-                dimensions=exp_dims,
+                metric=raw_metric,
+                dimensions=raw_dims,
                 filters=[],
                 time_granularity=None,
                 time_intelligence=None
