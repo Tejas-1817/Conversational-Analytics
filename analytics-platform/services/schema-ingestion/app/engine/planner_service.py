@@ -9,7 +9,7 @@ from app.schemas_engine import NLUIntent, LogicalQueryPlan
 
 class PlannerService:
     @staticmethod
-    def generate_plan(db: Session, intent: NLUIntent, resolution: ResolutionResult) -> LogicalQueryPlan:
+    def generate_plan(db: Session, intent: NLUIntent, resolution: ResolutionResult, rag_hits=None) -> LogicalQueryPlan:
         """
         Stage 2 - Advanced AI Query Planning Pipeline
         Context Builder -> Prompt Builder -> LLM -> Semantic Validation
@@ -47,6 +47,15 @@ class PlannerService:
             dim_ctx=dim_ctx,
             ai_context_payload=ai_context_payload
         )
+
+        if rag_hits and rag_hits.used_rag:
+            rag_context = "Top Retrieved Tables:\n"
+            for t, dist in rag_hits.tables:
+                rag_context += f"- {t.table_name}: {t.description} (dist: {dist:.3f})\n"
+            rag_context += "\nTop Glossary Terms:\n"
+            for g, dist in rag_hits.glossary:
+                rag_context += f"- {g.term}: {g.definition} (dist: {dist:.3f})\n"
+            prompt += f"\n\nRETRIEVED VECTOR CONTEXT (RAG):\n{rag_context}\nUse this context to better understand business terminology and relevant tables."
 
         # 4. LLM -> 5. Semantic Validation (Pydantic parsing)
         result = ai_orchestrator.generate_structured(prompt, LogicalQueryPlan)

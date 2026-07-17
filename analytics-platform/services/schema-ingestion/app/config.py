@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./chroma_store"   # local Chroma storage path
     embedding_provider: str = "sentence_transformers"  # options: sentence_transformers | mock
 
+    # Phase 3 — RAG retrieval
+    # Cosine distance threshold: hits with distance > threshold are discarded.
+    # Empirically calibrated: true positives top out at ~0.54, nearest noise starts at ~0.70.
+    rag_distance_threshold: float = 0.60
+    rag_top_k: int = 10             # number of Chroma candidates to fetch per query
+    rag_enabled: bool = True        # set False in CI / offline environments
+
 
     # Credential encryption key (Fernet, urlsafe base64, 32 bytes).
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

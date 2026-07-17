@@ -7,6 +7,7 @@ from app.engine.chart_recommender import ChartRecommender
 from app.engine.compiler_service import CompilerService
 from app.engine.executor_service import ExecutorService
 from app.engine.nl_generator import NLGenerator
+from app.engine.context_manager import ConversationContext
 from app.engine.nlu_service import NLUService
 from app.engine.planner_service import PlannerService
 from app.engine.resolver_service import ResolverService
@@ -37,7 +38,8 @@ class EvaluatorService:
 
         try:
             # 1. NLU
-            intent = NLUService.parse_intent(dataset.question)
+            ctx = ConversationContext(chat_history="", last_intent=None, last_plan=None)
+            intent = NLUService.parse_intent(dataset.question, ctx)
             gen_intent = intent.model_dump(mode="json")
 
             # 2. Resolve

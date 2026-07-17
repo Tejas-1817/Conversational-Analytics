@@ -14,6 +14,7 @@ from app.engine.context_manager import ConversationContextManager
 from app.engine.nlu_service import NLUService
 from app.engine.planner_service import PlannerService
 from app.engine.resolver_service import ResolverService
+from app.engine.retrieval_service import RetrievalService
 from app.engine.router_service import RouterService
 from app.engine.validation_service import ValidationService
 from app.models import Conversation, ConversationMessage, User
@@ -120,8 +121,15 @@ def ask_question(conv_id: uuid.UUID, req: ChatRequest, db: Session = Depends(get
             db.refresh(asst_msg)
             return asst_msg
 
+        # RAG Retrieval
+        rag_hits = RetrievalService.retrieve(
+            query_text=req.message,
+            tenant_id=user.tenant_id,
+            db=db
+        )
+
         # Entity Resolution
-        resolution = ResolverService.resolve_entities(db, user.tenant_id, intent)
+        resolution = ResolverService.resolve_entities(db, user.tenant_id, intent, rag_hits=rag_hits)
 
         # Handle Ambiguities
         if resolution.ambiguities:
@@ -141,7 +149,7 @@ def ask_question(conv_id: uuid.UUID, req: ChatRequest, db: Session = Depends(get
             return asst_msg
 
         # Query Planning
-        plan = PlannerService.generate_plan(db, intent, resolution)
+        plan = PlannerService.generate_plan(db, intent, resolution, rag_hits=rag_hits)
         asst_msg.query_plan = plan.model_dump(mode='json')
 
         # Validation

@@ -6,6 +6,7 @@ from app.embeddings.provider import EmbeddingProvider
 
 class EmbeddingRegistry:
     _providers: Dict[str, Type[EmbeddingProvider]] = {}
+    _instances: Dict[str, EmbeddingProvider] = {}
 
     @classmethod
     def register(cls, name: str, provider_cls: Type[EmbeddingProvider]) -> None:
@@ -19,7 +20,9 @@ class EmbeddingRegistry:
                 f"Unknown embedding provider: '{name}'. "
                 f"Available: {list(cls._providers)}"
             )
-        return cls._providers[key]()
+        if key not in cls._instances:
+            cls._instances[key] = cls._providers[key]()
+        return cls._instances[key]
 
 
 # Register built-in providers.
