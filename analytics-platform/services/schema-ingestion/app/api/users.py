@@ -41,7 +41,7 @@ class UserRoleUpdate(BaseModel):
 
 # --- Endpoints ---
 
-@router.get("/", response_model=list[UserOut])
+@router.get("", response_model=list[UserOut])
 def get_users(
     db: Session = Depends(get_session),
     admin: User = Depends(require_permission(Permission.VIEW_USERS)),
@@ -52,7 +52,7 @@ def get_users(
     ).all()
 
 
-@router.post("/", response_model=UserOut, status_code=201)
+@router.post("", response_model=UserOut, status_code=201)
 def invite_user(
     user_in: UserCreate,
     request: Request,

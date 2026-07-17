@@ -85,7 +85,7 @@ def create_insight(insight: InsightCreate, db: Session = Depends(get_session), u
 def get_insights(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return db.scalars(select(SavedInsight).where(SavedInsight.tenant_id == user.tenant_id)).all()
 
-@router.post("/", response_model=DashboardOut)
+@router.post("", response_model=DashboardOut)
 def create_dashboard(dash: DashboardCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     db_obj = Dashboard(
         tenant_id=user.tenant_id,
@@ -106,7 +106,7 @@ def create_dashboard(dash: DashboardCreate, db: Session = Depends(get_session), 
     db.refresh(db_obj)
     return db_obj
 
-@router.get("/", response_model=list[DashboardOut])
+@router.get("", response_model=list[DashboardOut])
 def get_dashboards(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return db.scalars(select(Dashboard).where(Dashboard.tenant_id == user.tenant_id)).all()
 
