@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     hf_top_p: float = 0.95
     hf_retry_count: int = 3
 
+    # Phase 2 — Embedding pipeline
+    embedding_model: str = "all-MiniLM-L6-v2"   # sentence-transformers model name
+    chroma_persist_dir: str = "./chroma_store"   # local Chroma storage path
+    embedding_provider: str = "sentence_transformers"  # options: sentence_transformers | mock
+
 
     # Credential encryption key (Fernet, urlsafe base64, 32 bytes).
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

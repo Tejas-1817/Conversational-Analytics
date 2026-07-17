@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.models import SemanticJoin
 from app.semantic.version_service import VersionService
 
+_PROTECTED_FIELDS = {"status", "tenant_id", "created_by", "id"}
+
 
 class JoinService:
     @staticmethod
@@ -39,3 +41,48 @@ class JoinService:
     @staticmethod
     def list_joins(db: Session, tenant_id: uuid.UUID) -> list[SemanticJoin]:
         return db.scalars(select(SemanticJoin).where(SemanticJoin.tenant_id == tenant_id)).all()
+
+    @staticmethod
+    def update_join(
+        db: Session,
+        tenant_id: uuid.UUID,
+        join_id: uuid.UUID,
+        actor: str,
+        **kwargs,
+    ) -> SemanticJoin:
+        """Update mutable join fields. Status cannot be changed here."""
+        join = JoinService.get_join(db, tenant_id, join_id)
+        for field in _PROTECTED_FIELDS:
+            if field in kwargs:
+                raise ValueError(
+                    f"Field '{field}' cannot be set via update; "
+                    "use the dedicated approve/reject endpoint."
+                )
+        for k, v in kwargs.items():
+            setattr(join, k, v)
+        join.version += 1
+        join.updated_by = actor
+        db.commit()
+        db.refresh(join)
+        return join
+
+    @staticmethod
+    def approve_join(
+        db: Session,
+        tenant_id: uuid.UUID,
+        join_id: uuid.UUID,
+        actor: str,
+    ) -> SemanticJoin:
+        """Transition a join to 'approved'. Only path that may set status='approved'."""
+        join = JoinService.get_join(db, tenant_id, join_id)
+        if join.status == "approved":
+            return join  # idempotent
+        join.status = "approved"
+        join.updated_by = actor
+        join.version += 1
+        db.flush()
+        VersionService.snapshot_join(db, join, change_reason="Approved", actor=actor)
+        db.commit()
+        db.refresh(join)
+        return join
+

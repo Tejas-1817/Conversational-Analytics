@@ -59,6 +59,16 @@ class MetricService:
         if not metric:
             raise HTTPException(status_code=404, detail="Metric not found")
 
+        # Security invariant: status may ONLY be changed through the approve/reject
+        # endpoints. Reject any attempt to set it via a plain PUT update.
+        _PROTECTED_FIELDS = {"status", "tenant_id", "created_by", "id"}
+        for field in _PROTECTED_FIELDS:
+            if field in kwargs:
+                raise ValueError(
+                    f"Field '{field}' cannot be set via update; "
+                    "use the dedicated approve/reject endpoint."
+                )
+
         name = kwargs.get("name", metric.name)
         is_calculated = kwargs.get("is_calculated", metric.is_calculated)
         expression = kwargs.get("expression", metric.expression)
@@ -71,7 +81,7 @@ class MetricService:
             source_table_id=source_table_id, source_column_id=source_column_id
         )
 
-        # Apply updates
+        # Apply updates — protected fields already stripped above
         for k, v in kwargs.items():
             setattr(metric, k, v)
 
@@ -82,6 +92,30 @@ class MetricService:
         # Snapshot
         change_reason = kwargs.get("change_reason", "Update metric")
         VersionService.snapshot_metric(db, metric, change_reason=change_reason, actor=actor)
+        db.commit()
+        db.refresh(metric)
+        return metric
+
+    @staticmethod
+    def approve_metric(
+        db: Session,
+        tenant_id: uuid.UUID,
+        metric_id: uuid.UUID,
+        actor: str,
+    ) -> SemanticMetric:
+        """Transition a metric to 'approved'. Only this method may set status='approved'."""
+        metric = db.scalar(select(SemanticMetric).where(
+            SemanticMetric.id == metric_id,
+            SemanticMetric.tenant_id == tenant_id,
+        ))
+        if not metric:
+            raise HTTPException(status_code=404, detail="Metric not found")
+        if metric.status == "approved":
+            return metric  # idempotent
+        metric.status = "approved"
+        metric.updated_by = actor
+        db.flush()
+        VersionService.snapshot_metric(db, metric, change_reason="Approved", actor=actor)
         db.commit()
         db.refresh(metric)
         return metric

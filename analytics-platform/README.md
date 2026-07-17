@@ -9,16 +9,21 @@ An enterprise-grade, locally-deployable Conversational Analytics Platform.
 - **Dynamic Dashboards**: Create, drag, resize, and export fully customizable widgets.
 - **AI Evaluation Framework**: Automated benchmarking and reliability testing for the LLM-to-SQL engine.
 - **Enterprise Multi-Tenancy**: Built-in tenant isolation, RBAC, and Row-Level Security capabilities.
+- **Pluggable LLM Providers**: Built-in support for multiple LLMs via a dynamic registry (Gemini, HuggingFace, Mock, etc.).
 - **Local First**: Fully functional without requiring cloud infrastructure or distributed systems.
 
 ## Prerequisites
 - Node.js (v18+)
 - Python (3.10+)
 - Local PostgreSQL (Optional, defaults to SQLite if not provided)
+- Local Redis (Required for background schema ingestion jobs)
 
-## One-Command Startup (Local Deployment)
+## Local Deployment Guide
 
-### 1. Backend Setup
+### 1. Start Redis
+Ensure you have a Redis instance running locally (the app defaults to `redis://localhost:6380/0`). If using Docker, you can spin it up via the provided `docker-compose.yml`.
+
+### 2. Backend Setup
 Navigate to the `services/schema-ingestion` directory and set up the Python backend:
 
 ```bash
@@ -34,9 +39,21 @@ pip install -r requirements-dev.txt
 
 # Run Database Migrations and Seed Demo Data
 python scripts/seed_demo.py
+```
 
-# Start Backend Server
+Now, open **two** terminal windows for the backend:
+
+**Terminal A (API Server):**
+```bash
+# Ensure venv is activated
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+**Terminal B (Background Worker):**
+*(This processes heavy jobs like database schema ingestion)*
+```bash
+# Ensure venv is activated
+python -m app.worker
 ```
 
 ### 2. Frontend Setup

@@ -1,10 +1,16 @@
+"""Semantic layer API — metrics, dimensions, joins, glossary, synonyms, approve endpoints.
+
+Approval endpoints (POST …/approve) are the ONLY path that may set status='approved'.
+Plain PUT endpoints are for editing content fields only; any attempt to write `status`
+via PUT is rejected by the service layer with a ValueError → HTTP 400.
+"""
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_analyst
+from app.api.deps import get_current_user, require_admin, require_analyst
 from app.db import get_session
 from app.models import User
 from app.schemas_semantic import (
@@ -34,7 +40,27 @@ def create_metric(req: SemanticMetricCreate, db: Session = Depends(get_session),
 
 @router.put("/metrics/{metric_id}", response_model=SemanticMetricOut, dependencies=[Depends(require_analyst)])
 def update_metric(metric_id: uuid.UUID, req: SemanticMetricCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    return MetricService.update_metric(db, user.tenant_id, metric_id, user.email, **req.model_dump())
+    try:
+        return MetricService.update_metric(db, user.tenant_id, metric_id, user.email, **req.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@router.post(
+    "/metrics/{metric_id}/approve",
+    response_model=SemanticMetricOut,
+    dependencies=[Depends(require_analyst)],
+    summary="Approve a metric and trigger background embedding",
+)
+def approve_metric(
+    metric_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    """Set metric status to 'approved' and enqueue embedding as a background task."""
+    metric = MetricService.approve_metric(db, user.tenant_id, metric_id, user.email)
+    background_tasks.add_task(_embed_tenant, str(user.tenant_id))
+    return metric
 
 @router.get("/metrics", response_model=list[SemanticMetricOut])
 def list_metrics(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
@@ -70,12 +96,25 @@ def list_dimensions(db: Session = Depends(get_session), user: User = Depends(get
 
 @router.put("/dimensions/{dim_id}", response_model=SemanticDimensionOut, dependencies=[Depends(require_analyst)])
 def update_dimension(dim_id: uuid.UUID, req: SemanticDimensionCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    dim = DimensionService.get_dimension(db, user.tenant_id, dim_id)
-    for k, v in req.model_dump().items():
-        setattr(dim, k, v)
-    dim.version += 1
-    db.commit()
-    db.refresh(dim)
+    try:
+        return DimensionService.update_dimension(db, user.tenant_id, dim_id, user.email, **req.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@router.post(
+    "/dimensions/{dim_id}/approve",
+    response_model=SemanticDimensionOut,
+    dependencies=[Depends(require_analyst)],
+    summary="Approve a dimension and trigger background embedding",
+)
+def approve_dimension(
+    dim_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    dim = DimensionService.approve_dimension(db, user.tenant_id, dim_id, user.email)
+    background_tasks.add_task(_embed_tenant, str(user.tenant_id))
     return dim
 
 @router.delete("/dimensions/{dim_id}", dependencies=[Depends(require_analyst)])
@@ -98,12 +137,25 @@ def list_joins(db: Session = Depends(get_session), user: User = Depends(get_curr
 
 @router.put("/joins/{join_id}", response_model=SemanticJoinOut, dependencies=[Depends(require_analyst)])
 def update_join(join_id: uuid.UUID, req: SemanticJoinCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    join = JoinService.get_join(db, user.tenant_id, join_id)
-    for k, v in req.model_dump().items():
-        setattr(join, k, v)
-    join.version += 1
-    db.commit()
-    db.refresh(join)
+    try:
+        return JoinService.update_join(db, user.tenant_id, join_id, user.email, **req.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@router.post(
+    "/joins/{join_id}/approve",
+    response_model=SemanticJoinOut,
+    dependencies=[Depends(require_analyst)],
+    summary="Approve a join and trigger background embedding",
+)
+def approve_join(
+    join_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    join = JoinService.approve_join(db, user.tenant_id, join_id, user.email)
+    background_tasks.add_task(_embed_tenant, str(user.tenant_id))
     return join
 
 @router.delete("/joins/{join_id}", dependencies=[Depends(require_analyst)])
@@ -126,11 +178,25 @@ def list_terms(db: Session = Depends(get_session), user: User = Depends(get_curr
 
 @router.put("/glossary/{term_id}", response_model=BusinessGlossaryOut, dependencies=[Depends(require_analyst)])
 def update_term(term_id: uuid.UUID, req: BusinessGlossaryCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    term = GlossaryService.get_term(db, user.tenant_id, term_id)
-    for k, v in req.model_dump().items():
-        setattr(term, k, v)
-    db.commit()
-    db.refresh(term)
+    try:
+        return GlossaryService.update_term(db, user.tenant_id, term_id, user.email, **req.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@router.post(
+    "/glossary/{term_id}/approve",
+    response_model=BusinessGlossaryOut,
+    dependencies=[Depends(require_analyst)],
+    summary="Approve a glossary term and trigger background embedding",
+)
+def approve_glossary_term(
+    term_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    term = GlossaryService.approve_term(db, user.tenant_id, term_id, user.email)
+    background_tasks.add_task(_embed_tenant, str(user.tenant_id))
     return term
 
 @router.delete("/glossary/{term_id}", dependencies=[Depends(require_analyst)])
@@ -155,3 +221,40 @@ def add_synonym(req: SynonymCreate, db: Session = Depends(get_session), user: Us
 @router.get("/synonyms/resolve")
 def resolve_synonym(term: str, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return SynonymService.resolve_synonym(db, user.tenant_id, term)
+
+
+# --- On-demand backfill (admin only) ---
+
+@router.post(
+    "/embed",
+    dependencies=[Depends(require_admin)],
+    summary="Re-embed all approved objects for the caller's tenant (backfill)",
+)
+def trigger_embedding(
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
+):
+    """Enqueue a full re-embedding run for all approved semantic objects.
+
+    Runs asynchronously in a FastAPI BackgroundTask — the endpoint returns
+    immediately with 202 status. Useful for initial backfill or after bulk imports.
+    """
+    background_tasks.add_task(_embed_tenant, str(user.tenant_id))
+    return {"status": "embedding_job_enqueued", "tenant_id": str(user.tenant_id)}
+
+
+# ---------------------------------------------------------------------------
+# Internal background helper
+# ---------------------------------------------------------------------------
+
+def _embed_tenant(tenant_id: str) -> None:
+    """Background task: open a fresh DB session and run the embedding job.
+
+    Uses a new session (not the request session which may already be closed)
+    so this is safe to run after the HTTP response has been sent.
+    """
+    from app.db import session_scope
+    from app.embeddings.job import embed_approved_objects
+
+    with session_scope() as db:
+        embed_approved_objects(tenant_id, db)
