@@ -10,6 +10,8 @@ Chosen model default: all-MiniLM-L6-v2
   - Well-supported, MIT-licensed, fast on CPU
   - Excellent semantic similarity quality for short texts
 """
+import os
+
 from app.config import get_settings
 from app.embeddings.provider import EmbeddingProvider
 
@@ -21,6 +23,8 @@ class SentenceTransformersProvider(EmbeddingProvider):
         # Import here so the heavy library is only loaded when this provider
         # is actually instantiated (not at module import time, which keeps
         # tests fast when using MockEmbeddingProvider).
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        os.environ["HF_HUB_OFFLINE"] = "1"
         from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
         name = model_name or get_settings().embedding_model

@@ -62,6 +62,8 @@ class CompilerService:
                 SemanticMetric.id == plan.metric_ids[0],
                 SemanticMetric.tenant_id == tenant_id
             ))
+            if not metric:
+                raise ColumnResolutionError("Metric not found or tenant mismatch")
         elif plan.kpi_ids:
             pass  # handled in the elif block below
 

@@ -1,4 +1,5 @@
 import uuid
+from unittest.mock import MagicMock
 
 from app.engine.retrieval_service import RetrievalService
 from app.embeddings.chroma_store import RetrievalResult
@@ -30,11 +31,14 @@ def test_retrieve_returns_hits_above_threshold(monkeypatch):
         )
     ]
     store = DummyChromaStore(raw_results=raw)
+    
+    mock_db = MagicMock()
+    mock_db.scalars.return_value.all.return_value = []
 
     hits = RetrievalService.retrieve(
         query_text="test",
         tenant_id=uuid.uuid4(),
-        db=None,
+        db=mock_db,
         store=store
     )
 

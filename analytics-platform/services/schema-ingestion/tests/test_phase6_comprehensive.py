@@ -232,12 +232,12 @@ class TestQueryEngineTenantInjection:
     def test_compiler_always_includes_tenant_id_in_where(self):
         """The WHERE clause must contain tenant_id, always."""
         from app.engine.compiler_service import CompilerService
-        from app.schemas_engine import StructuredQueryPlan
+        from app.schemas_engine import LogicalQueryPlan
 
         tenant_id = uuid.uuid4()
         session, metric_id, _ = self._mock_db_for_compile(tenant_id)
 
-        plan = StructuredQueryPlan(metric_id=metric_id, dimension_ids=[], filters=[])
+        plan = LogicalQueryPlan(intent="aggregate", metric_ids=[metric_id], dimension_ids=[], filters=[])
         result = CompilerService.compile_plan(session, tenant_id, plan)
 
         sql_upper = result.sql.upper()
@@ -248,12 +248,12 @@ class TestQueryEngineTenantInjection:
     def test_compiler_passes_tenant_id_as_param(self):
         """The tenant_id must be passed as a query parameter (not interpolated)."""
         from app.engine.compiler_service import CompilerService
-        from app.schemas_engine import StructuredQueryPlan
+        from app.schemas_engine import LogicalQueryPlan
 
         tenant_id = uuid.uuid4()
         session, metric_id, _ = self._mock_db_for_compile(tenant_id)
 
-        plan = StructuredQueryPlan(metric_id=metric_id, dimension_ids=[], filters=[])
+        plan = LogicalQueryPlan(intent="aggregate", metric_ids=[metric_id], dimension_ids=[], filters=[])
         result = CompilerService.compile_plan(session, tenant_id, plan)
 
         assert "tenant_id" in result.params, \
@@ -266,16 +266,16 @@ class TestQueryEngineTenantInjection:
         A metric from a different tenant will not be returned by the DB.
         Here we verify that if scalar returns None (wrong tenant), a TypeError is raised.
         """
-        from app.engine.compiler_service import CompilerService
-        from app.schemas_engine import StructuredQueryPlan
+        from app.engine.compiler_service import CompilerService, ColumnResolutionError
+        from app.schemas_engine import LogicalQueryPlan
 
         tenant_id = uuid.uuid4()
         session = MagicMock()
         session.scalar.return_value = None  # DB returns None for wrong tenant
 
-        plan = StructuredQueryPlan(metric_id=uuid.uuid4(), dimension_ids=[], filters=[])
+        plan = LogicalQueryPlan(intent="aggregate", metric_ids=[uuid.uuid4()], dimension_ids=[], filters=[])
 
-        with pytest.raises((TypeError, AttributeError)):
+        with pytest.raises(ColumnResolutionError):
             # Should fail because metric is None — cannot access metric.aggregation_type
             CompilerService.compile_plan(session, tenant_id, plan)
 
