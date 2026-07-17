@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from app.llm.provider import get_llm_provider
+from app.llm.orchestrator import ai_orchestrator
 
 
 class NLEvaluationResult(BaseModel):
@@ -13,7 +13,6 @@ class NLEvaluator:
         if not generated_answer:
             return 0.0
 
-        provider = get_llm_provider()
 
         prompt = f"""
 You are an expert AI evaluator.
@@ -26,7 +25,7 @@ GENERATED ANSWER: {generated_answer}
 Rate the answer from 0.0 to 1.0 based on factual correctness. Output JSON with 'score' and 'reason'.
 """
         try:
-            res = provider.generate_structured(prompt, NLEvaluationResult)
+            res = ai_orchestrator.generate_structured(prompt, NLEvaluationResult)
             return float(res.score)
         except Exception:
             return 0.0

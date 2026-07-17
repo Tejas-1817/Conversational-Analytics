@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 from app.engine.executor_service import ExecutorResult
-from app.llm.provider import get_llm_provider
+from app.llm.orchestrator import ai_orchestrator
 from app.schemas_engine import LogicalQueryPlan
 
 
@@ -11,7 +11,6 @@ class NLExplanation(BaseModel):
 class NLGenerator:
     @staticmethod
     def generate_explanation(query: str, plan: LogicalQueryPlan, result: ExecutorResult) -> str:
-        provider = get_llm_provider()
 
         # We only pass a sample of rows to the LLM to save tokens and prevent huge inputs
         data_sample = result.rows[:5]
@@ -30,7 +29,7 @@ Generate a concise, natural language explanation of the results.
 Do not invent facts. State what metric was computed and the group by dimensions.
 """
         try:
-            resp = provider.generate_structured(prompt, NLExplanation)
+            resp = ai_orchestrator.generate_structured(prompt, NLExplanation)
             return resp.explanation
         except Exception:
             return "Here are your results."

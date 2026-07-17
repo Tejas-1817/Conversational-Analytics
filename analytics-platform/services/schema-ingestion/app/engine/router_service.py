@@ -1,12 +1,11 @@
 
-from app.llm.provider import get_llm_provider
+from app.llm.orchestrator import ai_orchestrator
 from app.schemas_engine import RouterResult
 
 
 class RouterService:
     @staticmethod
     def classify_intent(query: str) -> RouterResult:
-        provider = get_llm_provider()
         prompt = f"""
 You are an intelligent Intent Router for an Analytics AI Assistant.
 Your job is to classify the user's message into one of the following routes:
@@ -21,7 +20,7 @@ USER MESSAGE: {query}
 Return a JSON object matching the RouterResult schema with 'route', 'confidence' (0.0-1.0), and 'reason'.
 """
         try:
-            result = provider.generate_structured(prompt, RouterResult)
+            result = ai_orchestrator.generate_structured(prompt, RouterResult)
             return result
         except Exception as e:
             print(f"RouterService Exception: {e}")
@@ -58,7 +57,6 @@ Return a JSON object matching the RouterResult schema with 'route', 'confidence'
 
     @staticmethod
     def handle_conversation(query: str) -> str:
-        provider = get_llm_provider()
         prompt = f"""
 You are an AI Analytics Assistant. A user just sent you a conversational message.
 Respond politely and naturally in 1-2 sentences. Gently steer them back to asking data analytics questions if appropriate.
@@ -67,6 +65,6 @@ Do not provide a SQL query or chart.
 USER: {query}
 ASSISTANT:"""
         try:
-            return provider.generate_text(prompt)
+            return ai_orchestrator.generate_chat(prompt)
         except Exception:
             return "I'm here to help you analyze your data! What would you like to know?"

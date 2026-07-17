@@ -64,7 +64,11 @@ class AIOrchestrator:
             raw_response = self.provider.generate_structured_json(prompt, schema)
             
             # Validate JSON against Pydantic schema
-            parsed_result = schema.model_validate_json(raw_response)
+            try:
+                parsed_result = schema.model_validate_json(raw_response)
+            except Exception as e:
+                print(f"FAILED TO VALIDATE JSON:\n{repr(raw_response)}")
+                raise e
             
             # Set cache
             try:

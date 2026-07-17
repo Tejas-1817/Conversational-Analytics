@@ -18,7 +18,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.llm.provider import get_llm_provider
+from app.llm.orchestrator import ai_orchestrator
 from app.models import ColumnMeta, DataSource, Relationship, TableMeta
 
 log = structlog.get_logger()
@@ -161,9 +161,8 @@ def _llm_suggestions(session: Session, tables: list[TableMeta], existing: set[tu
         "Return a list of candidates. Be conservative. Provide reasoning for each."
     )
 
-    provider = get_llm_provider()
     try:
-        response = provider.generate_structured(prompt, LLMRelationshipResponse)
+        response = ai_orchestrator.generate_structured(prompt, LLMRelationshipResponse)
     except Exception as e:
         log.error("llm_relationship_detection_failed", error=str(e))
         return 0

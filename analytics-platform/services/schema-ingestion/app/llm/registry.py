@@ -4,6 +4,7 @@ from .providers.base import ProviderInterface
 from .providers.gemini import GeminiProvider
 from .providers.huggingface import HuggingFaceProvider
 from .providers.mock import MockProvider, NoOpProvider
+from .providers.ollama import OllamaProvider
 
 class ProviderRegistry:
     _providers: Dict[str, Type[ProviderInterface]] = {}
@@ -26,6 +27,7 @@ ProviderRegistry.register("gemini", GeminiProvider)
 ProviderRegistry.register("huggingface", HuggingFaceProvider)
 ProviderRegistry.register("mock", MockProvider)
 ProviderRegistry.register("none", NoOpProvider)
+ProviderRegistry.register("ollama", OllamaProvider)
 
 def get_llm_provider_from_config() -> ProviderInterface:
     from app.config import get_settings
