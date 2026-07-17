@@ -879,3 +879,24 @@ class AIContext(Base):
     confidence_score: Mapped[float | None] = mapped_column(Numeric(5, 4))
     prompt_version: Mapped[str | None] = mapped_column(Text)
     review_status: Mapped[str | None] = mapped_column(Text)
+
+
+class UserFeedback(Base):
+    __tablename__ = "user_feedback"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("conversation_messages.id", ondelete="CASCADE"), nullable=False)
+    is_positive: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    correction: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class ApprovedSQLExample(Base):
+    __tablename__ = "approved_sql_examples"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    generated_sql: Mapped[str] = mapped_column(Text, nullable=False)
+    approved_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))

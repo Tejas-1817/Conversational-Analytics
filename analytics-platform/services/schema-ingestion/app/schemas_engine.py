@@ -57,6 +57,10 @@ class ChatMessageOut(BaseModel):
     id: uuid.UUID
     role: str
     content: str
+    intent: dict | None = None
+    generated_sql: str | None = None
+    result_data: dict | None = None
+    error: str | None = None
     created_at: datetime
     route: str | None = None
     trace: dict[str, Any] | None = None
@@ -79,6 +83,35 @@ class ConversationOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     messages: list[ChatMessageOut] = []
+
+    class Config:
+        from_attributes = True
+
+class UserFeedbackCreate(BaseModel):
+    is_positive: bool
+    correction: str | None = None
+
+class UserFeedbackOut(BaseModel):
+    id: uuid.UUID
+    message_id: uuid.UUID
+    is_positive: bool
+    correction: str | None = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ApprovedExampleCreate(BaseModel):
+    # Approval can be from an existing message, so we just pass message_id
+    message_id: uuid.UUID
+
+class ApprovedExampleOut(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    question: str
+    generated_sql: str
+    approved_by: uuid.UUID | None = None
+    created_at: datetime
 
     class Config:
         from_attributes = True

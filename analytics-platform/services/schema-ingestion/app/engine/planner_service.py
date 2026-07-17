@@ -55,7 +55,11 @@ class PlannerService:
             rag_context += "\nTop Glossary Terms:\n"
             for g, dist in rag_hits.glossary:
                 rag_context += f"- {g.term}: {g.definition} (dist: {dist:.3f})\n"
-            prompt += f"\n\nRETRIEVED VECTOR CONTEXT (RAG):\n{rag_context}\nUse this context to better understand business terminology and relevant tables."
+            if hasattr(rag_hits, 'approved_examples') and rag_hits.approved_examples:
+                rag_context += "\nApproved Query Examples (Few-Shot Context):\n"
+                for ex, dist in rag_hits.approved_examples:
+                    rag_context += f"- Q: {ex.question}\n  SQL: {ex.generated_sql} (dist: {dist:.3f})\n"
+            prompt += f"\n\nRETRIEVED VECTOR CONTEXT (RAG):\n{rag_context}\nUse this context to better understand business terminology, relevant tables, and past approved SQL examples."
 
         # 4. LLM -> 5. Semantic Validation (Pydantic parsing)
         result = ai_orchestrator.generate_structured(prompt, LogicalQueryPlan)

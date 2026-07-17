@@ -17,8 +17,9 @@ from app.engine.resolver_service import ResolverService
 from app.engine.retrieval_service import RetrievalService
 from app.engine.router_service import RouterService
 from app.engine.validation_service import ValidationService
-from app.models import Conversation, ConversationMessage, User
-from app.schemas_engine import ChatMessageOut, ChatRequest, ConversationOut
+from app.models import Conversation, ConversationMessage, User, ApprovedSQLExample, UserFeedback
+from app.schemas_engine import ChatMessageOut, ChatRequest, ConversationOut, ApprovedExampleCreate, ApprovedExampleOut, UserFeedbackCreate, UserFeedbackOut
+from app.audit import audit
 
 router = APIRouter(prefix="/engine", tags=["engine"])
 
@@ -198,3 +199,98 @@ def ask_question(conv_id: uuid.UUID, req: ChatRequest, db: Session = Depends(get
     db.refresh(asst_msg)
 
     return asst_msg
+
+@router.post("/conversations/{conv_id}/messages/{msg_id}/feedback", response_model=UserFeedbackOut)
+def submit_feedback(
+    conv_id: uuid.UUID,
+    msg_id: uuid.UUID,
+    feedback: UserFeedbackCreate,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    # Verify conversation belongs to user
+    conv = db.scalar(select(Conversation).where(
+        Conversation.id == conv_id,
+        Conversation.tenant_id == user.tenant_id
+    ))
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+        
+    msg = db.scalar(select(ConversationMessage).where(
+        ConversationMessage.id == msg_id,
+        ConversationMessage.conversation_id == conv.id
+    ))
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+        
+    if msg.role != "assistant" or not msg.generated_sql:
+        raise HTTPException(status_code=400, detail="Feedback can only be provided for assistant messages with SQL")
+
+    fb = UserFeedback(
+        message_id=msg.id,
+        is_positive=feedback.is_positive,
+        correction=feedback.correction
+    )
+    db.add(fb)
+    db.commit()
+    db.refresh(fb)
+    return fb
+
+@router.post("/examples/approve", response_model=ApprovedExampleOut)
+def approve_example(
+    req: ApprovedExampleCreate,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    # Verify the message
+    msg = db.scalar(
+        select(ConversationMessage)
+        .join(Conversation)
+        .where(
+            ConversationMessage.id == req.message_id,
+            Conversation.tenant_id == user.tenant_id
+        )
+    )
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+        
+    if not msg.generated_sql:
+        raise HTTPException(status_code=400, detail="Message does not contain SQL")
+
+    # Get the original question (the user message before this assistant message)
+    # Since messages are ordered by created_at, find the most recent user message in this conversation
+    # that is before this message
+    user_msg = db.scalar(
+        select(ConversationMessage)
+        .where(
+            ConversationMessage.conversation_id == msg.conversation_id,
+            ConversationMessage.role == "user",
+            ConversationMessage.created_at <= msg.created_at
+        )
+        .order_by(ConversationMessage.created_at.desc())
+    )
+    if not user_msg:
+        raise HTTPException(status_code=400, detail="Could not find corresponding user question")
+
+    example = ApprovedSQLExample(
+        tenant_id=user.tenant_id,
+        question=user_msg.content,
+        generated_sql=msg.generated_sql,
+        approved_by=user.id
+    )
+    db.add(example)
+    db.commit()
+    db.refresh(example)
+
+    audit(
+        db,
+        tenant_id=user.tenant_id,
+        entity_type="approved_sql_example",
+        entity_id=example.id,
+        action="EXAMPLE_APPROVED",
+        actor=user.email,
+        after={"question": example.question, "generated_sql": example.generated_sql}
+    )
+    db.commit()
+    
+    return example

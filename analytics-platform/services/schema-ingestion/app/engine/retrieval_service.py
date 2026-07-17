@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.embeddings.chroma_store import ChromaStore, RetrievalResult
-from app.models import BusinessGlossary, SemanticDimension, SemanticMetric, TableMeta
+from app.models import ApprovedSQLExample, BusinessGlossary, SemanticDimension, SemanticMetric, TableMeta
 
 log = structlog.get_logger()
 
@@ -38,6 +38,7 @@ class RetrievalHits:
     dimensions: list[tuple[SemanticDimension, float]] = field(default_factory=list)
     tables:     list[tuple[TableMeta, float]] = field(default_factory=list)
     glossary:   list[tuple[BusinessGlossary, float]] = field(default_factory=list)
+    approved_examples: list[tuple[ApprovedSQLExample, float]] = field(default_factory=list)
     raw_results: list[RetrievalResult] = field(default_factory=list)
     used_rag:   bool = False
     threshold:  float = 0.60
@@ -112,6 +113,7 @@ class RetrievalService:
             dimension_ids: list[uuid.UUID] = []
             table_ids:     list[uuid.UUID] = []
             glossary_ids:  list[uuid.UUID] = []
+            example_ids:   list[uuid.UUID] = []
             dist_by_id:    dict[str, float] = {}
 
             for r in above_threshold:
@@ -130,6 +132,8 @@ class RetrievalService:
                     table_ids.append(uid)
                 elif otype == "glossary":
                     glossary_ids.append(uid)
+                elif otype == "approved_example":
+                    example_ids.append(uid)
                 # columns/synonyms/relationships: not directly useful for entity resolution
 
             # 6. Bulk hydrate — single IN-query per type
@@ -169,6 +173,15 @@ class RetrievalService:
                     (g, dist_by_id.get(str(g.id), 1.0)) for g in glossary
                 ]
                 hits.glossary.sort(key=lambda t: t[1])
+
+            if example_ids:
+                examples = db.scalars(
+                    select(ApprovedSQLExample).where(ApprovedSQLExample.id.in_(example_ids))
+                ).all()
+                hits.approved_examples = [
+                    (e, dist_by_id.get(str(e.id), 1.0)) for e in examples
+                ]
+                hits.approved_examples.sort(key=lambda t: t[1])
 
             hits.used_rag = True
             log.info(
