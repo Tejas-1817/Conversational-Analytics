@@ -192,6 +192,8 @@ def ask_question(conv_id: uuid.UUID, req: ChatRequest, db: Session = Depends(get
         asst_msg.error = str(e)
         asst_msg.content = "The generated query was flagged by the safety validator and blocked."
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         asst_msg.error = str(e)
         asst_msg.content = "An error occurred while trying to answer your question."
 
