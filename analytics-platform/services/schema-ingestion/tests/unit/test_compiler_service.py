@@ -146,11 +146,37 @@ class TestDimensionColumnResolution:
             dimension_ids=[dim.id],
         )
 
-        # scalar calls: metric, metric_col, tbl, dim
         db = _scalar_returns(metric, metric_col, tbl, dim)
 
         with pytest.raises(ColumnResolutionError, match="no source_column_id"):
             CompilerService.compile_plan(db, tenant_id, plan)
+
+    def test_multi_word_metric_alias_is_quoted(self):
+        """A metric name with multiple words must be quoted in the AS alias.
+        
+        Bug: unquoted aliases like `as Total Revenue` caused SQL syntax errors.
+        """
+        tbl = _make_table("fct_orders")
+        metric_col = _make_col(tbl.id, "revenue")
+        tenant_id = uuid.uuid4()
+        # Create metric with a multi-word name
+        metric = _make_metric(tbl.id, metric_col.id, tenant_id=tenant_id)
+        metric.name = "Total Revenue"
+        
+        plan = LogicalQueryPlan(
+            intent="aggregate",
+            metric_ids=[metric.id],
+            dimension_ids=[],
+        )
+        
+        # scalar calls: metric, metric_col, tbl
+        db = _scalar_returns(metric, metric_col, tbl)
+        
+        compiled = CompilerService.compile_plan(db, tenant_id, plan)
+        
+        assert '"Total Revenue"' in compiled.sql, f"Expected quoted alias, got: {compiled.sql}"
+        assert 'as Total Revenue' not in compiled.sql, "Alias must not be unquoted"
+
 
 
 # ---------------------------------------------------------------------------
