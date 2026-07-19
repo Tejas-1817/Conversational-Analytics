@@ -77,10 +77,10 @@ class CompilerService:
                 db, metric.source_column_id, f"metric '{metric.name}'"
             )
             agg = metric.aggregation_type if metric.aggregation_type else "SUM"
-            select_clause.append(f"{agg}({metric_tbl.table_name}.{metric_col.column_name}) as {metric.name}")
+            select_clause.append(f"{agg}({metric_tbl.table_name}.{metric_col.column_name}) as \"{metric.name}\"")
         elif plan.kpi_ids:
             kpi = db.scalar(select(SemanticKPI).where(SemanticKPI.id == plan.kpi_ids[0]))
-            select_clause.append(f"{kpi.formula} as {kpi.name}")
+            select_clause.append(f"{kpi.formula} as \"{kpi.name}\"")
 
             # Resolve physical table from the KPI's primary measure
             if kpi.measures:
