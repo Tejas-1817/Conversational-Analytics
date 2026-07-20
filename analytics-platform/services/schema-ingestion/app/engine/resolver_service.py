@@ -237,6 +237,36 @@ class ResolverService:
                 SemanticMetric.tenant_id == tenant_id
             )).all())
 
+        # 3. Check Business Glossary (term or synonym)
+        # If the term matches a glossary entry (or its synonym), use the glossary term itself to find the metric
+        glossary_term = None
+        
+        # 3a. Check direct glossary term match
+        gloss_entry = db.scalar(select(BusinessGlossary).where(
+            BusinessGlossary.tenant_id == tenant_id,
+            BusinessGlossary.term.ilike(term)
+        ))
+        if gloss_entry:
+            glossary_term = gloss_entry.term
+        else:
+            # 3b. Check glossary synonym
+            gloss_syn = db.scalar(select(SemanticSynonym).where(
+                SemanticSynonym.tenant_id == tenant_id,
+                SemanticSynonym.synonym.ilike(term),
+                SemanticSynonym.entity_type == "GLOSSARY"
+            ))
+            if gloss_syn:
+                gloss_entry = db.scalar(select(BusinessGlossary).where(
+                    BusinessGlossary.id == gloss_syn.entity_id,
+                    BusinessGlossary.tenant_id == tenant_id
+                ))
+                if gloss_entry:
+                    glossary_term = gloss_entry.term
+                    
+        if glossary_term:
+            # Re-run resolution using the official glossary term (e.g. "sales" -> "Revenue")
+            return ResolverService._resolve_metric(db, tenant_id, glossary_term)
+
         return []
 
     @staticmethod
