@@ -173,7 +173,11 @@ def seed():
 
         syn1 = SemanticSynonym(tenant_id=demo_tenant_id, entity_type="GLOSSARY", entity_id=glossary.id, synonym="sales")
         syn2 = SemanticSynonym(tenant_id=demo_tenant_id, entity_type="GLOSSARY", entity_id=glossary.id, synonym="income")
-        db.add_all([syn1, syn2])
+        syn3 = SemanticSynonym(tenant_id=demo_tenant_id, entity_type="GLOSSARY", entity_id=glossary.id, synonym="earnings")
+        syn4 = SemanticSynonym(tenant_id=demo_tenant_id, entity_type="GLOSSARY", entity_id=glossary.id, synonym="total earnings")
+        syn5 = SemanticSynonym(tenant_id=demo_tenant_id, entity_type="GLOSSARY", entity_id=glossary.id, synonym="earn")
+        syn6 = SemanticSynonym(tenant_id=demo_tenant_id, entity_type="GLOSSARY", entity_id=glossary.id, synonym="total income")
+        db.add_all([syn1, syn2, syn3, syn4, syn5, syn6])
         db.commit()
 
         # 5. Saved Insights & Dashboards
