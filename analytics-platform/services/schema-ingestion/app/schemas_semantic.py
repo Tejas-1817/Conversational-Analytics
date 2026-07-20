@@ -8,7 +8,7 @@ class SemanticMetricCreate(BaseModel):
     business_name: str | None = None
     description: str | None = None
     is_calculated: bool = False
-    aggregation_type: str = "CUSTOM"
+    aggregation_type: str = "SUM"
     expression: str
     source_table_id: uuid.UUID | None = None
     source_column_id: uuid.UUID | None = None

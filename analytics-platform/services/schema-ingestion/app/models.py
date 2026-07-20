@@ -254,7 +254,7 @@ class SemanticMetric(Base):
     description: Mapped[str | None] = mapped_column(Text)
     semantic_model_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("semantic_models.id", ondelete="CASCADE"))
     is_calculated: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
-    aggregation_type: Mapped[str] = mapped_column(agg_type, nullable=False, server_default="CUSTOM")
+    aggregation_type: Mapped[str] = mapped_column(agg_type, nullable=False, server_default="SUM")
     expression: Mapped[str] = mapped_column(Text, nullable=False)
     source_table_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tables_meta.id", ondelete="SET NULL"))
     source_column_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("columns_meta.id", ondelete="SET NULL"))

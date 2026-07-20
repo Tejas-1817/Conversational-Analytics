@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     
     # Ollama Settings
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen2.5:14b"
+    ollama_model: str = "qwen2.5:7b"  # Benchmarked: ~53s/turn vs ~227s for 14b (4.1x speedup)
     
     # Hugging Face Settings
     huggingface_api_key: str = ""

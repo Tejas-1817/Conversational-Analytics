@@ -76,8 +76,11 @@ class CompilerService:
             metric_col, metric_tbl = CompilerService._resolve_column(
                 db, metric.source_column_id, f"metric '{metric.name}'"
             )
-            agg = metric.aggregation_type if metric.aggregation_type else "SUM"
-            select_clause.append(f"{agg}({metric_tbl.table_name}.{metric_col.column_name}) as \"{metric.name}\"")
+            # Guard: CUSTOM is not a real Postgres aggregate; fall back to SUM.
+            _SAFE_AGGS = {"SUM", "AVG", "COUNT", "MIN", "MAX"}
+            raw_agg = (metric.aggregation_type or "SUM").upper()
+            agg = raw_agg if raw_agg in _SAFE_AGGS else "SUM"
+            select_clause.append(f"{agg}({metric_tbl.table_name}.{metric_col.column_name}) as \"{metric.business_name or metric.name}\"")
         elif plan.kpi_ids:
             kpi = db.scalar(select(SemanticKPI).where(SemanticKPI.id == plan.kpi_ids[0]))
             select_clause.append(f"{kpi.formula} as \"{kpi.name}\"")
