@@ -57,6 +57,7 @@ class ChatMessageOut(BaseModel):
     id: uuid.UUID
     role: str
     content: str
+    status: str | None = None
     intent: dict | None = None
     generated_sql: str | None = None
     result_data: dict | None = None

@@ -54,7 +54,7 @@ class PlannerService:
                 rag_context += f"- {t.table_name}: {t.description} (dist: {dist:.3f})\n"
             rag_context += "\nTop Glossary Terms:\n"
             for g, dist in rag_hits.glossary:
-                rag_context += f"- {g.term}: {g.definition} (dist: {dist:.3f})\n"
+                rag_context += f"- {g.term}: {g.business_definition} (dist: {dist:.3f})\n"
             if hasattr(rag_hits, 'approved_examples') and rag_hits.approved_examples:
                 rag_context += "\nApproved Query Examples (Few-Shot Context):\n"
                 for ex, dist in rag_hits.approved_examples:

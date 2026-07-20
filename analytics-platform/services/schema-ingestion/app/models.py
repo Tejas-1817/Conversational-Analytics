@@ -428,6 +428,7 @@ class ConversationMessage(Base):
     conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
     role: Mapped[str] = mapped_column(Text, nullable=False) # 'user' or 'assistant'
     content: Mapped[str] = mapped_column(Text, nullable=False) # raw text
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="processing") # processing, complete, error
 
     # Metadata for observability and UI rendering
     route: Mapped[str | None] = mapped_column(Text)

@@ -2,6 +2,8 @@ import time
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from decimal import Decimal
+from datetime import datetime
 
 from app.engine.compiler_service import CompiledQuery
 
@@ -23,7 +25,17 @@ class ExecutorService:
 
         # Fetch data
         columns = list(result.keys())
-        rows = [dict(row._mapping) for row in result.fetchall()]
+        
+        def _serialize(val):
+            if isinstance(val, Decimal):
+                return float(val)
+            if isinstance(val, datetime):
+                return val.isoformat()
+            return val
+
+        rows = []
+        for row in result.fetchall():
+            rows.append({k: _serialize(v) for k, v in row._mapping.items()})
 
         execution_time_ms = int((time.time() - start_time) * 1000)
 

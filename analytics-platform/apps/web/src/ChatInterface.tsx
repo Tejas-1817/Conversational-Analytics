@@ -17,11 +17,32 @@ export function ChatInterface({ token }: { token: string }) {
     .catch(console.error);
   }, [token]);
 
+  const pollMessage = (conversationId: string, messageId: string) => {
+    const intervalId = setInterval(async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/engine/conversations/${conversationId}/messages/${messageId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const msg = await res.json();
+        
+        if (msg.status === 'complete' || msg.status === 'error') {
+          clearInterval(intervalId);
+          setMessages(prev => prev.map(m => m.id === messageId ? msg : m));
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Polling error", err);
+        clearInterval(intervalId);
+        setLoading(false);
+      }
+    }, 2000);
+  };
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !convId) return;
 
-    const userMsg = { id: Date.now(), role: 'user', content: input };
+    const userMsg = { id: Date.now().toString(), role: 'user', content: input };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
@@ -37,10 +58,15 @@ export function ChatInterface({ token }: { token: string }) {
       });
       const data = await res.json();
       setMessages(prev => [...prev, data]);
+      
+      if (data.status === 'processing') {
+        pollMessage(convId, data.id);
+      } else {
+        setLoading(false);
+      }
     } catch (err) {
       console.error(err);
       setMessages(prev => [...prev, { role: 'assistant', content: 'An error occurred.', error: String(err) }]);
-    } finally {
       setLoading(false);
     }
   };
@@ -75,25 +101,36 @@ export function ChatInterface({ token }: { token: string }) {
         {messages.map((m, i) => (
           <div key={i} style={{ 
             alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-            background: m.role === 'user' ? '#007bff' : '#f1f1f1',
+            background: m.role === 'user' ? '#007bff' : (m.status === 'error' ? '#ffe6e6' : '#f1f1f1'),
             color: m.role === 'user' ? '#fff' : '#333',
             padding: '1rem',
             borderRadius: '12px',
             maxWidth: '80%'
           }}>
-            <p style={{ margin: 0 }}>{m.content}</p>
-            {m.role === 'assistant' && renderData(m)}
-            {m.role === 'assistant' && (m.query_plan || m.generated_sql) && (
-              <details style={{ marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.8 }}>
-                <summary style={{ cursor: 'pointer' }}>Debug Trace</summary>
-                {m.query_plan && <pre>{JSON.stringify(m.query_plan, null, 2)}</pre>}
-                {m.generated_sql && <pre>{m.generated_sql}</pre>}
-                {m.execution_time_ms && <p>Execution Time: {m.execution_time_ms}ms</p>}
-              </details>
+            {m.status === 'processing' ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <span>Thinking... (this may take a few minutes)</span>
+              </div>
+            ) : (
+              <>
+                <p style={{ margin: 0 }}>{m.content}</p>
+                {m.status === 'error' && m.error && (
+                  <p style={{ margin: '0.5rem 0 0 0', color: 'red', fontSize: '0.9em' }}>{m.error}</p>
+                )}
+                {m.role === 'assistant' && renderData(m)}
+                {m.role === 'assistant' && (m.query_plan || m.generated_sql) && (
+                  <details style={{ marginTop: '0.5rem', fontSize: '0.8rem', opacity: 0.8 }}>
+                    <summary style={{ cursor: 'pointer' }}>Debug Trace</summary>
+                    {m.query_plan && <pre>{JSON.stringify(m.query_plan, null, 2)}</pre>}
+                    {m.generated_sql && <pre>{m.generated_sql}</pre>}
+                    {m.execution_time_ms && <p>Execution Time: {m.execution_time_ms}ms</p>}
+                  </details>
+                )}
+              </>
             )}
           </div>
         ))}
-        {loading && <div style={{ alignSelf: 'flex-start' }}>Typing...</div>}
       </div>
       <form onSubmit={sendMessage} style={{ display: 'flex', gap: '0.5rem', padding: '1rem', borderTop: '1px solid #ddd' }}>
         <input 
