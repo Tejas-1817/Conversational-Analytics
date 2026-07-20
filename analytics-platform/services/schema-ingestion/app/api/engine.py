@@ -79,11 +79,7 @@ def ask_question(conv_id: uuid.UUID, req: ChatRequest, db: Session = Depends(get
     asst_msg = ConversationMessage(conversation_id=conv.id, role="assistant", content="")
     db.add(asst_msg)
 
-    try:
-        pass
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
+
 
     db.commit()
     db.refresh(asst_msg)

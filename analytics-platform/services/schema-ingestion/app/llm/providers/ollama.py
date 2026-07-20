@@ -24,7 +24,8 @@ class OllamaProvider(ProviderInterface):
         payload = {
             "model": self.model_name,
             "prompt": prompt,
-            "stream": False
+            "stream": False,
+            "options": {"temperature": 0.0}
         }
         
         response = requests.post(
@@ -51,7 +52,8 @@ class OllamaProvider(ProviderInterface):
             "model": self.model_name,
             "prompt": full_prompt,
             "stream": False,
-            "format": "json"  # Native Ollama JSON mode
+            "format": "json",  # Native Ollama JSON mode
+            "options": {"temperature": 0.0}
         }
         
         response = requests.post(

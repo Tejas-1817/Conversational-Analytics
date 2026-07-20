@@ -21,7 +21,7 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
     with session_scope() as db:
         # Fetch the message
         asst_msg = db.query(ConversationMessage).filter(ConversationMessage.id == msg_id).first()
-        conv = db.query(Conversation).filter(Conversation.id == conv_id).first()
+        conv = db.query(Conversation).filter(Conversation.id == conv_id, Conversation.tenant_id == tenant_id).first()
         
         if not asst_msg or not conv:
             log.error("Message or conversation not found", msg_id=str(msg_id))
