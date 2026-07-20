@@ -114,10 +114,25 @@ class CompilerService:
             dim_expr = f"{dim_tbl.table_name}.{dim_col.column_name}"
             select_clause.append(f"{dim_expr} as {alias}")
             group_by_clause.append(dim_expr)
-
         where_clause: list[str] = []
         if metric_tbl:
             where_clause.append(f"{metric_tbl.table_name}.tenant_id = :tenant_id")  # RLS injection
+            
+            if plan.time_granularity:
+                time_dim = db.scalar(
+                    select(SemanticDimension)
+                    .where(SemanticDimension.source_table_id == metric_tbl.id)
+                    .where(SemanticDimension.is_time_dimension == True)
+                    .limit(1)
+                )
+                if not time_dim:
+                    raise SQLSafetyError(f"Cannot apply time_granularity '{plan.time_granularity}' because no time dimension is configured for table '{metric_tbl.table_name}'.")
+                
+                time_col, time_tbl = CompilerService._resolve_column(db, time_dim.source_column_id, "time dimension")
+                # Postgres-compatible DATE_TRUNC
+                trunc_expr = f"DATE_TRUNC('{plan.time_granularity}', {time_tbl.table_name}.{time_col.column_name})"
+                select_clause.append(f"{trunc_expr} as time_period")
+                group_by_clause.append(trunc_expr)
 
         # --- Filters: resolved via QueryPlanFilter.column_id → ColumnMeta → TableMeta ---
         for idx, f in enumerate(plan.filters):

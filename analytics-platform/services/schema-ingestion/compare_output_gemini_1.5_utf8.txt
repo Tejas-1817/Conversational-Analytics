@@ -1,0 +1,19 @@
+﻿
+==================================================
+TESTING LLM PROVIDER: GEMINI
+==================================================
+
+Q1: Show total revenue
+2026-07-20 11:31:17 [error    ] ai.generation.error            error="404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}" latency=5.507447242736816 provider=GeminiProvider schema=NLUIntent
+2026-07-20 11:31:25 [error    ] ai.generation.error            error="404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}" latency=4.60187029838562 provider=GeminiProvider schema=NLUIntent
+2026-07-20 11:31:34 [error    ] ai.generation.error            error="404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}" latency=4.393205881118774 provider=GeminiProvider schema=NLUIntent
+  -> {"intent":"unknown","dimensions":[],"filters":[]}
+
+Q2: Revenue by region
+2026-07-20 11:31:38 [error    ] ai.generation.error            error="404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}" latency=4.297601699829102 provider=GeminiProvider schema=NLUIntent
+2026-07-20 11:31:46 [error    ] ai.generation.error            error="404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}" latency=4.29714035987854 provider=GeminiProvider schema=NLUIntent
+2026-07-20 11:31:54 [error    ] ai.generation.error            error="404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}" latency=4.292643785476685 provider=GeminiProvider schema=NLUIntent
+  -> {"intent":"unknown","dimensions":[],"filters":[]}
+
+Q3: Revenue by date
+2026-07-20 11:31:59 [error    ] ai.generation.error            error="404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}" latency=4.255453586578369 provider=GeminiProvider schema=NLUIntent

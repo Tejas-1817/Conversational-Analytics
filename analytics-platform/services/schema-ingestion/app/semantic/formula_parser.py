@@ -17,7 +17,6 @@ class MetricFormulaParser:
         ast.UnaryOp,
         ast.operator,
         ast.unaryop,
-        ast.Num,
         ast.Name,
         ast.Load,
         ast.Constant

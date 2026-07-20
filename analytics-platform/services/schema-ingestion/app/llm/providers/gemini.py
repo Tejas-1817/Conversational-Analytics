@@ -16,7 +16,7 @@ class GeminiProvider(ProviderInterface):
         if not settings.gemini_api_key:
             raise ValueError("gemini_api_key must be set when llm_provider is 'gemini'.")
         self.client = genai.Client(api_key=settings.gemini_api_key)
-        self.model_name = "gemini-2.0-flash" 
+        self.model_name = "gemini-2.0-flash"
 
     def generate_chat_completion(self, prompt: str) -> str:
         response = self.client.models.generate_content(
