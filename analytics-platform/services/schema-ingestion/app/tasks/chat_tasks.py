@@ -1,6 +1,7 @@
 import uuid
 import traceback
 import structlog
+from rq.timeouts import JobTimeoutException
 from app.db import session_scope
 from app.models import ConversationMessage, Conversation
 from app.engine.context_manager import ConversationContextManager
@@ -143,6 +144,8 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
             asst_msg.error = str(e)
             asst_msg.content = "The generated query was flagged by the safety validator and blocked."
             asst_msg.status = "error"
+        except JobTimeoutException:
+            raise
         except Exception as e:
             traceback.print_exc()
             asst_msg.error = str(e)

@@ -8,6 +8,7 @@ import redis
 import structlog
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential
+from rq.timeouts import JobTimeoutException
 
 from .registry import get_llm_provider_from_config
 
@@ -86,6 +87,8 @@ class AIOrchestrator:
             )
             return parsed_result
             
+        except JobTimeoutException:
+            raise
         except Exception as e:
             latency = time.time() - start_time
             logger.error(
@@ -134,6 +137,8 @@ class AIOrchestrator:
                 type="chat"
             )
             return response
+        except JobTimeoutException:
+            raise
         except Exception as e:
             latency = time.time() - start_time
             logger.error(
