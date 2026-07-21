@@ -56,6 +56,24 @@ export const ChatInterface = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const pollMessageStatus = (conversationId: string, messageId: string) => {
+    const intervalId = setInterval(async () => {
+      try {
+        const msg = await fetchApi(`/engine/conversations/${conversationId}/messages/${messageId}`);
+        if (msg.status === 'complete' || msg.status === 'error') {
+          clearInterval(intervalId);
+          setMessages(prev => prev.map(m => m.id === messageId ? msg : m));
+          setLoading(false);
+          loadConversations();
+        }
+      } catch (err) {
+        console.error('Polling error', err);
+        clearInterval(intervalId);
+        setLoading(false);
+      }
+    }, 3000);
+  };
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !convId) return;
@@ -71,10 +89,17 @@ export const ChatInterface = () => {
         body: JSON.stringify({ message: userMsg.content })
       });
       setMessages(prev => [...prev, data]);
-      loadConversations(); // refresh title if it was new
+
+      if (data.status === 'processing') {
+        // Async job — poll until complete or error
+        pollMessageStatus(convId, data.id);
+      } else {
+        // Synchronous completion (shouldn't happen with current backend, but safe)
+        setLoading(false);
+        loadConversations();
+      }
     } catch (err: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: err.message || 'An error occurred.', isError: true }]);
-    } finally {
       setLoading(false);
     }
   };
@@ -222,7 +247,7 @@ export const ChatInterface = () => {
                             <Save size={14} /> Save Insight
                           </button>
                         </div>
-                        <div style={{ height: '350px' }}>
+                        <div style={{ height: m.chart_recommendation === 'kpi_card' ? '120px' : '350px' }}>
                           <ChartRenderer data={m.result_data} chartType={m.chart_recommendation || 'table'} />
                         </div>
                       </div>
