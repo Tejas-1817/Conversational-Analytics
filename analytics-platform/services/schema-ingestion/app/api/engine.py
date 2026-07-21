@@ -117,7 +117,20 @@ def get_message_status(conv_id: uuid.UUID, msg_id: uuid.UUID, db: Session = Depe
     ))
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
-        
+
+    # Layer C backstop: if message is still "processing" but older than
+    # job_timeout (600s) + grace period (60s), treat it as timed out.
+    # This guarantees the UI never spins forever regardless of how the worker died.
+    if msg.status == "processing":
+        from datetime import datetime, timezone
+        JOB_TIMEOUT_PLUS_GRACE = 660  # 600s timeout + 60s grace
+        age_seconds = (datetime.now(timezone.utc) - msg.created_at).total_seconds()
+        if age_seconds > JOB_TIMEOUT_PLUS_GRACE:
+            msg.status = "error"
+            msg.content = "The request timed out. Please try again with a simpler question."
+            msg.error = f"Server-side staleness backstop: message was processing for {int(age_seconds)}s"
+            db.commit()
+
     return msg
 
 @router.post("/conversations/{conv_id}/messages/{msg_id}/feedback", response_model=UserFeedbackOut)

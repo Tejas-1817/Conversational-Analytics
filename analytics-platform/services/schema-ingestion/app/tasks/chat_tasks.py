@@ -13,6 +13,7 @@ from app.engine.compiler_service import CompilerService, SQLSafetyError
 from app.engine.executor_service import ExecutorService
 from app.engine.nl_generator import NLGenerator
 from app.engine.chart_recommender import ChartRecommender
+from app.engine.router_service import RouterService
 
 log = structlog.get_logger()
 
@@ -28,6 +29,36 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
             return
 
         try:
+            # 0. Route Classification — decide if this is analytics or conversational
+            route_result = RouterService.classify_intent(raw_query)
+            asst_msg.route = route_result.route
+            log.info("Router classification", route=route_result.route, confidence=route_result.confidence)
+
+            if route_result.route == "greeting":
+                asst_msg.content = RouterService.handle_greeting()
+                asst_msg.status = "complete"
+                if conv.title == "New Conversation":
+                    conv.title = raw_query[:50]
+                db.commit()
+                return
+
+            if route_result.route == "help":
+                asst_msg.content = RouterService.handle_help()
+                asst_msg.status = "complete"
+                if conv.title == "New Conversation":
+                    conv.title = raw_query[:50]
+                db.commit()
+                return
+
+            if route_result.route == "conversation":
+                asst_msg.content = RouterService.handle_conversation(raw_query)
+                asst_msg.status = "complete"
+                if conv.title == "New Conversation":
+                    conv.title = raw_query[:50]
+                db.commit()
+                return
+
+            # For "analytics" and "unknown" routes, fall through to the NLU pipeline
             # 1. Generate Context
             context = ConversationContextManager.build_context(db, conv_id)
             
