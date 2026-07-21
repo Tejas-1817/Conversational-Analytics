@@ -1,6 +1,7 @@
 
 from app.llm.orchestrator import ai_orchestrator
 from app.schemas_engine import RouterResult
+from rq.timeouts import JobTimeoutException
 
 
 class RouterService:
@@ -22,6 +23,8 @@ Return a JSON object matching the RouterResult schema with 'route', 'confidence'
         try:
             result = ai_orchestrator.generate_structured(prompt, RouterResult)
             return result
+        except JobTimeoutException:
+            raise
         except Exception as e:
             print(f"RouterService Exception: {e}")
             # Fallback

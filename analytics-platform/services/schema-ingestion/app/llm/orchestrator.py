@@ -7,7 +7,7 @@ from typing import TypeVar, Any
 import redis
 import structlog
 from pydantic import BaseModel
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 from rq.timeouts import JobTimeoutException
 
 from .registry import get_llm_provider_from_config
@@ -37,7 +37,12 @@ class AIOrchestrator:
         prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         return f"ai_cache:{schema_name}:{prompt_hash}"
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    @retry(
+        stop=stop_after_attempt(3), 
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_not_exception_type(JobTimeoutException),
+        reraise=True
+    )
     def generate_structured(self, prompt: str, schema: type[T]) -> T:
         """
         Generates a structured response with strict Pydantic validation, retries, and telemetry.
@@ -100,7 +105,12 @@ class AIOrchestrator:
             )
             raise
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    @retry(
+        stop=stop_after_attempt(3), 
+        wait=wait_exponential(multiplier=1, min=4, max=10),
+        retry=retry_if_not_exception_type(JobTimeoutException),
+        reraise=True
+    )
     def generate_chat(self, prompt: str) -> str:
         """
         Generates a standard text chat response.

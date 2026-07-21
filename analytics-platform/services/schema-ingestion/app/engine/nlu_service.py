@@ -1,6 +1,7 @@
 from app.llm.orchestrator import ai_orchestrator
 from app.schemas_engine import NLUIntent
 from app.engine.context_manager import ConversationContext
+from rq.timeouts import JobTimeoutException
 import json
 
 class NLUService:
@@ -42,6 +43,7 @@ It must ALWAYS return valid JSON.
         try:
             result = ai_orchestrator.generate_structured(prompt, NLUIntent)
             return result
+        except JobTimeoutException:
+            raise
         except Exception:
-            # Fallback for Malformed output, ValidationError, JSONDecodeError
-            return NLUIntent(intent="unknown")
+            return NLUIntent(intent="unknown", metric=None)
