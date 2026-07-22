@@ -68,6 +68,10 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
         asst_msg.trace = []
         db.commit()
 
+        # Track active stage so we can correctly mark it as failed on exception
+        active_stage_key = "unknown"
+        active_stage_label = "Processing..."
+
         try:
             # ------------------------------------------------------------------
             # 0. Route Classification
@@ -107,12 +111,14 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
             # ------------------------------------------------------------------
 
             # Stage 1: parsing_question (router already ran; we record its outcome here)
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[0], "complete")
+            active_stage_key, active_stage_label = ANALYTICS_STAGES[0]
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
 
             # Stage 2: resolving_entities
             # Mark as in-progress early enough that a fast poll during this slow
             # LLM call still sees the stage landing.
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[1], "in_progress")
+            active_stage_key, active_stage_label = ANALYTICS_STAGES[1]
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "in_progress")
 
             context = ConversationContextManager.build_context(db, conv_id)
             intent  = NLUService.parse_intent(raw_query, context)
@@ -128,7 +134,7 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
             resolution = ResolverService.resolve_entities(db, tenant_id, intent, rag_hits=rag_hits)
 
             # Overwrite the in_progress entry with complete
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[1], "complete")
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
 
             if resolution.ambiguities:
                 asst_msg.content          = f"I need some clarification. {resolution.ambiguities[0]}. Which one did you mean?"
@@ -147,24 +153,27 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
                 return
 
             # Stage 3: planning_query
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[2], "in_progress")
+            active_stage_key, active_stage_label = ANALYTICS_STAGES[2]
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "in_progress")
             plan = PlannerService.generate_plan(db, intent, resolution, rag_hits=rag_hits)
             asst_msg.query_plan = plan.model_dump(mode='json')
             ValidationService.validate_plan(db, tenant_id, plan)
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[2], "complete")
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
 
             # Stage 4: generating_sql
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[3], "in_progress")
+            active_stage_key, active_stage_label = ANALYTICS_STAGES[3]
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "in_progress")
             compiled = CompilerService.compile_plan(db, tenant_id, plan)
             asst_msg.generated_sql = compiled.sql
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[3], "complete")
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
 
             # Stage 5: executing_query
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[4], "in_progress")
+            active_stage_key, active_stage_label = ANALYTICS_STAGES[4]
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "in_progress")
             result = ExecutorService.execute(db, compiled)
             asst_msg.execution_time_ms = result.execution_time_ms
             asst_msg.result_data       = {"columns": result.columns, "rows": result.rows}
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[4], "complete")
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
 
             # Confidence scoring (no stage for this — it's instant)
             confidence = 1.0
@@ -176,7 +185,8 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
             asst_msg.confidence_reason = " | ".join(reasons)
 
             # Stage 6: generating_insights
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[5], "in_progress")
+            active_stage_key, active_stage_label = ANALYTICS_STAGES[5]
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "in_progress")
             if len(result.rows) == 0:
                 asst_msg.content           = "I ran the query, but no data was found for the requested filters."
                 asst_msg.chart_recommendation = "kpi_card"
@@ -184,7 +194,7 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
                 explanation               = NLGenerator.generate_explanation(raw_query, plan, result)
                 asst_msg.content          = explanation
                 asst_msg.chart_recommendation = ChartRecommender.recommend(plan)
-            _append_trace(db, asst_msg, *ANALYTICS_STAGES[5], "complete")
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
 
             asst_msg.status = "complete"
             if conv.title == "New Conversation":
@@ -202,9 +212,11 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
             raise
         except Exception as e:
             traceback.print_exc()
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "error")
             asst_msg.error   = str(e)
             asst_msg.content = "An error occurred while trying to answer your question."
             asst_msg.status  = "error"
 
         db.commit()
         log.info("Finished async chat processing", msg_id=str(msg_id), status=asst_msg.status)
+
