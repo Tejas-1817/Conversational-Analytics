@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
-import { Save, Send, AlertTriangle, Info, CheckCircle2, Copy, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2 } from 'lucide-react';
+import { Save, Send, AlertTriangle, Info, CheckCircle2, Copy, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock } from 'lucide-react';
+import { PipelineProgress } from '../../components/chat/PipelineProgress';
+import { SqlBlock } from '../../components/chat/SqlBlock';
 
 export const ChatInterface = () => {
   const [conversations, setConversations] = useState<any[]>([]);
@@ -10,7 +12,7 @@ export const ChatInterface = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadConversations = async () => {
@@ -60,9 +62,11 @@ export const ChatInterface = () => {
     const intervalId = setInterval(async () => {
       try {
         const msg = await fetchApi(`/engine/conversations/${conversationId}/messages/${messageId}`);
+        // Always update the message state to reflect live trace changes
+        setMessages(prev => prev.map(m => m.id === messageId ? msg : m));
+        
         if (msg.status === 'complete' || msg.status === 'error') {
           clearInterval(intervalId);
-          setMessages(prev => prev.map(m => m.id === messageId ? msg : m));
           setLoading(false);
           loadConversations();
         }
@@ -71,7 +75,7 @@ export const ChatInterface = () => {
         clearInterval(intervalId);
         setLoading(false);
       }
-    }, 3000);
+    }, 2000);
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -126,7 +130,7 @@ export const ChatInterface = () => {
     navigator.clipboard.writeText(text);
   };
 
-  const filteredConversations = conversations.filter(c => 
+  const filteredConversations = conversations.filter(c =>
     c.title?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -139,12 +143,12 @@ export const ChatInterface = () => {
             <Plus size={16} style={{ marginRight: '0.5rem' }} /> New Chat
           </button>
         </div>
-        
+
         <div style={{ position: 'relative' }}>
           <Search size={14} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input 
-            type="text" 
-            placeholder="Search history..." 
+          <input
+            type="text"
+            placeholder="Search history..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{ width: '100%', padding: '0.5rem 0.5rem 0.5rem 2.25rem', fontSize: '0.85rem' }}
@@ -156,12 +160,12 @@ export const ChatInterface = () => {
             Recent Chats
           </h3>
           {filteredConversations.map(c => (
-            <div 
-              key={c.id} 
+            <div
+              key={c.id}
               onClick={() => loadConversation(c.id)}
-              style={{ 
-                padding: '0.5rem 0.75rem', 
-                borderRadius: 'var(--radius-sm)', 
+              style={{
+                padding: '0.5rem 0.75rem',
+                borderRadius: 'var(--radius-sm)',
                 cursor: 'pointer',
                 background: convId === c.id ? 'rgba(79, 70, 229, 0.1)' : 'transparent',
                 color: convId === c.id ? 'var(--primary)' : 'var(--text-main)',
@@ -192,7 +196,7 @@ export const ChatInterface = () => {
               </div>
               <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>How can I help you today?</h2>
               <p>Ask a question about your business data in plain English.</p>
-              
+
               <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left', opacity: 0.8 }}>
                 <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me revenue by region for 2026")}>
                   <span className="text-sm">"Show me revenue by region for 2026"</span>
@@ -203,13 +207,13 @@ export const ChatInterface = () => {
               </div>
             </div>
           )}
-          
+
           {messages.map((m, i) => (
             <div key={i} className={`message-bubble ${m.role}`}>
               <div className={`message-avatar ${m.role}`}>
                 {m.role === 'user' ? <User size={20} /> : <Bot size={20} />}
               </div>
-              
+
               <div className="message-content">
                 {m.role === 'user' ? (
                   <div>{m.content}</div>
@@ -220,7 +224,7 @@ export const ChatInterface = () => {
                         <AlertTriangle size={16} style={{ marginRight: '8px' }} /> {m.content}
                       </div>
                     )}
-                    
+
                     {m.route && !m.isError && (
                       <div style={{ marginBottom: '1rem', display: 'flex' }}>
                         {m.route === 'analytics' && <div className="badge badge-primary"><Database size={12} style={{ marginRight: '4px' }} /> Analytics Mode</div>}
@@ -231,11 +235,23 @@ export const ChatInterface = () => {
                     )}
 
                     {!m.isError && (
-                      <div style={{ lineHeight: 1.6 }}>
+                      <div style={{ lineHeight: 1.6, marginBottom: m.generated_sql ? '1.5rem' : '0' }}>
                         {m.content}
                       </div>
                     )}
-                    
+
+                    {!m.isError && m.generated_sql && (
+                      <div className="my-4">
+                        <SqlBlock sql={m.generated_sql} defaultOpen={false} />
+                      </div>
+                    )}
+
+                    {m.status === 'processing' && (
+                      <div className="mt-4 p-4 border border-gray-100 rounded-lg bg-white shadow-sm">
+                        <PipelineProgress trace={m.trace} />
+                      </div>
+                    )}
+
                     {m.result_data && (
                       <div className="card mt-4" style={{ padding: '1.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-dark)' }}>
                         <div className="flex justify-between items-center mb-4">
@@ -252,14 +268,21 @@ export const ChatInterface = () => {
                         </div>
                       </div>
                     )}
-                    
+
                     {m.confidence_score && (
                       <div className="flex items-center gap-4 mt-4 text-muted text-sm flex-wrap">
                         <div className="flex items-center gap-1" title={m.confidence_reason}>
                           <CheckCircle2 size={14} className="text-success" />
                           <span>Confidence: {(m.confidence_score * 100).toFixed(0)}%</span>
                         </div>
-                        
+
+                        {m.execution_time_ms !== undefined && (
+                          <div className="flex items-center gap-1">
+                            <Clock size={14} className="text-muted" />
+                            <span>Executed in {m.execution_time_ms}ms</span>
+                          </div>
+                        )}
+
                         <details style={{ cursor: 'pointer', position: 'relative' }} className="group">
                           <summary className="flex items-center gap-1 hover:text-white" style={{ outline: 'none' }}>
                             <Code size={14} /> Execution Trace
@@ -278,9 +301,9 @@ export const ChatInterface = () => {
                             </pre>
                           </div>
                         </details>
-                        
+
                         <div className="flex-1" />
-                        
+
                         <div className="flex items-center gap-2">
                           <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={() => handleCopy(m.content)} title="Copy response"><Copy size={14} /></button>
                           <button className="btn-ghost" style={{ padding: '0.25rem' }} title="Regenerate"><RefreshCcw size={14} /></button>
@@ -294,7 +317,8 @@ export const ChatInterface = () => {
               </div>
             </div>
           ))}
-          {loading && (
+          {/* Initial loading skeleton for the POST request phase */}
+          {loading && !messages.some(m => m.status === 'processing') && (
             <div className="message-bubble assistant">
               <div className="message-avatar assistant">
                 <Bot size={20} />
@@ -306,17 +330,17 @@ export const ChatInterface = () => {
                     <span className="skeleton" style={{ width: 8, height: 8, borderRadius: '50%', animationDelay: '150ms' }} />
                     <span className="skeleton" style={{ width: 8, height: 8, borderRadius: '50%', animationDelay: '300ms' }} />
                   </div>
-                  <span className="text-sm">Analyzing query...</span>
+                  <span className="text-sm">Connecting...</span>
                 </div>
               </div>
             </div>
           )}
           <div ref={messagesEndRef} style={{ height: '1px' }} />
         </div>
-        
+
         <div style={{ paddingBottom: '2rem', paddingTop: '1rem', background: 'var(--bg-main)', position: 'sticky', bottom: 0, borderTop: '1px solid var(--border-color)' }}>
           <form onSubmit={sendMessage} className="chat-input-wrapper" style={{ margin: '0 auto', maxWidth: '800px' }}>
-            <input 
+            <input
               style={{ flex: 1, padding: '1rem', fontSize: '0.95rem' }}
               placeholder="Ask a question about your data..."
               value={input}
@@ -324,13 +348,13 @@ export const ChatInterface = () => {
               disabled={loading}
               autoFocus
             />
-            <button 
-              type="submit" 
-              disabled={loading || !input.trim()} 
-              style={{ 
-                borderRadius: '50%', 
-                width: '40px', 
-                height: '40px', 
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              style={{
+                borderRadius: '50%',
+                width: '40px',
+                height: '40px',
                 padding: 0,
                 background: input.trim() ? 'var(--primary)' : 'var(--bg-hover)',
                 color: input.trim() ? 'white' : 'var(--text-muted)',
@@ -342,7 +366,7 @@ export const ChatInterface = () => {
             </button>
           </form>
           <div className="text-center text-muted mt-2" style={{ fontSize: '0.75rem' }}>
-            AI Agent can make mistakes. Consider verifying important information against your Data Sources.
+
           </div>
         </div>
       </div>
