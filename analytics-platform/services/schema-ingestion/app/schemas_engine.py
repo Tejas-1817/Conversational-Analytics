@@ -64,7 +64,7 @@ class ChatMessageOut(BaseModel):
     error: str | None = None
     created_at: datetime
     route: str | None = None
-    trace: dict[str, Any] | None = None
+    trace: list[dict[str, Any]] | None = None
     intent: dict[str, Any] | None = None
     query_plan: dict[str, Any] | None = None
     generated_sql: str | None = None
