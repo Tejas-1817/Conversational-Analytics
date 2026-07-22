@@ -49,8 +49,9 @@ export function PipelineProgress({ trace, className = "" }: PipelineProgressProp
   return (
     <div className={`flex flex-col space-y-3 ${className}`}>
       {STAGE_ORDER.map((stageKey, idx) => {
-        // Find if we have a trace entry for this stage
-        const entry = trace.find((e) => e.stage === stageKey);
+        // Find the LATEST entry for this stage, since the backend appends 
+        // (e.g., 'in_progress' first, then 'complete')
+        const entry = [...trace].reverse().find((e) => e.stage === stageKey);
         
         // Find the "currently active" stage to pulse it. 
         // A stage is active if it's the last entry in the trace array and it's marked 'in_progress'.
