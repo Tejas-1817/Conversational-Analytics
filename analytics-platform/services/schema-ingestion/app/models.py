@@ -48,7 +48,7 @@ time_grain = ENUM("YEAR", "QUARTER", "MONTH", "WEEK", "DAY", "HOUR", "NONE",
                   name="time_grain", create_type=False)
 col_security_action = ENUM("deny", "mask", "hash", "partial_mask",
                            name="col_security_action", create_type=False)
-generation_status_enum = ENUM("ACTIVE", "REVIEW_REQUIRED", "REJECTED",
+generation_status_enum = ENUM("GENERATING", "ACTIVE", "REVIEW_REQUIRED", "REJECTED",
                               name="generation_status", create_type=False)
 generation_source_enum = ENUM("MANUAL", "AI",
                               name="generation_source", create_type=False)
