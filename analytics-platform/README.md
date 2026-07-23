@@ -1,100 +1,154 @@
 # Conversational Analytics Platform
 
-An enterprise-grade, locally-deployable Conversational Analytics Platform. 
+An enterprise-grade, locally-deployable AI Conversational Analytics Platform that transforms natural language questions into deterministic SQL queries, interactive visualizations, and actionable business insights.
 
-## Features
-- **Conversational Analytics**: Ask questions in plain English and get SQL queries, answers, and auto-generated charts.
-- **Intelligent Intent Router**: Seamlessly classifies chat messages to separate casual greetings, help requests, and analytics queries to prevent rigid NLU validation errors.
-- **Semantic Layer**: Define Metrics, Dimensions, Joins, and Business Glossary to govern AI query generation.
-- **Dynamic Dashboards**: Create, drag, resize, and export fully customizable widgets.
-- **AI Evaluation Framework**: Automated benchmarking and reliability testing for the LLM-to-SQL engine.
-- **Enterprise Multi-Tenancy**: Built-in tenant isolation, RBAC, and Row-Level Security capabilities.
-- **Pluggable LLM Providers**: Built-in support for multiple LLMs via a dynamic registry (Gemini, HuggingFace, Mock, etc.).
-- **Local First**: Fully functional without requiring cloud infrastructure or distributed systems.
+Built with a **Local-First**, privacy-focused architecture powered by an AI Semantic Engine, dynamic web interface, and multi-stage automated schema ingestion pipeline.
 
-## Prerequisites
-- Node.js (v18+)
-- Python (3.10+)
-- Local PostgreSQL (Optional, defaults to SQLite if not provided)
-- Local Redis (Required for background schema ingestion jobs)
+---
 
-## Local Deployment Guide
+## 🌟 Key Features
 
-### 1. Start Redis
-Ensure you have a Redis instance running locally (the app defaults to `redis://localhost:6380/0`). If using Docker, you can spin it up via the provided `docker-compose.yml`.
+### 🤖 Conversational AI & Natural Language Engine
+- **Deterministic 5-Stage Chat Pipeline**: `Parsing Question` ➔ `Entity Resolution` ➔ `Query Planning` ➔ `SQL Compilation & Execution` ➔ `Response Generation`.
+- **Intelligent Intent Router**: Seamlessly classifies chat messages to separate analytics queries, greetings, and help requests, preventing rigid NLU validation errors.
+- **Robust Entity Resolver**: Name-based candidate resolution that handles time units (`Month`, `Year`, `Day`) gracefully without LLM hallucination crashes.
+- **Chart Recommendation Engine**: Automatically selects the optimal visualization (Line Chart, Bar Chart, Pie Chart, Stat Card) based on query semantics.
+- **Full Trace Transparency**: Live step-by-step progress stepper and expandable execution trace detailing latency, schema matches, and generated SQL.
 
-### 2. Backend Setup
-Navigate to the `services/schema-ingestion` directory and set up the Python backend:
+### 🏗️ Automated Schema Ingestion & AI Semantic Layer
+- **Multi-Stage Ingestion Pipeline**:
+  1. **Introspection**: Reflects database tables, columns, data types, and primary/foreign keys.
+  2. **Data Profiling**: Computes column stats, null rates, and sample value distributions.
+  3. **Relationship Detection**: Discovers hidden foreign key relationships via value-overlap testing and AI heuristics.
+  4. **Role Classification**: Automatically labels columns as dimensions, measures, keys, or attributes.
+  5. **Semantic Generation**: Generates business metrics, dimensions, synonyms, and documentation with graph validation and atomic version promotion.
+- **Semantic Layer Management**: Full CRUD interface for Metrics, Dimensions, Joins, and Business Glossary with automated formula parsing and validation.
+
+### 📊 Dynamic Dashboards & Visualization
+- **Drag & Drop Layout**: Customizable, resizable widget grid.
+- **Data Exporting**: One-click data export to CSV and JSON formats.
+- **Global Filters**: Date ranges and dimension slicers that filter dashboard widgets dynamically.
+
+### 🔒 Enterprise Governance & Security
+- **Strict Multi-Tenancy**: Built-in tenant isolation with tenant-scoped sessions and Row-Level Security (RLS) enforcement.
+- **Role-Based Access Control (RBAC)**: Fine-grained permissions for `ADMIN`, `ANALYST`, and `VIEWER` roles.
+- **Encrypted Credentials**: Target database credentials encrypted at rest using Fernet symmetric cryptography.
+- **OWASP Security Middleware**: HTTP security headers, payload size limits, and rate limiting.
+
+### 🔌 Pluggable LLM Provider Registry
+- **Local-First AI**: Native support for local LLM inference via **Ollama** (`mistral`, `llama3`, `qwen`).
+- **Cloud Provider Extensibility**: Easily switch or fallback to Google Gemini, HuggingFace Hub, or mock providers.
+
+---
+
+## 🛠️ Architecture & Tech Stack
+
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS / Vanilla HSL Design Tokens, Lucide Icons, Recharts, Responsive Modern Glassmorphism Theme.
+- **Backend Service**: Python 3.10+ / 3.13, FastAPI, SQLAlchemy 2.0 ORM, Pydantic v2, Structlog.
+- **Queue & Async Workers**: RQ (Redis Queue) with background worker process for schema ingestion and chat pipeline execution.
+- **Storage & Metadata**: PostgreSQL (production) / SQLite (local fallback), Redis.
+
+---
+
+## 🚀 Quickstart & Local Deployment Guide
+
+### Prerequisites
+- **Node.js**: v18+
+- **Python**: 3.10+
+- **Redis**: Running on `localhost:6380` (or `localhost:6379`)
+- **Ollama** *(Optional for local AI)*: Serving local models on `localhost:11434`
+
+---
+
+### Step 1: Start Infrastructure (Redis & Demo DB)
+
+If using Docker, spin up Redis and the Demo Postgres database using Docker Compose:
+
+```bash
+docker compose up -d redis demo-source-db
+```
+
+---
+
+### Step 2: Backend Setup & Seed Data
+
+Navigate to the `services/schema-ingestion` directory:
 
 ```bash
 cd services/schema-ingestion
+
+# Create and activate virtual environment
 python -m venv venv
+
 # Windows:
 venv\Scripts\activate
 # Mac/Linux:
 # source venv/bin/activate
 
+# Install dependencies
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 
-# Run Database Migrations and Seed Demo Data
+# Run migrations & seed demo tenant/user data
 python scripts/seed_demo.py
 ```
 
-Now, open **two** terminal windows for the backend:
+Now start **two** background services:
 
-**Terminal A (API Server):**
+#### Terminal A (API Server):
 ```bash
 # Ensure venv is activated
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-**Terminal B (Background Worker):**
-*(This processes heavy jobs like database schema ingestion)*
+#### Terminal B (Background Ingestion & Chat Worker):
 ```bash
 # Ensure venv is activated
 python -m app.worker
 ```
 
-### 2. Frontend Setup
-In a new terminal window, navigate to the `apps/web` directory:
+---
+
+### Step 3: Frontend Setup
+
+In a new terminal window, navigate to `apps/web`:
 
 ```bash
 cd apps/web
 npm install
 
-# Start Frontend Development Server
+# Start Vite Development Server
 npm run dev
 ```
 
-The application will be available at `http://localhost:5173`.
+Open your browser and navigate to **`http://localhost:5173`**.
 
-## Demo User Guide
+---
 
-The database seeding script (`scripts/seed_demo.py`) creates an initial tenant and two demo users for you to explore the platform.
+## 👤 Demo User Accounts
 
-### Demo Credentials
+The seeding script generates pre-configured credentials for quick testing:
 
-**Admin Account** (Has access to all Admin and Business features)
-- **Email**: `admin@company.com`
-- **Password**: `admin123`
+| Role | Email | Password | Access Rights |
+| :--- | :--- | :--- | :--- |
+| **Admin** | `admin@company.com` | `admin123` | Full Access (Data Sources, Ingestion, Semantic Layer, Users, Chat, Dashboards) |
+| **Analyst** | `analyst@demo.com` | `analyst123` | Analytical Access (Semantic Layer, Chat, Dashboards) |
 
-**Analyst Account** (Has access only to the Chat and Dashboards)
-- **Email**: `analyst@demo.com`
-- **Password**: `analyst123`
+---
 
-### Exploring the Platform
+## 📖 Usage Walkthrough
 
-1. **Log in**: Use `admin@company.com`.
-2. **Semantic Layer**: Navigate to the Semantic Layer from the sidebar. You'll see pre-seeded metrics ("Total Revenue") and dimensions ("Region", "Sale Date"). You can create new metrics and test the formula validation.
-3. **Dashboards**: Click on Dashboards. You'll see an "Executive Summary" dashboard with pre-populated widgets. Click "Edit Layout" to drag and resize them. Click the vertical dots on a widget to export data to CSV or JSON.
-4. **Chat**: Ask a question like *"Show me revenue by region"* to see the AI generate a response, display a chart, and present the execution trace. You can also rename or search past conversations in the left sidebar.
+1. **Log In**: Log in as `admin@company.com` / `admin123`.
+2. **Data Sources**: Go to **Administration ➔ Data Sources**. Set up or test database connections (`127.0.0.1:5432` for local pgAdmin DB or `127.0.0.1:5443` for demo container). Click **Trigger Ingestion** to run the 5-stage pipeline.
+3. **Jobs Progress**: Watch live multi-stage job progress in **Administration ➔ Jobs**.
+4. **Semantic Layer**: Explore auto-generated metrics (e.g., *Revenue*), dimensions (e.g., *Region*, *Date*), and business glossary terms.
+5. **Ask AI Chat**: Ask plain English questions like *"Show me total revenue by month"*. View the generated query, execution trace, and auto-recommended line chart.
+6. **Dashboards**: View and customize widget layouts on the Executive Summary dashboard.
 
-## Production Security Notes
-Although designed to run locally, the backend implements robust security middleware including:
-- OWASP-recommended HTTP security headers
-- Payload size limiting
-- Configurable Rate Limiting
-- Tenant-scoped database queries
+---
 
-*Note: Docker and Docker Compose files are provided for convenience but are not required for local execution.*
+## 🔐 Production Security & Best Practices
+
+- **Read-Only Database Users**: For target database ingestion, always configure a database user with `SELECT` privileges only (`GRANT SELECT ON ALL TABLES IN SCHEMA public TO <user>`).
+- **Encrypted Credentials**: Stored secrets are encrypted at rest using Fernet symmetric encryption.
+- **Tenant Scope Enforcement**: All API routes and database queries enforce `tenant_id` boundaries.

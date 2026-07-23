@@ -55,13 +55,11 @@ def run_semantic_generation(session: Session, source: DataSource, metadata_versi
     if old_active:
         SemanticVersionManager.clone_unchanged_entities(session, old_active.id, semantic_model.id, changed_table_ids)
 
-    # Stage 3: AI Enrichment (Incremental tables + Global)
-    for t in tables:
-        try:
-            SemanticEnrichmentService.enrich_table(session, t.id, source.tenant_id, semantic_model.id)
-        except Exception as e:
-            log.error("table_enrichment_failed", table=t.table_name, error=str(e))
-            continue
+    # Stage 3: AI Enrichment (Parallel Table + Global)
+    try:
+        SemanticEnrichmentService.enrich_tables_parallel(session, tables, source.tenant_id, semantic_model.id)
+    except Exception as e:
+        log.error("table_enrichment_failed", source=source.name, error=str(e))
 
     try:
         SemanticEnrichmentService.enrich_global(session, source.id, semantic_model.id)
@@ -79,5 +77,13 @@ def run_semantic_generation(session: Session, source: DataSource, metadata_versi
     # Stage 5: Atomic Promotion
     SemanticVersionManager.promote_version(session, source.id, semantic_model.id)
 
-    log.info("semantic_generation_completed", semantic_model_id=str(semantic_model.id))
+    num_cols = sum(len(t.columns) for t in tables)
+    log.info(
+        "semantic_generation_completed",
+        semantic_model_id=str(semantic_model.id),
+        tables_count=len(tables),
+        columns_count=num_cols,
+        status="ACTIVE"
+    )
     return {"status": "success", "semantic_version": semantic_model.semantic_version}
+

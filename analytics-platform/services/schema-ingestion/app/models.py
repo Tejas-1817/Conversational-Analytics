@@ -78,6 +78,8 @@ class DataSource(Base):
 
     tables: Mapped[list["TableMeta"]] = relationship(back_populates="source", cascade="all, delete-orphan")
     metadata_versions: Mapped[list["MetadataVersion"]] = relationship(back_populates="source", cascade="all, delete-orphan")
+    ingestion_jobs: Mapped[list["IngestionJob"]] = relationship(cascade="all, delete-orphan")
+    semantic_models: Mapped[list["SemanticModel"]] = relationship(cascade="all, delete-orphan")
 
 
 class TableMeta(Base):

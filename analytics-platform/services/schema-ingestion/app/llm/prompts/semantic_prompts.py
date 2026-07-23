@@ -71,12 +71,12 @@ CRITICAL RULES:
     def build_query_planner_prompt(cls, intent_json: str, metric_ctx: str, dim_ctx: str, ai_context_payload: str) -> str:
         """
         Builds the deterministic prompt for the Enterprise Query Planner.
-        It enforces strict UUID adherence and Logical Query Plan JSON output.
+        It enforces strict name adherence and Logical Query Plan JSON output.
         """
         prompt = f"""
 You are the Enterprise Query Planner for an Advanced Conversational Analytics Engine.
-Generate a strictly typed LogicalQueryPlan using ONLY the provided UUIDs. 
-Do NOT invent columns, tables, or UUIDs. Do NOT generate executable SQL.
+Generate a strictly typed PlannerLLMOutput using ONLY the provided Dimension, Metric, and KPI Names. 
+Do NOT invent columns, tables, or names. Do NOT generate executable SQL.
 
 USER INTENT:
 {intent_json}
@@ -92,12 +92,12 @@ GLOBAL AI CONTEXT & TIME INTELLIGENCE:
 {ai_context_payload}
 
 Instructions:
-1. Map the intent metric/kpi to the provided UUIDs.
-2. Map the intent dimensions to the provided Dimension UUIDs.
-3. Apply filters using the correct operators. Use Dimension UUIDs if filtering by a dimension.
+1. Map the intent metric/kpi to the provided Names. Output as a list of strings in 'metric_names' or 'kpi_names'.
+2. Map the intent dimensions to the provided Dimension Names. Output as a list of strings in 'dimension_names'. DO NOT include time units (Month, Year, etc) as dimensions; use the 'time_granularity' field for that.
+3. Apply filters using the correct operators. Use Dimension Names for the 'column_name' if filtering by a dimension.
 4. Apply 'time_intelligence' logic according to the Global AI Context (e.g. YTD calculations).
 5. Recommend a suitable chart type in 'chart_recommendation' (e.g., bar_chart, line_chart).
-6. DO NOT invent UUIDs. Only use those provided in the context to minimize hallucinations and enforce semantic integrity.
+6. DO NOT invent Names. Only use those provided in the context to minimize hallucinations and enforce semantic integrity.
 7. Provide a 'confidence_score' (0.0 to 1.0) and a brief 'reasoning' for your plan.
 """
         return prompt.strip()

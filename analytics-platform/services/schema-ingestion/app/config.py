@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     refresh_token_expire_minutes: int = 1440  # 24 hours
 
     # LLM Settings
-    llm_provider: str = "mock"  # options: "gemini", "mock", "none", "huggingface", "ollama"
+    llm_provider: str = "ollama"  # options: "gemini", "mock", "none", "huggingface", "ollama"
     gemini_api_key: str = ""
     
     # Ollama Settings

@@ -1,104 +1,93 @@
 # Schema Ingestion & Semantic Metadata Service
 
-Module 1 of the conversational analytics platform ("the robot that fills the notebook").
-Connects to customer databases, ingests and profiles schemas, detects relationships,
-classifies dimensions/measures, and stores everything as **reviewable metadata** —
-the foundation the semantic layer and SQL generation are built on.
+The core backend service of the Conversational Analytics Platform. 
+It connects to customer databases, ingests and profiles schemas, detects relationships, classifies dimensions/measures, builds AI-enriched semantic models, and powers natural language SQL query planning and execution.
 
-Read the companion spec: `Schema-Ingestion-Module-Spec.docx` (in the project folder).
+---
 
-## What's implemented vs stubbed
+## 🚀 Pipeline & Feature Implementation Matrix
 
-| Piece | State |
-|---|---|
-| Metadata repository DDL (`migrations/001_init.sql`) | ✅ Complete |
-| Source registration, encrypted credentials, read-only verification | ✅ Implemented (Postgres, MySQL) |
-| Schema introspection (tables, columns, keys, comments, diff-aware re-runs) | ✅ Implemented |
-| Data profiling (stats + PII-masked samples, guardrails in code) | ✅ Implemented |
-| Relationship detection: declared FKs, naming + value-overlap | ✅ Implemented |
-| Relationship detection: LLM suggestions | 🔲 Stub (`relationships.py::_llm_suggestions_stub`) |
-| Dimension/measure heuristic classification | ✅ Implemented |
-| AI enrichment (business names, descriptions, synonyms) | 🔲 Stub (`classifier.py::_llm_enrichment_stub`) |
-| Review/approval API with audit trail | ✅ Implemented |
-| Snowflake / BigQuery connectors | 🔲 Not wired (clear NotImplementedError) |
-| Review UI | 🔲 Not started (API-first; use /docs meanwhile) |
-| Auth | ⚠️ Static API key only — replace with SSO/OIDC before real use |
+| Module / Pipeline Stage | Status | Description |
+|---|---|---|
+| **Metadata Repository (`migrations/`)** | ✅ Complete | Full DDL schema for Multi-tenant Data Sources, Ingestion Jobs, Semantic Layer, RLS & Audit Logs |
+| **Source Connection & Security** | ✅ Implemented | Encrypted credentials (Fernet), read-only verification, statement timeouts |
+| **Stage 1: Introspection** | ✅ Implemented | Database reflection (tables, columns, primary/foreign keys, schemas) |
+| **Stage 2: Data Profiling** | ✅ Implemented | Column stats, distinct values, null rates, PII-masked sampling |
+| **Stage 3: Relationship Detection** | ✅ Implemented | Declared FKs + Naming heuristics + Sampled value overlap + Structured LLM suggestions |
+| **Stage 4: Role Classification** | ✅ Implemented | Automated labeling of dimensions, measures, keys, and attributes |
+| **Stage 5: Semantic Generation** | ✅ Implemented | Copy-on-Write incremental versioning, AI metric/dimension enrichment, semantic graph validation, atomic promotion |
+| **Chat & NLU Pipeline** | ✅ Implemented | Router Intent Classification ➔ Hybrid Entity Retrieval ➔ Planner (LLM name-to-UUID resolution) ➔ SQL Compiler & Executor |
+| **Multi-Tenancy & RBAC** | ✅ Implemented | Tenant session scoping, Row-Level Security policies, `ADMIN`/`ANALYST`/`VIEWER` roles |
+| **Pluggable LLM Registry** | ✅ Implemented | Ollama (local local models), Gemini, HuggingFace, Mock providers |
 
-**Honesty note:** this skeleton compiles and its structure has been reviewed, but it has
-NOT been run end-to-end against a live database yet. Your first task is to run the
-quickstart below and fix whatever surfaces. Expect small issues — that's normal.
+---
 
-## Quickstart
+## 🛠️ Quickstart
 
+### 1. Environment Setup
 ```bash
 cp .env.example .env
-# set ENCRYPTION_KEY:
+
+# Generate Fernet encryption key for stored connection credentials:
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-
-docker compose up --build
-# API docs: http://localhost:8080/docs
 ```
 
-Register the bundled demo database and ingest it:
-
+### 2. Seed Demo Database & Tenant Data
 ```bash
-# 1. Register (demo-source-db from docker-compose; hostname as seen from the api container)
-curl -s -X POST localhost:8080/sources -H "X-API-Key: change-me" -H "Content-Type: application/json" -d '{
-  "name": "demo-shop", "type": "postgres", "host": "demo-source-db", "port": 5432,
-  "database_name": "shop", "username": "demo", "password": "demo"
-}'
-# NOTE: the demo user owns its tables, so read-only verification will REJECT it — that is
-# the guardrail working. For local dev, create a read-only user first:
-#   docker compose exec demo-source-db psql -U demo -d shop -c \
-#     "CREATE USER reader PASSWORD 'reader'; GRANT CONNECT ON DATABASE shop TO reader; \
-#      GRANT USAGE ON SCHEMA public TO reader; GRANT SELECT ON ALL TABLES IN SCHEMA public TO reader;"
-# then register with username=reader / password=reader.
-
-# 2. Trigger ingestion (use the source id returned above)
-curl -s -X POST localhost:8080/jobs/ingest/<source_id> -H "X-API-Key: change-me"
-
-# 3. Watch the job, then browse results
-curl -s localhost:8080/jobs/<job_id> -H "X-API-Key: change-me"
-curl -s localhost:8080/metadata/sources/<source_id>/tables -H "X-API-Key: change-me"
-curl -s localhost:8080/metadata/sources/<source_id>/relationships -H "X-API-Key: change-me"
+python scripts/seed_demo.py
 ```
 
-Expected result on the demo DB: declared FKs from `order_items` captured as approved;
-`orders.customer_id → customers.id` surfaced as a **draft candidate** via naming +
-value-overlap, with evidence — approve it via `POST /metadata/relationships/<id>/review`.
+### 3. Run Backend API & Background Worker
 
-## Layout
+Open two separate terminals:
 
-```
-migrations/001_init.sql      The metadata repository DDL ("the blank notebook")
-app/config.py                Settings incl. profiling guardrails
-app/models.py                ORM (must stay in sync with the DDL — DDL is source of truth)
-app/security/crypto.py       Fernet credential encryption
-app/connectors/factory.py    Read-only engines + session guards + write-privilege check
-app/ingestion/introspector.py  Stage 1: catalog walk (SQLAlchemy Inspector)
-app/ingestion/profiler.py      Stage 2: column stats + PII-masked samples
-app/ingestion/relationships.py Stage 3: FK/naming/value-overlap detection (+LLM stub)
-app/ingestion/classifier.py    Stage 4: dimension/measure heuristics (+LLM stub)
-app/ingestion/pipeline.py      Orchestrates stages; records job status/stats
-app/api/                     sources, jobs, metadata (review endpoints with audit log)
-app/worker.py                RQ worker (python -m app.worker)
-demo/demo_shop.sql           Demo customer DB exercising the detectors
+**Terminal A (API Server):**
+```bash
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+# API Documentation: http://127.0.0.1:8000/docs
 ```
 
-## Rules the code enforces (do not weaken)
+**Terminal B (RQ Worker):**
+```bash
+python -m app.worker
+```
 
-1. Customer DB sessions are **forced read-only** and carry a **statement timeout** (connection-level, `connectors/factory.py`).
-2. Registration **rejects users with write privileges**.
-3. Profiling is **always sampled** — no full-table scans for samples.
-4. Sample values are **PII-masked before persistence** and must also be masked before any future AI call.
-5. Inferred relationships and classifications are **drafts** — only humans approve (declared FKs are the one exception; they're database facts).
-6. Re-runs **never overwrite human-edited fields** and never delete — disappeared objects become `is_active=false`.
-7. Every review action lands in `audit_log`.
+---
 
-## Where the team picks up
+## 📁 Repository Layout
 
-1. Run the quickstart; fix anything that surfaces (then delete the honesty note above).
-2. Implement the two LLM stubs (contracts documented in the stub docstrings).
-3. Add pytest integration tests against the demo DB (acceptance criteria are in the spec doc, §7).
-4. Build the review UI on the existing API.
-5. Wire Snowflake/BigQuery dialects when a test account is available.
+```text
+migrations/                   PostgreSQL DDL migration scripts (Source of Truth)
+app/config.py                 Settings & profiling guardrails
+app/models.py                 SQLAlchemy ORM models (DataSource, TableMeta, SemanticModel, etc.)
+app/security/crypto.py        Fernet credential encryption
+app/connectors/factory.py     Read-only database engine factory + session guards
+app/ingestion/
+  ├── introspector.py         Stage 1: Catalog walk (SQLAlchemy Inspector)
+  ├── profiler.py             Stage 2: Column stats & PII-masked sampling
+  ├── relationships.py        Stage 3: FK, naming, value overlap, & structured LLM relationship detection
+  ├── classifier.py           Stage 4: Dimension/measure heuristic role classification
+  ├── semantic_generator.py   Stage 5: Incremental versioning & AI semantic layer builder
+  └── pipeline.py             Orchestrates stages 1-5 as picklable RQ jobs
+app/engine/
+  ├── router_service.py       Intent classification (analytics vs greeting vs help)
+  ├── retrieval_service.py    Keyword & vector hybrid retrieval for metrics/dimensions
+  ├── planner_service.py      Prompt engineering & structured JSON query plan generation
+  ├── compiler_service.py     Dialect-specific SQL generation & validation
+  └── executor_service.py     Tenant-scoped SQL execution & result formatting
+app/tasks/
+  └── chat_tasks.py           5-Stage chat processing task & live trace updates
+app/api/                      API Endpoints (sources, jobs, semantic, metadata, auth, users)
+app/worker.py                 RQ background worker process (`python -m app.worker`)
+```
+
+---
+
+## 🔐 Core System Guardrails
+
+1. **Read-Only Session Isolation**: External database sessions carry connection-level read-only flags and statement timeouts.
+2. **Read-Only Verification**: Source registration rejects credentials with write or DDL privileges.
+3. **Sampled Profiling**: Data sampling is strictly bounded by configurable limits to prevent full table scans.
+4. **PII Masking**: Sample values are PII-masked before persistence and before being sent to LLM prompts.
+5. **Incremental Copy-on-Write Versioning**: Re-running ingestion on existing sources only updates changed tables and preserves human edits via versioning.
+6. **Audit Trail**: All administrative and review actions land in `audit_log`.

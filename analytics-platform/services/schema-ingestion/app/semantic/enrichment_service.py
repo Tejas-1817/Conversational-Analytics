@@ -1,6 +1,7 @@
+import concurrent.futures
 import structlog
 import uuid
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
     TableMeta, ColumnMeta, SemanticDimension, SemanticMetric,
@@ -20,6 +21,228 @@ class SemanticEnrichmentService:
     Orchestrates the AI semantic enrichment pipeline (both Table-Level and Global).
     """
     
+    @classmethod
+    def enrich_tables_parallel(
+        cls,
+        db: Session,
+        tables: list[TableMeta],
+        tenant_id: uuid.UUID,
+        semantic_model_id: uuid.UUID,
+        max_workers: int = 1
+    ):
+        """
+        Executes parallel LLM calls for all tables and persists results in a single batch
+        with zero N+1 database queries.
+        """
+        if not tables:
+            return
+
+        logger.info("starting_parallel_table_enrichment", count=len(tables), max_workers=max_workers)
+
+        # 1. Build context prompts for all tables up-front
+        tasks = []
+        for t in tables:
+            context_json = BusinessContextBuilder.build_table_context(db, t.id)
+            prompt = SemanticPromptBuilder.build_table_enrichment_prompt(context_json)
+            tasks.append((t, prompt))
+
+        # 2. Execute LLM structured generations in parallel thread pool
+        enrichment_results: list[tuple[TableMeta, AITableEnrichmentSchema]] = []
+
+        def _call_llm(table_and_prompt):
+            tbl, p_str = table_and_prompt
+            try:
+                enrichment_res: AITableEnrichmentSchema = ai_orchestrator.generate_structured(
+                    prompt=p_str,
+                    schema=AITableEnrichmentSchema
+                )
+                return tbl, enrichment_res
+            except Exception as e:
+                logger.error("table_enrichment_llm_failed", table=tbl.table_name, error=str(e))
+                return tbl, None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_task = [executor.submit(_call_llm, task) for task in tasks]
+            for future in concurrent.futures.as_completed(future_to_task):
+                tbl, res = future.result()
+                if res is not None:
+                    enrichment_results.append((tbl, res))
+
+        # 3. Bulk Persist all enrichments in a single transaction with pre-fetched lookups
+        cls._persist_bulk_table_enrichments(db, tenant_id, semantic_model_id, enrichment_results)
+        logger.info("finished_parallel_table_enrichment", count=len(enrichment_results))
+
+    @classmethod
+    def _persist_bulk_table_enrichments(
+        cls,
+        db: Session,
+        tenant_id: uuid.UUID,
+        semantic_model_id: uuid.UUID,
+        enrichments: list[tuple[TableMeta, AITableEnrichmentSchema]]
+    ):
+        if not enrichments:
+            return
+
+        # Pre-fetch existing entities to eliminate N+1 queries
+        existing_dim_col_ids = {
+            r[0] for r in db.query(SemanticDimension.source_column_id)
+            .filter(SemanticDimension.semantic_model_id == semantic_model_id).all()
+        }
+        existing_metric_col_ids = {
+            r[0] for r in db.query(SemanticMetric.source_column_id)
+            .filter(SemanticMetric.semantic_model_id == semantic_model_id, SemanticMetric.is_calculated == False).all()
+        }
+        existing_kpi_names = {
+            r[0] for r in db.query(SemanticKPI.name)
+            .filter(SemanticKPI.semantic_model_id == semantic_model_id).all()
+        }
+        existing_glossary_terms = {
+            r[0] for r in db.query(BusinessGlossary.term)
+            .filter(BusinessGlossary.semantic_model_id == semantic_model_id).all()
+        }
+        existing_join_pairs = {
+            (r[0], r[1]) for r in db.query(SemanticJoin.left_column_id, SemanticJoin.right_column_id)
+            .filter(SemanticJoin.semantic_model_id == semantic_model_id).all()
+        }
+
+        first_table = enrichments[0][0]
+        all_tables = db.query(TableMeta).options(selectinload(TableMeta.columns)).filter(TableMeta.source_id == first_table.source_id).all()
+        table_map = {t.table_name.lower(): t for t in all_tables}
+
+        # Global column lookup
+        col_map_by_table: dict[uuid.UUID, dict[str, ColumnMeta]] = {}
+        for t in all_tables:
+            col_map_by_table[t.id] = {c.column_name.lower(): c for c in (t.columns or [])}
+
+        for table, enrichment in enrichments:
+            col_map = col_map_by_table.get(table.id, {})
+            review_status = "ACTIVE" if enrichment.confidence_score >= 0.8 else "REVIEW_REQUIRED"
+
+            if enrichment.business_description and not table.description:
+                table.description = enrichment.business_description
+
+            # Dimensions
+            for dim_schema in enrichment.dimensions:
+                col = col_map.get(dim_schema.source_column_name.lower())
+                if not col or col.id in existing_dim_col_ids:
+                    continue
+                db.add(SemanticDimension(
+                    tenant_id=tenant_id,
+                    semantic_model_id=semantic_model_id,
+                    business_name=dim_schema.business_name,
+                    description=dim_schema.description,
+                    source_table_id=table.id,
+                    source_column_id=col.id,
+                    data_type=col.data_type,
+                    is_time_dimension=dim_schema.is_time_dimension,
+                    time_granularity=dim_schema.time_granularity,
+                    created_by="ai_generator",
+                    updated_by="ai_generator",
+                    generation_source="AI",
+                    confidence_score=enrichment.confidence_score,
+                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
+                    review_status=review_status
+                ))
+                existing_dim_col_ids.add(col.id)
+
+            # Measures
+            valid_aggs = {"SUM", "AVG", "COUNT", "COUNT_DISTINCT", "MIN", "MAX", "CUSTOM"}
+            for measure_schema in enrichment.measures:
+                col = col_map.get(measure_schema.source_column_name.lower())
+                if not col or col.id in existing_metric_col_ids:
+                    continue
+                raw_agg = (measure_schema.aggregation_type or "COUNT").upper()
+                agg_type = raw_agg if raw_agg in valid_aggs else "COUNT"
+                db.add(SemanticMetric(
+                    tenant_id=tenant_id,
+                    name=measure_schema.business_name,
+                    description=measure_schema.description,
+                    semantic_model_id=semantic_model_id,
+                    is_calculated=False,
+                    aggregation_type=agg_type,
+                    expression=f"{{{{ {measure_schema.source_column_name} }}}}",
+                    source_table_id=table.id,
+                    source_column_id=col.id,
+                    created_by="ai_generator",
+                    updated_by="ai_generator",
+                    generation_source="AI",
+                    confidence_score=enrichment.confidence_score,
+                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
+                    review_status=review_status
+                ))
+                existing_metric_col_ids.add(col.id)
+
+            # KPIs
+            for kpi_schema in enrichment.kpis:
+                if kpi_schema.business_name in existing_kpi_names:
+                    continue
+                db.add(SemanticKPI(
+                    semantic_model_id=semantic_model_id,
+                    name=kpi_schema.business_name,
+                    description=kpi_schema.description,
+                    formula=kpi_schema.expression,
+                    dimensions=[],
+                    measures=[],
+                    confidence=enrichment.confidence_score,
+                    confidence_score=enrichment.confidence_score,
+                    generation_source="AI",
+                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
+                    review_status=review_status
+                ))
+                existing_kpi_names.add(kpi_schema.business_name)
+
+            # Glossary
+            for term_schema in enrichment.glossary_terms:
+                if term_schema.term in existing_glossary_terms:
+                    continue
+                db.add(BusinessGlossary(
+                    tenant_id=tenant_id,
+                    term=term_schema.term,
+                    business_definition=term_schema.business_definition,
+                    semantic_model_id=semantic_model_id,
+                    created_by="ai_generator",
+                    updated_by="ai_generator",
+                    generation_source="AI",
+                    confidence_score=enrichment.confidence_score,
+                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
+                    review_status=review_status
+                ))
+                existing_glossary_terms.add(term_schema.term)
+
+            # Relationships
+            for rel_schema in enrichment.relationships:
+                local_col = col_map.get(rel_schema.from_column_name.lower())
+                target_table = table_map.get(rel_schema.to_table_name.lower())
+                if not local_col or not target_table:
+                    continue
+
+                target_cols = col_map_by_table.get(target_table.id, {})
+                target_col = target_cols.get(rel_schema.to_column_name.lower())
+                if not target_col or (local_col.id, target_col.id) in existing_join_pairs:
+                    continue
+
+                db.add(SemanticJoin(
+                    tenant_id=tenant_id,
+                    semantic_model_id=semantic_model_id,
+                    left_table_id=table.id,
+                    left_column_id=local_col.id,
+                    right_table_id=target_table.id,
+                    right_column_id=target_col.id,
+                    join_type="LEFT",
+                    join_condition=f"{{{{ {table.table_name}.{local_col.column_name} }}}} = {{{{ {target_table.table_name}.{target_col.column_name} }}}}",
+                    cardinality=rel_schema.cardinality,
+                    created_by="ai_generator",
+                    updated_by="ai_generator",
+                    generation_source="AI",
+                    confidence=enrichment.confidence_score,
+                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
+                    review_status=review_status
+                ))
+                existing_join_pairs.add((local_col.id, target_col.id))
+
+        # Single atomic commit for all tables
+        db.commit()
+
     @classmethod
     def enrich_table(cls, db: Session, table_id: uuid.UUID, tenant_id: uuid.UUID, semantic_model_id: uuid.UUID | None = None):
         logger.info("starting_table_enrichment", table_id=str(table_id))
@@ -45,157 +268,8 @@ class SemanticEnrichmentService:
 
     @classmethod
     def _persist_table_enrichment(cls, db: Session, table: TableMeta, tenant_id: uuid.UUID, semantic_model_id: uuid.UUID | None, enrichment: AITableEnrichmentSchema):
-        columns = db.query(ColumnMeta).filter(ColumnMeta.table_id == table.id).all()
-        col_map = {col.column_name.lower(): col for col in columns}
-        tables = db.query(TableMeta).filter(TableMeta.source_id == table.source_id).all()
-        table_map = {t.table_name.lower(): t for t in tables}
-        
-        review_status = "ACTIVE" if enrichment.confidence_score >= 0.8 else "REVIEW_REQUIRED"
-        
-        if enrichment.business_description and not table.description:
-            table.description = enrichment.business_description
-        
-        # Dimensions
-        for dim_schema in enrichment.dimensions:
-            col = col_map.get(dim_schema.source_column_name.lower())
-            if not col:
-                continue
-            
-            exists = db.query(SemanticDimension).filter(
-                SemanticDimension.source_column_id == col.id,
-                SemanticDimension.semantic_model_id == semantic_model_id
-            ).first()
-            if not exists:
-                db.add(SemanticDimension(
-                    tenant_id=tenant_id,
-                    semantic_model_id=semantic_model_id,
-                    business_name=dim_schema.business_name,
-                    description=dim_schema.description,
-                    source_table_id=table.id,
-                    source_column_id=col.id,
-                    data_type=col.data_type,
-                    is_time_dimension=dim_schema.is_time_dimension,
-                    time_granularity=dim_schema.time_granularity,
-                    created_by="ai_generator",
-                    updated_by="ai_generator",
-                    generation_source="AI",
-                    confidence_score=enrichment.confidence_score,
-                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
-                    review_status=review_status
-                ))
+        cls._persist_bulk_table_enrichments(db, tenant_id, semantic_model_id, [(table, enrichment)])
 
-        # Measures
-        for measure_schema in enrichment.measures:
-            col = col_map.get(measure_schema.source_column_name.lower())
-            if not col:
-                continue
-                
-            exists = db.query(SemanticMetric).filter(
-                SemanticMetric.source_column_id == col.id,
-                SemanticMetric.is_calculated == False,
-                SemanticMetric.semantic_model_id == semantic_model_id
-            ).first()
-            if not exists:
-                db.add(SemanticMetric(
-                    tenant_id=tenant_id,
-                    name=measure_schema.business_name,
-                    description=measure_schema.description,
-                    semantic_model_id=semantic_model_id,
-                    is_calculated=False,
-                    aggregation_type=measure_schema.aggregation_type.upper(),
-                    expression=f"{{{{ {measure_schema.source_column_name} }}}}",
-                    source_table_id=table.id,
-                    source_column_id=col.id,
-                    created_by="ai_generator",
-                    updated_by="ai_generator",
-                    generation_source="AI",
-                    confidence_score=enrichment.confidence_score,
-                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
-                    review_status=review_status
-                ))
-                
-        # KPIs
-        for kpi_schema in enrichment.kpis:
-            exists = db.query(SemanticKPI).filter(
-                SemanticKPI.name == kpi_schema.business_name,
-                SemanticKPI.semantic_model_id == semantic_model_id
-            ).first()
-            if not exists:
-                db.add(SemanticKPI(
-                    semantic_model_id=semantic_model_id,
-                    name=kpi_schema.business_name,
-                    description=kpi_schema.description,
-                    formula=kpi_schema.expression,
-                    dimensions=[],
-                    measures=[],
-                    confidence=enrichment.confidence_score,
-                    confidence_score=enrichment.confidence_score,
-                    generation_source="AI",
-                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
-                    review_status=review_status
-                ))
-                
-        # Glossary
-        for term_schema in enrichment.glossary_terms:
-            exists = db.query(BusinessGlossary).filter(
-                BusinessGlossary.term == term_schema.term,
-                BusinessGlossary.semantic_model_id == semantic_model_id
-            ).first()
-            if not exists:
-                db.add(BusinessGlossary(
-                    tenant_id=tenant_id,
-                    term=term_schema.term,
-                    business_definition=term_schema.business_definition,
-                    semantic_model_id=semantic_model_id,
-                    created_by="ai_generator",
-                    updated_by="ai_generator",
-                    generation_source="AI",
-                    confidence_score=enrichment.confidence_score,
-                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
-                    review_status=review_status
-                ))
-
-        # Relationships
-        for rel_schema in enrichment.relationships:
-            local_col = col_map.get(rel_schema.from_column_name.lower())
-            target_table = table_map.get(rel_schema.to_table_name.lower())
-            if not local_col or not target_table:
-                continue
-                
-            # fetch columns for target table
-            target_cols = db.query(ColumnMeta).filter(ColumnMeta.table_id == target_table.id).all()
-            target_col_map = {c.column_name.lower(): c for c in target_cols}
-            target_col = target_col_map.get(rel_schema.to_column_name.lower())
-            
-            if not target_col:
-                continue
-                
-            exists = db.query(SemanticJoin).filter(
-                SemanticJoin.left_column_id == local_col.id,
-                SemanticJoin.right_column_id == target_col.id,
-                SemanticJoin.semantic_model_id == semantic_model_id
-            ).first()
-            
-            if not exists:
-                db.add(SemanticJoin(
-                    tenant_id=tenant_id,
-                    semantic_model_id=semantic_model_id,
-                    left_table_id=table.id,
-                    left_column_id=local_col.id,
-                    right_table_id=target_table.id,
-                    right_column_id=target_col.id,
-                    join_type="LEFT",
-                    join_condition=f"{{{{ {table.table_name}.{local_col.column_name} }}}} = {{{{ {target_table.table_name}.{target_col.column_name} }}}}",
-                    relationship_type=rel_schema.cardinality,
-                    created_by="ai_generator",
-                    updated_by="ai_generator",
-                    generation_source="AI",
-                    confidence=enrichment.confidence_score,
-                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
-                    review_status=review_status
-                ))
-
-        db.commit()
 
     @classmethod
     def enrich_global(cls, db: Session, source_id: uuid.UUID, semantic_model_id: uuid.UUID):
@@ -258,12 +332,11 @@ class SemanticEnrichmentService:
                 description=dash.description,
                 business_goal=dash.business_goal,
                 structure={"widgets": [w.model_dump() for w in dash.widgets]},
-                confidence=enrichment.confidence_score,
-                confidence_score=enrichment.confidence_score,
-                generation_source="AI",
-                prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
-                review_status=review_status
+                confidence=enrichment.confidence_score
             )
+            if review_status == "approved":
+                d_obj.reviewed = True
+                d_obj.approved = True
             db.add(d_obj)
             dashboard_objs.append((dash, d_obj))
             
@@ -271,47 +344,47 @@ class SemanticEnrichmentService:
         
         for dash_schema, d_obj in dashboard_objs:
             for widget in dash_schema.widgets:
-                db.add(ChartRecommendation(
+                chart = ChartRecommendation(
                     semantic_model_id=semantic_model_id,
                     dashboard_id=d_obj.id,
                     kpi_name=widget.kpi_name,
                     insight_type="STANDARD",
                     chart_type=widget.chart_type,
                     applicability="GLOBAL",
-                    confidence=enrichment.confidence_score,
-                    confidence_score=enrichment.confidence_score,
-                    generation_source="AI",
-                    prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
-                    review_status=review_status
-                ))
+                    confidence=enrichment.confidence_score
+                )
+                if review_status == "approved":
+                    chart.reviewed = True
+                    chart.approved = True
+                db.add(chart)
             
         # Questions
         for q in enrichment.questions:
-            db.add(SuggestedQuestion(
+            sq = SuggestedQuestion(
                 semantic_model_id=semantic_model_id,
                 entity_name=q.entity_name,
                 question=q.question,
                 filter_logic=q.filter_logic,
-                confidence=enrichment.confidence_score,
-                confidence_score=enrichment.confidence_score,
-                generation_source="AI",
-                prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
-                review_status=review_status
-            ))
+                confidence=enrichment.confidence_score
+            )
+            if review_status == "approved":
+                sq.reviewed = True
+                sq.approved = True
+            db.add(sq)
             
         # AI Context
-        db.add(AIContext(
+        ai = AIContext(
             semantic_model_id=semantic_model_id,
             purpose=enrichment.ai_context.purpose,
             default_filters=enrichment.ai_context.default_filters,
             time_intelligence=enrichment.ai_context.time_intelligence,
             chart_preferences=enrichment.ai_context.chart_preferences,
             context_payload=enrichment.model_dump(exclude={"ontology", "kpis", "dashboards", "questions"}),
-            confidence=enrichment.confidence_score,
-            confidence_score=enrichment.confidence_score,
-            generation_source="AI",
-            prompt_version=SemanticPromptBuilder.PROMPT_VERSION,
-            review_status=review_status
-        ))
+            confidence=enrichment.confidence_score
+        )
+        if review_status == "approved":
+            ai.reviewed = True
+            ai.approved = True
+        db.add(ai)
         
         db.commit()

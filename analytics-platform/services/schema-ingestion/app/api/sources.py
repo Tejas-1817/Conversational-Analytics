@@ -169,6 +169,13 @@ def delete_source(
         request=request,
     )
 
+    # Clean up related entities
+    from app.models import IngestionJob, SemanticModel, MetadataVersion
+    session.query(IngestionJob).filter(IngestionJob.source_id == source.id).delete(synchronize_session=False)
+    session.query(SemanticModel).filter(SemanticModel.source_id == source.id).delete(synchronize_session=False)
+    session.query(MetadataVersion).filter(MetadataVersion.source_id == source.id).delete(synchronize_session=False)
+
     session.delete(source)
     session.commit()
     log.info("source_deleted", source_id=str(source_id), actor=current_user.email)
+

@@ -52,7 +52,7 @@ class OllamaProvider(ProviderInterface):
             "model": self.model_name,
             "prompt": full_prompt,
             "stream": False,
-            "format": "json",  # Native Ollama JSON mode
+            "format": schema.model_json_schema(),  # Native structured outputs
             "options": {"temperature": 0.0}
         }
         

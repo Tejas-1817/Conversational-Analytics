@@ -66,15 +66,26 @@ class AIOrchestrator:
             pass # Fallback if redis is down
         
         try:
-            # Execute provider call
-            raw_response = self.provider.generate_structured_json(prompt, schema)
+            # Self-correction loop
+            max_attempts = 3
+            last_exception = None
+            current_prompt = prompt
+            raw_response = ""
             
-            # Validate JSON against Pydantic schema
-            try:
-                parsed_result = schema.model_validate_json(raw_response)
-            except Exception as e:
-                print(f"FAILED TO VALIDATE JSON:\n{repr(raw_response)}")
-                raise e
+            for attempt in range(max_attempts):
+                try:
+                    # Execute provider call
+                    raw_response = self.provider.generate_structured_json(current_prompt, schema)
+                    parsed_result = schema.model_validate_json(raw_response)
+                    break  # Success!
+                except Exception as e:
+                    last_exception = e
+                    if attempt < max_attempts - 1:
+                        logger.warning("ai.generation.validation_retry", attempt=attempt+1, schema=schema_name, error=str(e))
+                        current_prompt = f"{prompt}\n\nIMPORTANT PREVIOUS ATTEMPT FAILED:\nYou generated this invalid JSON:\n{raw_response}\n\nValidation Error:\n{str(e)}\n\nPlease precisely fix the JSON to match the schema requirements. Only output valid JSON."
+                    else:
+                        print(f"FAILED TO VALIDATE JSON AFTER {max_attempts} ATTEMPTS:\n{repr(raw_response)}")
+                        raise last_exception
             
             # Set cache
             try:

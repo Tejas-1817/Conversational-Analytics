@@ -48,6 +48,26 @@ class LogicalQueryPlan(BaseModel):
     confidence_score: float = Field(default=1.0)
     reasoning: str | None = None
 
+class PlannerLLMFilter(BaseModel):
+    column_name: str
+    operator: str
+    value: Any
+
+class PlannerLLMOutput(BaseModel):
+    intent: str
+    kpi_names: list[str] = Field(default_factory=list)
+    metric_names: list[str] = Field(default_factory=list)
+    dimension_names: list[str] = Field(default_factory=list)
+    filters: list[PlannerLLMFilter] = Field(default_factory=list)
+    time_granularity: str | None = None
+    time_intelligence: str | None = None
+    sort_column_name: str | None = None
+    sort_direction: Literal["ASC", "DESC"] | None = None
+    limit: int | None = None
+    chart_recommendation: str | None = None
+    confidence_score: float = Field(default=1.0)
+    reasoning: str | None = None
+
 # --- API Request/Response Models ---
 
 class ChatRequest(BaseModel):
