@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # JWT Auth settings
     jwt_secret: str = "super-secret-change-in-production"
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 15
+    access_token_expire_minutes: int = 1440
     refresh_token_expire_minutes: int = 1440  # 24 hours
 
     # LLM Settings

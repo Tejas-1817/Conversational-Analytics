@@ -25,7 +25,7 @@ class OllamaProvider(ProviderInterface):
             "model": self.model_name,
             "prompt": prompt,
             "stream": False,
-            "options": {"temperature": 0.0}
+            "options": {"temperature": 0.5}
         }
         
         response = requests.post(
@@ -52,7 +52,7 @@ class OllamaProvider(ProviderInterface):
             "model": self.model_name,
             "prompt": full_prompt,
             "stream": False,
-            "format": schema.model_json_schema(),  # Native structured outputs
+            "format": "json",  # Native structured outputs fallback for older Ollama versions
             "options": {"temperature": 0.0}
         }
         

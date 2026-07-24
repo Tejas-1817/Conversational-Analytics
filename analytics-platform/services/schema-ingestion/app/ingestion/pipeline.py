@@ -48,6 +48,10 @@ def run_pipeline(job_id: str, source_id: str) -> None:
             engine = build_engine(source)
             stats: dict = {}
 
+            has_warnings = False
+            all_warnings = []
+            final_summary = {}
+
             for stage_name, runner in (
                 ("introspect", lambda: run_introspection(session, source, engine)),
                 ("profile", lambda: run_profiling(session, source, engine)),
@@ -58,14 +62,36 @@ def run_pipeline(job_id: str, source_id: str) -> None:
                 job.stage = stage_name
                 session.commit()
                 log.info("stage_started", stage=stage_name, source=source.name)
-                stats[stage_name] = runner()
-                job.stats = dict(stats)
+                
+                stage_result = runner()
+                if stage_result.get("status") == "succeeded_with_warnings":
+                    has_warnings = True
+                    
+                if "warnings" in stage_result:
+                    all_warnings.extend(stage_result.pop("warnings"))
+                if "summary" in stage_result:
+                    final_summary = stage_result.pop("summary")
+                    
+                stats[stage_name] = stage_result
+                
+                # Rebuild stats dict to include warnings and summary at top level
+                current_stats = dict(stats)
+                if all_warnings:
+                    current_stats["warnings"] = all_warnings
+                if final_summary:
+                    current_stats["summary"] = final_summary
+                    
+                job.stats = current_stats
                 session.commit()
                 log.info("stage_finished", stage=stage_name, **stats[stage_name])
 
             source.last_ingested_at = datetime.now(timezone.utc)
-            job.status = "succeeded"
-            version.sync_status = "succeeded"
+            if has_warnings:
+                job.status = "succeeded_with_warnings"
+                version.sync_status = "succeeded_with_warnings"
+            else:
+                job.status = "succeeded"
+                version.sync_status = "succeeded"
         except Exception as exc:
             log.exception("pipeline_failed", source=source.name)
             job.status = "failed"

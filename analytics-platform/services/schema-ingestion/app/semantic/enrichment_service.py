@@ -28,7 +28,7 @@ class SemanticEnrichmentService:
         tables: list[TableMeta],
         tenant_id: uuid.UUID,
         semantic_model_id: uuid.UUID,
-        max_workers: int = 1
+        max_workers: int = 3
     ):
         """
         Executes parallel LLM calls for all tables and persists results in a single batch
@@ -56,21 +56,52 @@ class SemanticEnrichmentService:
                     prompt=p_str,
                     schema=AITableEnrichmentSchema
                 )
-                return tbl, enrichment_res
+                return tbl, enrichment_res, None
             except Exception as e:
+                import datetime
                 logger.error("table_enrichment_llm_failed", table=tbl.table_name, error=str(e))
-                return tbl, None
+                provider_name = getattr(ai_orchestrator.provider, "__class__", type(ai_orchestrator.provider)).__name__ if ai_orchestrator.provider else "unknown"
+                warning = {
+                    "stage": "semantic_generation",
+                    "table": tbl.table_name,
+                    "provider": provider_name,
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                    "recoverable": False,
+                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "attempt": 1
+                }
+                return tbl, None, warning
 
+        warnings = []
+        metrics = {
+            "tables_processed": len(tables),
+            "tables_succeeded": 0,
+            "tables_failed": 0,
+            "llm_requests": len(tables),
+            "llm_successes": 0,
+            "llm_failures": 0
+        }
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_task = [executor.submit(_call_llm, task) for task in tasks]
             for future in concurrent.futures.as_completed(future_to_task):
-                tbl, res = future.result()
+                tbl, res, warning = future.result()
                 if res is not None:
                     enrichment_results.append((tbl, res))
+                    metrics["tables_succeeded"] += 1
+                    metrics["llm_successes"] += 1
+                else:
+                    metrics["tables_failed"] += 1
+                    metrics["llm_failures"] += 1
+                
+                if warning:
+                    warnings.append(warning)
 
         # 3. Bulk Persist all enrichments in a single transaction with pre-fetched lookups
         cls._persist_bulk_table_enrichments(db, tenant_id, semantic_model_id, enrichment_results)
         logger.info("finished_parallel_table_enrichment", count=len(enrichment_results))
+        return metrics, warnings
 
     @classmethod
     def _persist_bulk_table_enrichments(
@@ -278,17 +309,34 @@ class SemanticEnrichmentService:
         context_json = BusinessContextBuilder.build_global_context(db, source_id)
         prompt = SemanticPromptBuilder.build_global_enrichment_prompt(context_json)
         
+        metrics = {"llm_requests": 1, "llm_successes": 0, "llm_failures": 0}
+        warnings = []
+        
         try:
             enrichment: AIGlobalEnrichmentSchema = ai_orchestrator.generate_structured(
                 prompt=prompt,
                 schema=AIGlobalEnrichmentSchema
             )
+            metrics["llm_successes"] = 1
+            cls._persist_global_enrichment(db, semantic_model_id, enrichment)
+            logger.info("finished_global_enrichment", source_id=str(source_id))
         except Exception as e:
+            import datetime
             logger.error("global_enrichment_failed", source_id=str(source_id), error=str(e))
-            return
+            metrics["llm_failures"] = 1
+            provider_name = getattr(ai_orchestrator.provider, "__class__", type(ai_orchestrator.provider)).__name__ if ai_orchestrator.provider else "unknown"
+            warnings.append({
+                "stage": "semantic_generation_global",
+                "table": None,
+                "provider": provider_name,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "recoverable": False,
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "attempt": 1
+            })
             
-        cls._persist_global_enrichment(db, semantic_model_id, enrichment)
-        logger.info("finished_global_enrichment", source_id=str(source_id))
+        return metrics, warnings
 
     @classmethod
     def _persist_global_enrichment(cls, db: Session, semantic_model_id: uuid.UUID, enrichment: AIGlobalEnrichmentSchema):

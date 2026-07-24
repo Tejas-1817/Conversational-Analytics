@@ -56,13 +56,38 @@ def run_semantic_generation(session: Session, source: DataSource, metadata_versi
         SemanticVersionManager.clone_unchanged_entities(session, old_active.id, semantic_model.id, changed_table_ids)
 
     # Stage 3: AI Enrichment (Parallel Table + Global)
+    all_warnings = []
+    summary_metrics = {
+        "tables_processed": len(tables),
+        "tables_succeeded": 0,
+        "tables_failed": 0,
+        "llm_requests": 0,
+        "llm_successes": 0,
+        "llm_failures": 0,
+        "generated_metrics": 0,
+        "generated_dimensions": 0,
+        "generated_entities": 0,
+        "generated_relationships": 0,
+        "warnings_count": 0
+    }
+    
     try:
-        SemanticEnrichmentService.enrich_tables_parallel(session, tables, source.tenant_id, semantic_model.id)
+        tbl_metrics, tbl_warnings = SemanticEnrichmentService.enrich_tables_parallel(session, tables, source.tenant_id, semantic_model.id)
+        if tbl_metrics:
+            for k, v in tbl_metrics.items():
+                if k in summary_metrics:
+                    summary_metrics[k] += v
+        all_warnings.extend(tbl_warnings)
     except Exception as e:
         log.error("table_enrichment_failed", source=source.name, error=str(e))
 
     try:
-        SemanticEnrichmentService.enrich_global(session, source.id, semantic_model.id)
+        glb_metrics, glb_warnings = SemanticEnrichmentService.enrich_global(session, source.id, semantic_model.id)
+        if glb_metrics:
+            summary_metrics["llm_requests"] += glb_metrics.get("llm_requests", 0)
+            summary_metrics["llm_successes"] += glb_metrics.get("llm_successes", 0)
+            summary_metrics["llm_failures"] += glb_metrics.get("llm_failures", 0)
+        all_warnings.extend(glb_warnings)
     except Exception as e:
         log.error("global_enrichment_failed", source=source.name, error=str(e))
 
@@ -77,13 +102,47 @@ def run_semantic_generation(session: Session, source: DataSource, metadata_versi
     # Stage 5: Atomic Promotion
     SemanticVersionManager.promote_version(session, source.id, semantic_model.id)
 
+    # Calculate actual generated objects for metrics
+    from app.models import SemanticMetric, SemanticDimension, BusinessGlossary, SemanticJoin
+    num_metrics = session.query(SemanticMetric).filter_by(semantic_model_id=semantic_model.id).count()
+    num_dims = session.query(SemanticDimension).filter_by(semantic_model_id=semantic_model.id).count()
+    num_glossary = session.query(BusinessGlossary).filter_by(semantic_model_id=semantic_model.id).count()
+    num_joins = session.query(SemanticJoin).filter_by(semantic_model_id=semantic_model.id).count()
+    
+    summary_metrics["generated_metrics"] = num_metrics
+    summary_metrics["generated_dimensions"] = num_dims
+    summary_metrics["generated_entities"] = num_metrics + num_dims + num_glossary
+    summary_metrics["generated_relationships"] = num_joins
+    summary_metrics["warnings_count"] = len(all_warnings)
+    
+    status_msg = "success"
+    if summary_metrics["generated_entities"] == 0:
+        status_msg = "succeeded_with_warnings"
+        import datetime
+        all_warnings.append({
+            "stage": "semantic_generation",
+            "table": None,
+            "provider": "system",
+            "error_type": "AI_GENERATION_FAILED",
+            "message": "No semantic objects were generated because AI generation failed.",
+            "recoverable": False,
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "attempt": 1
+        })
+        summary_metrics["warnings_count"] = len(all_warnings)
+        
     num_cols = sum(len(t.columns) for t in tables)
     log.info(
         "semantic_generation_completed",
         semantic_model_id=str(semantic_model.id),
         tables_count=len(tables),
         columns_count=num_cols,
-        status="ACTIVE"
+        status=status_msg
     )
-    return {"status": "success", "semantic_version": semantic_model.semantic_version}
+    return {
+        "status": status_msg, 
+        "semantic_version": semantic_model.semantic_version,
+        "warnings": all_warnings,
+        "summary": summary_metrics
+    }
 

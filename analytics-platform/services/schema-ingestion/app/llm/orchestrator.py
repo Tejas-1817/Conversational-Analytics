@@ -7,8 +7,28 @@ from typing import TypeVar, Any
 import redis
 import structlog
 from pydantic import BaseModel
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type, retry_if_exception
 from rq.timeouts import JobTimeoutException
+import requests
+from pydantic import ValidationError
+
+def should_retry_llm(exc: BaseException) -> bool:
+    if isinstance(exc, JobTimeoutException):
+        return False
+    if isinstance(exc, ValidationError):
+        return False
+    if isinstance(exc, json.JSONDecodeError):
+        return False
+    if isinstance(exc, requests.exceptions.HTTPError):
+        if exc.response is not None:
+            status_code = exc.response.status_code
+            if status_code == 400:
+                return False
+            if status_code == 429 or status_code >= 500:
+                return True
+    if isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+        return True
+    return False
 
 from .registry import get_llm_provider_from_config
 
@@ -40,7 +60,7 @@ class AIOrchestrator:
     @retry(
         stop=stop_after_attempt(3), 
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_not_exception_type(JobTimeoutException),
+        retry=retry_if_exception(should_retry_llm),
         reraise=True
     )
     def generate_structured(self, prompt: str, schema: type[T]) -> T:
@@ -66,26 +86,9 @@ class AIOrchestrator:
             pass # Fallback if redis is down
         
         try:
-            # Self-correction loop
-            max_attempts = 3
-            last_exception = None
-            current_prompt = prompt
-            raw_response = ""
-            
-            for attempt in range(max_attempts):
-                try:
-                    # Execute provider call
-                    raw_response = self.provider.generate_structured_json(current_prompt, schema)
-                    parsed_result = schema.model_validate_json(raw_response)
-                    break  # Success!
-                except Exception as e:
-                    last_exception = e
-                    if attempt < max_attempts - 1:
-                        logger.warning("ai.generation.validation_retry", attempt=attempt+1, schema=schema_name, error=str(e))
-                        current_prompt = f"{prompt}\n\nIMPORTANT PREVIOUS ATTEMPT FAILED:\nYou generated this invalid JSON:\n{raw_response}\n\nValidation Error:\n{str(e)}\n\nPlease precisely fix the JSON to match the schema requirements. Only output valid JSON."
-                    else:
-                        print(f"FAILED TO VALIDATE JSON AFTER {max_attempts} ATTEMPTS:\n{repr(raw_response)}")
-                        raise last_exception
+            # Execute provider call (no self-correction retry loop)
+            raw_response = self.provider.generate_structured_json(prompt, schema)
+            parsed_result = schema.model_validate_json(raw_response)
             
             # Set cache
             try:
@@ -119,7 +122,7 @@ class AIOrchestrator:
     @retry(
         stop=stop_after_attempt(3), 
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_not_exception_type(JobTimeoutException),
+        retry=retry_if_exception(should_retry_llm),
         reraise=True
     )
     def generate_chat(self, prompt: str) -> str:

@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class DataSourceCreate(BaseModel):
@@ -31,6 +31,29 @@ class DataSourceOut(BaseModel):
     # deliberately no credentials field
 
 
+class JobWarning(BaseModel):
+    stage: str
+    table: str | None = None
+    provider: str | None = None
+    error_type: str
+    message: str
+    recoverable: bool
+    timestamp: str
+    attempt: int = 1
+
+class JobSummary(BaseModel):
+    tables_processed: int = 0
+    tables_succeeded: int = 0
+    tables_failed: int = 0
+    llm_requests: int = 0
+    llm_successes: int = 0
+    llm_failures: int = 0
+    generated_metrics: int = 0
+    generated_dimensions: int = 0
+    generated_entities: int = 0
+    generated_relationships: int = 0
+    warnings_count: int = 0
+
 class JobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -41,6 +64,16 @@ class JobOut(BaseModel):
     finished_at: datetime | None
     stats: dict
     error: str | None
+    
+    @computed_field
+    def warnings(self) -> list[JobWarning]:
+        return self.stats.get("warnings", [])
+        
+    @computed_field
+    def summary(self) -> JobSummary | None:
+        if "summary" in self.stats:
+            return JobSummary(**self.stats["summary"])
+        return None
 
 
 class ColumnOut(BaseModel):
