@@ -30,7 +30,7 @@ export const Login = () => {
       
       if (res.ok) {
         const data = await res.json();
-        await login(data.access_token);
+        await login(data.access_token, data.refresh_token);
         navigate('/');
       } else {
         const data = await res.json();
