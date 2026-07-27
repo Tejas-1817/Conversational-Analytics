@@ -1,18 +1,35 @@
-from typing import TypeVar, Any
+from typing import Any, TypeVar
+
 from pydantic import BaseModel
+
+from app.llm.schema_adapter import ProviderCapabilities, StructuredOutputRequest
+
 from .base import ProviderInterface
 
 T = TypeVar("T", bound=BaseModel)
 
 class MockProvider(ProviderInterface):
     """Deterministic mock provider for CI testing."""
+    capabilities = ProviderCapabilities(
+        supports_json_schema=True,
+        supports_refs=True,
+        supports_defs=True,
+        supports_json_mode=True,
+    )
+    model_name = "mock"
+
     def __init__(self, responses: dict[str, Any] = None):
         self.responses = responses or {"default": {}}
 
     def generate_chat_completion(self, prompt: str) -> str:
         return "Mock chat response"
 
-    def generate_structured_json(self, prompt: str, schema: type[T]) -> str:
+    def generate_structured_json(
+        self,
+        prompt: str,
+        schema: type[T],
+        request: StructuredOutputRequest | None = None,
+    ) -> str:
         # For simple mock, just return a JSON string based on the first response
         import json
         for key, value in self.responses.items():
@@ -25,5 +42,10 @@ class NoOpProvider(ProviderInterface):
     def generate_chat_completion(self, prompt: str) -> str:
         raise RuntimeError("AI is explicitly disabled (llm_provider='none').")
 
-    def generate_structured_json(self, prompt: str, schema: type[T]) -> str:
+    def generate_structured_json(
+        self,
+        prompt: str,
+        schema: type[T],
+        request: StructuredOutputRequest | None = None,
+    ) -> str:
         raise RuntimeError("AI is explicitly disabled (llm_provider='none').")

@@ -1,4 +1,3 @@
-import json
 from typing import TypeVar
 
 import requests
@@ -6,6 +5,7 @@ import structlog
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.llm.schema_adapter import ProviderCapabilities, StructuredOutputRequest, StructuredOutputStrategy
 
 from .base import ProviderInterface
 
@@ -13,10 +13,12 @@ T = TypeVar("T", bound=BaseModel)
 logger = structlog.get_logger(__name__)
 
 class OllamaProvider(ProviderInterface):
-    """
-    Ollama local LLM provider.
-    Ensures 100% data isolation by running completely offline.
-    """
+    """Ollama local provider with constrained JSON Schema compatibility."""
+
+    capabilities = ProviderCapabilities(
+        supports_json_schema=True,
+        supports_json_mode=True,
+    )
 
     def __init__(self):
         settings = get_settings()
@@ -39,23 +41,26 @@ class OllamaProvider(ProviderInterface):
         response.raise_for_status()
         return response.json().get("response", "")
 
-    def generate_structured_json(self, prompt: str, schema: type[T]) -> str:
-        # For local models, we heavily reinforce structured output through prompt engineering
-        # and request JSON formatting explicitly.
-        system_prompt = (
-            "You are an expert, deterministic system that exclusively outputs valid JSON. "
-            "Never output conversational text, markdown formatting blocks like ```json, or explanations. "
-            "Output exactly and only a valid JSON object matching this JSON schema:\n"
-            f"{json.dumps(schema.model_json_schema(), indent=2)}"
-        )
+    def generate_structured_json(
+        self,
+        prompt: str,
+        schema: type[T],
+        request: StructuredOutputRequest | None = None,
+    ) -> str:
+        output_format: dict | str = "json"
+        if request and request.strategy is not StructuredOutputStrategy.JSON_MODE:
+            output_format = request.output_schema or schema.model_json_schema()
 
-        full_prompt = f"{system_prompt}\n\nUSER PROMPT:\n{prompt}"
+        # Fallback to "json" mode if the schema contains complex references ($defs)
+        # because Ollama's strict schema parser often rejects them with 400 Bad Request
+        if isinstance(output_format, dict) and "$defs" in output_format:
+            output_format = "json"
 
         payload = {
             "model": self.model_name,
-            "prompt": full_prompt,
+            "prompt": prompt,
             "stream": False,
-            "format": "json",  # Native structured outputs fallback for older Ollama versions
+            "format": output_format,
             "options": {"temperature": 0.0}
         }
 

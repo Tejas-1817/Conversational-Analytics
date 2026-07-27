@@ -30,9 +30,23 @@ class AISemanticRelationshipSchema(BaseModel):
     to_column_name: str = Field(description="The exact physical column name representing the primary key in the referenced table.")
     cardinality: str = Field(description="The cardinality of the relationship. Expected: 'many_to_one', 'one_to_many', 'one_to_one'.")
 
+class AITableDimensionsSchema(BaseModel):
+    business_description: str = Field(description="A high-level business description of what entities or events this table tracks.")
+    dimensions: List[AIDimensionSchema] = Field(description="A list of proposed dimensions (categorical attributes) found in the table.")
+
+class AITableMeasuresSchema(BaseModel):
+    measures: List[AIMeasureSchema] = Field(description="A list of proposed raw measures (numeric facts) found in the table.")
+    kpis: List[AIKPISchema] = Field(default_factory=list, description="A list of proposed calculated KPIs relevant to this table's data.")
+
+class AITableMetadataSchema(BaseModel):
+    glossary_terms: List[AIGlossaryTermSchema] = Field(default_factory=list, description="A list of domain-specific business terms derived from the table.")
+    relationships: List[AISemanticRelationshipSchema] = Field(default_factory=list, description="A list of relationships (joins) discovered.")
+    confidence_score: float = Field(description="A self-assessed confidence score between 0.0 and 1.0 for these generated semantics.")
+
 class AITableEnrichmentSchema(BaseModel):
     """
     The master schema for enriching a single database table.
+    Now used only internally after merging the 3 separate LLM calls.
     """
     business_description: str = Field(description="A high-level business description of what entities or events this table tracks.")
     dimensions: List[AIDimensionSchema] = Field(description="A list of proposed dimensions (categorical attributes) found in the table.")

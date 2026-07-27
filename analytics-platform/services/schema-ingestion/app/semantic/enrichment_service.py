@@ -39,22 +39,36 @@ class SemanticEnrichmentService:
 
         logger.info("starting_parallel_table_enrichment", count=len(tables), max_workers=max_workers)
 
-        # 1. Build context prompts for all tables up-front
+        # 1. Build context for all tables up-front
         tasks = []
         for t in tables:
             context_json = BusinessContextBuilder.build_table_context(db, t.id)
-            prompt = SemanticPromptBuilder.build_table_enrichment_prompt(context_json)
-            tasks.append((t, prompt))
+            tasks.append((t, context_json))
 
         # 2. Execute LLM structured generations in parallel thread pool
         enrichment_results: list[tuple[TableMeta, AITableEnrichmentSchema]] = []
 
-        def _call_llm(table_and_prompt):
-            tbl, p_str = table_and_prompt
+        def _call_llm(table_and_context):
+            tbl, ctx = table_and_context
             try:
-                enrichment_res: AITableEnrichmentSchema = ai_orchestrator.generate_structured(
-                    prompt=p_str,
-                    schema=AITableEnrichmentSchema
+                p_dim = SemanticPromptBuilder.build_table_enrichment_prompt(ctx, target_type="DIMENSIONS")
+                p_meas = SemanticPromptBuilder.build_table_enrichment_prompt(ctx, target_type="MEASURES")
+                p_meta = SemanticPromptBuilder.build_table_enrichment_prompt(ctx, target_type="METADATA")
+
+                from app.schemas_semantic_ai import AITableDimensionsSchema, AITableMeasuresSchema, AITableMetadataSchema
+                
+                res_dim: AITableDimensionsSchema = ai_orchestrator.generate_structured(prompt=p_dim, schema=AITableDimensionsSchema)
+                res_meas: AITableMeasuresSchema = ai_orchestrator.generate_structured(prompt=p_meas, schema=AITableMeasuresSchema)
+                res_meta: AITableMetadataSchema = ai_orchestrator.generate_structured(prompt=p_meta, schema=AITableMetadataSchema)
+
+                enrichment_res = AITableEnrichmentSchema(
+                    business_description=res_dim.business_description,
+                    dimensions=res_dim.dimensions,
+                    measures=res_meas.measures,
+                    kpis=res_meas.kpis,
+                    glossary_terms=res_meta.glossary_terms,
+                    relationships=res_meta.relationships,
+                    confidence_score=res_meta.confidence_score
                 )
                 return tbl, enrichment_res, None
             except Exception as e:
@@ -283,12 +297,26 @@ class SemanticEnrichmentService:
             return
             
         context_json = BusinessContextBuilder.build_table_context(db, table_id)
-        prompt = SemanticPromptBuilder.build_table_enrichment_prompt(context_json)
         
         try:
-            enrichment: AITableEnrichmentSchema = ai_orchestrator.generate_structured(
-                prompt=prompt,
-                schema=AITableEnrichmentSchema
+            p_dim = SemanticPromptBuilder.build_table_enrichment_prompt(context_json, target_type="DIMENSIONS")
+            p_meas = SemanticPromptBuilder.build_table_enrichment_prompt(context_json, target_type="MEASURES")
+            p_meta = SemanticPromptBuilder.build_table_enrichment_prompt(context_json, target_type="METADATA")
+
+            from app.schemas_semantic_ai import AITableDimensionsSchema, AITableMeasuresSchema, AITableMetadataSchema
+            
+            res_dim: AITableDimensionsSchema = ai_orchestrator.generate_structured(prompt=p_dim, schema=AITableDimensionsSchema)
+            res_meas: AITableMeasuresSchema = ai_orchestrator.generate_structured(prompt=p_meas, schema=AITableMeasuresSchema)
+            res_meta: AITableMetadataSchema = ai_orchestrator.generate_structured(prompt=p_meta, schema=AITableMetadataSchema)
+
+            enrichment = AITableEnrichmentSchema(
+                business_description=res_dim.business_description,
+                dimensions=res_dim.dimensions,
+                measures=res_meas.measures,
+                kpis=res_meas.kpis,
+                glossary_terms=res_meta.glossary_terms,
+                relationships=res_meta.relationships,
+                confidence_score=res_meta.confidence_score
             )
         except Exception as e:
             logger.error("table_enrichment_failed", table_id=str(table_id), error=str(e))

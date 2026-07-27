@@ -5,11 +5,39 @@ class SemanticPromptBuilder:
     PROMPT_VERSION = "v1.0"
 
     @classmethod
-    def build_table_enrichment_prompt(cls, business_context_json: str) -> str:
+    def build_table_enrichment_prompt(cls, business_context_json: str, target_type: str = "ALL") -> str:
         """
         Builds a deterministic prompt asking the LLM to generate semantic layer
-        definitions (Dimensions, Measures, KPIs, Glossary, Relationships) for a table.
+        definitions for a table.
+        target_type can be "DIMENSIONS", "MEASURES", "METADATA", or "ALL".
         """
+        if target_type == "DIMENSIONS":
+            instructions = (
+                "1. Analyze the context and determine the primary business purpose of this table (business_description).\n"
+                "2. Generate Dimensions: Identify categorical columns (e.g., status, type, category).\n"
+            )
+        elif target_type == "MEASURES":
+            instructions = (
+                "1. Generate Measures: Identify raw numeric columns that can be aggregated (e.g., amount, quantity).\n"
+                "2. Generate KPIs (Metrics): Propose derived calculations combining physical columns (e.g., SUM(revenue) - SUM(cost)).\n"
+            )
+        elif target_type == "METADATA":
+            instructions = (
+                "1. Generate Business Glossary Terms: Identify domain-specific terms and provide clear business definitions.\n"
+                "2. Generate Relationships: Map outbound and inbound foreign keys into business-readable semantic relationships.\n"
+                "3. Assess Confidence: Provide a confidence score between 0.0 and 1.0 representing how confident you are in these semantic derivations.\n"
+            )
+        else:
+            instructions = (
+                "1. Analyze the context and determine the primary business purpose of this table.\n"
+                "2. Generate Dimensions: Identify categorical columns (e.g., status, type, category).\n"
+                "3. Generate Measures: Identify raw numeric columns that can be aggregated (e.g., amount, quantity).\n"
+                "4. Generate KPIs (Metrics): Propose derived calculations combining physical columns (e.g., SUM(revenue) - SUM(cost)).\n"
+                "5. Generate Business Glossary Terms: Identify domain-specific terms and provide clear business definitions.\n"
+                "6. Generate Relationships: Map outbound and inbound foreign keys into business-readable semantic relationships.\n"
+                "7. Assess Confidence: Provide a confidence score between 0.0 and 1.0 representing how confident you are in these semantic derivations.\n"
+            )
+
         prompt = f"""
 You are an Enterprise Data Architect and AI Semantic Generator.
 Your objective is to enrich a metadata catalog by generating a logical Business Semantic Layer.
@@ -20,13 +48,7 @@ CONTEXT:
 {business_context_json}
 
 INSTRUCTIONS:
-1. Analyze the context and determine the primary business purpose of this table.
-2. Generate Dimensions: Identify categorical columns (e.g., status, type, category).
-3. Generate Measures: Identify raw numeric columns that can be aggregated (e.g., amount, quantity).
-4. Generate KPIs (Metrics): Propose derived calculations combining physical columns (e.g., SUM(revenue) - SUM(cost)).
-5. Generate Business Glossary Terms: Identify domain-specific terms and provide clear business definitions.
-6. Generate Relationships: Map outbound and inbound foreign keys into business-readable semantic relationships.
-7. Assess Confidence: Provide a confidence score between 0.0 and 1.0 representing how confident you are in these semantic derivations.
+{instructions}
 
 CRITICAL RULES:
 - DO NOT invent, hallucinate, or assume any physical table names or column names that are not present in the CONTEXT.

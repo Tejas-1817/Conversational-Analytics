@@ -1,16 +1,24 @@
-import json
 from typing import TypeVar
-from pydantic import BaseModel
 
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
 
 from app.config import get_settings
+from app.llm.schema_adapter import ProviderCapabilities, StructuredOutputRequest, StructuredOutputStrategy
+
 from .base import ProviderInterface
 
 T = TypeVar("T", bound=BaseModel)
 
 class GeminiProvider(ProviderInterface):
+    capabilities = ProviderCapabilities(
+        supports_json_schema=True,
+        supports_refs=True,
+        supports_defs=True,
+        supports_json_mode=True,
+    )
+
     def __init__(self):
         settings = get_settings()
         if not settings.gemini_api_key:
@@ -25,13 +33,18 @@ class GeminiProvider(ProviderInterface):
         )
         return response.text
 
-    def generate_structured_json(self, prompt: str, schema: type[T]) -> str:
+    def generate_structured_json(
+        self,
+        prompt: str,
+        schema: type[T],
+        request: StructuredOutputRequest | None = None,
+    ) -> str:
+        config = {"response_mime_type": "application/json"}
+        if request is None or request.strategy is not StructuredOutputStrategy.JSON_MODE:
+            config["response_schema"] = request.output_schema if request else schema.model_json_schema()
         response = self.client.models.generate_content(
             model=self.model_name,
             contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=schema,
-            ),
+            config=types.GenerateContentConfig(**config),
         )
         return response.text

@@ -170,10 +170,31 @@ def delete_source(
     )
 
     # Clean up related entities
-    from app.models import IngestionJob, SemanticModel, MetadataVersion
+    from app.models import (
+        IngestionJob, SemanticModel, MetadataVersion,
+        SemanticDimension, SemanticMetric, SemanticKPI,
+        BusinessGlossary, SemanticJoin
+    )
+
+    # Delete ingestion jobs and metadata versions
     session.query(IngestionJob).filter(IngestionJob.source_id == source.id).delete(synchronize_session=False)
-    session.query(SemanticModel).filter(SemanticModel.source_id == source.id).delete(synchronize_session=False)
     session.query(MetadataVersion).filter(MetadataVersion.source_id == source.id).delete(synchronize_session=False)
+
+    # Get semantic model IDs for this source
+    semantic_model_ids = [
+        sm.id for sm in session.query(SemanticModel).filter(SemanticModel.source_id == source.id).all()
+    ]
+
+    # Clean up all child entities of those semantic models
+    if semantic_model_ids:
+        session.query(SemanticDimension).filter(SemanticDimension.semantic_model_id.in_(semantic_model_ids)).delete(synchronize_session=False)
+        session.query(SemanticMetric).filter(SemanticMetric.semantic_model_id.in_(semantic_model_ids)).delete(synchronize_session=False)
+        session.query(SemanticKPI).filter(SemanticKPI.semantic_model_id.in_(semantic_model_ids)).delete(synchronize_session=False)
+        session.query(BusinessGlossary).filter(BusinessGlossary.semantic_model_id.in_(semantic_model_ids)).delete(synchronize_session=False)
+        session.query(SemanticJoin).filter(SemanticJoin.semantic_model_id.in_(semantic_model_ids)).delete(synchronize_session=False)
+        
+        # Finally delete the semantic models
+        session.query(SemanticModel).filter(SemanticModel.source_id == source.id).delete(synchronize_session=False)
 
     session.delete(source)
     session.commit()
