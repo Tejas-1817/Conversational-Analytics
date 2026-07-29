@@ -44,10 +44,10 @@ export const DataSources = () => {
 
   return (
     <div onClick={() => setOpenMenuId(null)}>
-      <ConnectionModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onSuccess={loadSources} 
+      <ConnectionModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={loadSources}
       />
       <div className="flex justify-between items-center mb-4">
         <div>
@@ -60,7 +60,7 @@ export const DataSources = () => {
         </div>
         <button onClick={() => setIsModalOpen(true)}><Plus size={18} /> Connect Data Source</button>
       </div>
-      
+
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
           <table>
@@ -125,9 +125,9 @@ export const DataSources = () => {
                           <Play size={16} />
                         </button>
                         <div className="relative">
-                          <button 
-                            className="btn-ghost" 
-                            title="More Options" 
+                          <button
+                            className="btn-ghost"
+                            title="More Options"
                             style={{ padding: '0.5rem' }}
                             onClick={(e) => {
                               e.stopPropagation();

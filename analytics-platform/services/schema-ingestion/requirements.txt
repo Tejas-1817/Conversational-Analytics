@@ -25,3 +25,4 @@ httpx>=0.27.0               # async HTTP for OIDC token exchange
 # Phase 2 — Embedding pipeline (fully local / offline)
 sentence-transformers>=3.0  # on-device embedding model (no cloud API)
 chromadb>=0.5               # local persistent vector store
+psutil>=5.9.0               # performance telemetry and tracking

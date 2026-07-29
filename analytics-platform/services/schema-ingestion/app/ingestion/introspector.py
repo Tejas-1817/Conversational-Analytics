@@ -161,6 +161,15 @@ def _record_declared_fks(session: Session, inspector, source: DataSource, stats:
         for t in session.query(TableMeta).filter_by(source_id=source.id, is_active=True)
         for c in t.columns
     }
+    
+    existing_rels = {
+        (r.from_column_id, r.to_column_id)
+        for r in session.query(Relationship.from_column_id, Relationship.to_column_id)
+        .join(ColumnMeta, Relationship.from_column_id == ColumnMeta.id)
+        .join(TableMeta, ColumnMeta.table_id == TableMeta.id)
+        .filter(TableMeta.source_id == source.id).all()
+    }
+    
     for table in session.query(TableMeta).filter_by(source_id=source.id, is_active=True):
         for fk in inspector.get_foreign_keys(table.table_name, schema=table.schema_name):
             ref_schema = fk.get("referred_schema") or table.schema_name
@@ -170,9 +179,8 @@ def _record_declared_fks(session: Session, inspector, source: DataSource, stats:
                 if from_col is None or to_col is None:
                     log.warning("fk_endpoint_missing", table=table.table_name, fk=fk.get("name"))
                     continue
-                exists = session.query(Relationship).filter_by(
-                    from_column_id=from_col.id, to_column_id=to_col.id).one_or_none()
-                if exists is None:
+                    
+                if (from_col.id, to_col.id) not in existing_rels:
                     session.add(Relationship(
                         from_column_id=from_col.id, to_column_id=to_col.id,
                         cardinality="many_to_one", source="declared_fk", confidence=1.0,

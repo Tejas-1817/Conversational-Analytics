@@ -48,7 +48,7 @@ time_grain = ENUM("YEAR", "QUARTER", "MONTH", "WEEK", "DAY", "HOUR", "NONE",
                   name="time_grain", create_type=False)
 col_security_action = ENUM("deny", "mask", "hash", "partial_mask",
                            name="col_security_action", create_type=False)
-generation_status_enum = ENUM("GENERATING", "ACTIVE", "REVIEW_REQUIRED", "REJECTED",
+generation_status_enum = ENUM("GENERATING", "ACTIVE", "REVIEW_REQUIRED", "REJECTED", "DRAFT", "VALIDATED", "ARCHIVED",
                               name="generation_status", create_type=False)
 generation_source_enum = ENUM("MANUAL", "AI",
                               name="generation_source", create_type=False)
@@ -231,6 +231,21 @@ class SemanticJoin(Base):
     generation_source: Mapped[str] = mapped_column(generation_source_enum, nullable=False, server_default="MANUAL")
     prompt_version: Mapped[str | None] = mapped_column(Text)
     review_status: Mapped[str] = mapped_column(generation_status_enum, nullable=False, server_default="ACTIVE")
+
+
+class SemanticFeedback(Base):
+    __tablename__ = "semantic_feedback"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    semantic_model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("semantic_models.id", ondelete="CASCADE"), nullable=False)
+    object_type: Mapped[str] = mapped_column(Text, nullable=False)  # 'metric', 'dimension', etc.
+    object_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    old_state: Mapped[dict | None] = mapped_column(JSONB)
+    new_state: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
 
 
 class MetricAllowedDimension(Base):

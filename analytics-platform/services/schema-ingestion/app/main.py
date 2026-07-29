@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api import api_keys, auth, dashboards, engine, eval, jobs, metadata, oidc, semantic, sources, tenants, users
+from app.api import api_keys, auth, dashboards, engine, eval, jobs, metadata, oidc, semantic, sources, tenants, users, semantic_review_router
 from app.config import get_settings
 from app.db import get_engine, session_scope
 from app.models import User
@@ -170,6 +170,7 @@ app.include_router(sources.router)
 app.include_router(jobs.router)
 app.include_router(metadata.router)
 app.include_router(semantic.router)
+app.include_router(semantic_review_router.router)
 app.include_router(engine.router)
 app.include_router(dashboards.router)
 app.include_router(users.router)

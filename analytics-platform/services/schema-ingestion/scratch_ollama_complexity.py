@@ -9,7 +9,7 @@ sys.path.insert(0, r"c:\Users\Admin\Downloads\Analytics Tool\Analytics Tool\anal
 from app.schemas_semantic_ai import AITableEnrichmentSchema
 
 load_dotenv()
-model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+model_name = os.getenv("OLLAMA_MODEL", "deepseek-r1:14b")
 base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 print(f"Testing model: {model_name}")

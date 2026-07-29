@@ -19,7 +19,8 @@ class MetricFormulaParser:
         ast.unaryop,
         ast.Name,
         ast.Load,
-        ast.Constant
+        ast.Constant,
+        ast.Call
     )
 
     @classmethod

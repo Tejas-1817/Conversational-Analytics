@@ -75,7 +75,7 @@ def _get_oidc_client(settings):
 
 
 @router.get("/login")
-async def oidc_login(request: Request):
+def oidc_login(request: Request):
     """
     Initiate OIDC login flow.
     Redirects the user to the configured identity provider.
@@ -120,7 +120,7 @@ class OIDCCallbackResponse(BaseModel):
 
 
 @router.get("/callback", response_model=OIDCCallbackResponse)
-async def oidc_callback(
+def oidc_callback(
     code: str,
     state: str,
     request: Request,
@@ -151,8 +151,8 @@ async def oidc_callback(
         elif "okta.com" in issuer:
             token_endpoint = f"{issuer}/v1/token"
 
-        async with httpx.AsyncClient() as client:
-            token_response = await client.post(
+        with httpx.Client() as client:
+            token_response = client.post(
                 token_endpoint,
                 data={
                     "grant_type": "authorization_code",

@@ -20,6 +20,8 @@ from app.engine.validation_service import ValidationService
 from app.models import Conversation, ConversationMessage, User, ApprovedSQLExample, UserFeedback
 from app.schemas_engine import ChatMessageOut, ChatRequest, ConversationOut, ApprovedExampleCreate, ApprovedExampleOut, UserFeedbackCreate, UserFeedbackOut
 from app.audit import audit
+from app.engine.query_intelligence_service import QueryIntelligenceService
+from app.schemas_engine import QueryIntelligenceRequest
 
 from rq import Queue
 from redis import Redis
@@ -227,3 +229,9 @@ def approve_example(
     db.commit()
     
     return example
+
+@router.post("/{tenant_id}/intelligence/query")
+def query_intelligence(tenant_id: uuid.UUID, req: QueryIntelligenceRequest, db: Session = Depends(get_session)):
+    """Intelligently converts natural language to SQL and executes it via the semantic layer context."""
+    return QueryIntelligenceService.answer_question(db, tenant_id, req.question)
+

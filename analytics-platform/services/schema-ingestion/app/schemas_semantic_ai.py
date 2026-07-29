@@ -40,7 +40,6 @@ class AITableMeasuresSchema(BaseModel):
 
 class AITableMetadataSchema(BaseModel):
     glossary_terms: List[AIGlossaryTermSchema] = Field(default_factory=list, description="A list of domain-specific business terms derived from the table.")
-    relationships: List[AISemanticRelationshipSchema] = Field(default_factory=list, description="A list of relationships (joins) discovered.")
     confidence_score: float = Field(description="A self-assessed confidence score between 0.0 and 1.0 for these generated semantics.")
 
 class AITableEnrichmentSchema(BaseModel):
@@ -53,7 +52,6 @@ class AITableEnrichmentSchema(BaseModel):
     measures: List[AIMeasureSchema] = Field(description="A list of proposed raw measures (numeric facts) found in the table.")
     kpis: List[AIKPISchema] = Field(default_factory=list, description="A list of proposed calculated KPIs relevant to this table's data.")
     glossary_terms: List[AIGlossaryTermSchema] = Field(default_factory=list, description="A list of domain-specific business terms derived from the table.")
-    relationships: List[AISemanticRelationshipSchema] = Field(default_factory=list, description="A list of relationships (joins) discovered.")
     confidence_score: float = Field(description="A self-assessed confidence score between 0.0 and 1.0 for these generated semantics.")
 
 class AIOntologyDomainSchema(BaseModel):

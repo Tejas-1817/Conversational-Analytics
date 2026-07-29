@@ -19,23 +19,21 @@ class SemanticPromptBuilder:
         elif target_type == "MEASURES":
             instructions = (
                 "1. Generate Measures: Identify raw numeric columns that can be aggregated (e.g., amount, quantity).\n"
-                "2. Generate KPIs (Metrics): Propose derived calculations combining physical columns (e.g., SUM(revenue) - SUM(cost)).\n"
+                "2. Generate KPIs (Metrics): Propose derived calculations. KPI formulas MUST be restricted to standard aggregations (SUM, AVG, COUNT, MIN, MAX) over physical columns, connected by basic arithmetic operators (+, -, *, /). Example: SUM(revenue) - SUM(cost). Do not use advanced SQL functions or nested logic.\n"
             )
         elif target_type == "METADATA":
             instructions = (
                 "1. Generate Business Glossary Terms: Identify domain-specific terms and provide clear business definitions.\n"
-                "2. Generate Relationships: Map outbound and inbound foreign keys into business-readable semantic relationships.\n"
-                "3. Assess Confidence: Provide a confidence score between 0.0 and 1.0 representing how confident you are in these semantic derivations.\n"
+                "2. Assess Confidence: Provide a confidence score between 0.0 and 1.0 representing how confident you are in these semantic derivations.\n"
             )
         else:
             instructions = (
                 "1. Analyze the context and determine the primary business purpose of this table.\n"
                 "2. Generate Dimensions: Identify categorical columns (e.g., status, type, category).\n"
                 "3. Generate Measures: Identify raw numeric columns that can be aggregated (e.g., amount, quantity).\n"
-                "4. Generate KPIs (Metrics): Propose derived calculations combining physical columns (e.g., SUM(revenue) - SUM(cost)).\n"
+                "4. Generate KPIs (Metrics): Propose derived calculations. KPI formulas MUST be restricted to standard aggregations (SUM, AVG, COUNT, MIN, MAX) over physical columns, connected by basic arithmetic operators (+, -, *, /). Example: SUM(revenue) - SUM(cost). Do not use advanced SQL functions or nested logic.\n"
                 "5. Generate Business Glossary Terms: Identify domain-specific terms and provide clear business definitions.\n"
-                "6. Generate Relationships: Map outbound and inbound foreign keys into business-readable semantic relationships.\n"
-                "7. Assess Confidence: Provide a confidence score between 0.0 and 1.0 representing how confident you are in these semantic derivations.\n"
+                "6. Assess Confidence: Provide a confidence score between 0.0 and 1.0 representing how confident you are in these semantic derivations.\n"
             )
 
         prompt = f"""

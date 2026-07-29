@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Performance Benchmark Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f8f9fa; }
+        .chart-container { width: 800px; height: 400px; background: white; padding: 20px; margin-bottom: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Performance Benchmark Trends</h1>
+
+    <h2>ingestion_pipeline</h2>
+    <div class="chart-container">
+        <canvas id="chart_0"></canvas>
+    </div>
+    <script>
+    new Chart(document.getElementById('chart_0'), {
+        type: 'line',
+        data: {
+            labels: ["2026-07-29 06:13"],
+            datasets: [
+                { label: 'Latency (ms)', data: ["4849.86"], borderColor: 'rgb(255, 99, 132)', yAxisID: 'y' },
+                { label: 'Memory (MB)', data: ["2.97"], borderColor: 'rgb(54, 162, 235)', yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Latency (ms)' } },
+                y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Memory (MB)' }, grid: { drawOnChartArea: false } },
+            }
+        }
+    });
+    </script>
+
+    <h2>concurrent_ingestion_5_workers</h2>
+    <div class="chart-container">
+        <canvas id="chart_1"></canvas>
+    </div>
+    <script>
+    new Chart(document.getElementById('chart_1'), {
+        type: 'line',
+        data: {
+            labels: ["2026-07-29 06:13"],
+            datasets: [
+                { label: 'Latency (ms)', data: ["10307.67"], borderColor: 'rgb(255, 99, 132)', yAxisID: 'y' },
+                { label: 'Memory (MB)', data: ["4.28"], borderColor: 'rgb(54, 162, 235)', yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Latency (ms)' } },
+                y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Memory (MB)' }, grid: { drawOnChartArea: false } },
+            }
+        }
+    });
+    </script>
+
+    <h2>semantic_generation_pipeline</h2>
+    <div class="chart-container">
+        <canvas id="chart_2"></canvas>
+    </div>
+    <script>
+    new Chart(document.getElementById('chart_2'), {
+        type: 'line',
+        data: {
+            labels: ["2026-07-29 06:13"],
+            datasets: [
+                { label: 'Latency (ms)', data: ["4187.47"], borderColor: 'rgb(255, 99, 132)', yAxisID: 'y' },
+                { label: 'Memory (MB)', data: ["2.73"], borderColor: 'rgb(54, 162, 235)', yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Latency (ms)' } },
+                y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Memory (MB)' }, grid: { drawOnChartArea: false } },
+            }
+        }
+    });
+    </script>
+
+    <h2>embedding_generation</h2>
+    <div class="chart-container">
+        <canvas id="chart_3"></canvas>
+    </div>
+    <script>
+    new Chart(document.getElementById('chart_3'), {
+        type: 'line',
+        data: {
+            labels: ["2026-07-29 06:15"],
+            datasets: [
+                { label: 'Latency (ms)', data: ["89479.38"], borderColor: 'rgb(255, 99, 132)', yAxisID: 'y' },
+                { label: 'Memory (MB)', data: ["195.86"], borderColor: 'rgb(54, 162, 235)', yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Latency (ms)' } },
+                y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Memory (MB)' }, grid: { drawOnChartArea: false } },
+            }
+        }
+    });
+    </script>
+
+    <h2>query_intelligence_latency</h2>
+    <div class="chart-container">
+        <canvas id="chart_4"></canvas>
+    </div>
+    <script>
+    new Chart(document.getElementById('chart_4'), {
+        type: 'line',
+        data: {
+            labels: ["2026-07-29 06:15"],
+            datasets: [
+                { label: 'Latency (ms)', data: ["0.12"], borderColor: 'rgb(255, 99, 132)', yAxisID: 'y' },
+                { label: 'Memory (MB)', data: ["0.0"], borderColor: 'rgb(54, 162, 235)', yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Latency (ms)' } },
+                y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Memory (MB)' }, grid: { drawOnChartArea: false } },
+            }
+        }
+    });
+    </script>
+
+    <h2>query_intelligence_pipeline</h2>
+    <div class="chart-container">
+        <canvas id="chart_5"></canvas>
+    </div>
+    <script>
+    new Chart(document.getElementById('chart_5'), {
+        type: 'line',
+        data: {
+            labels: ["2026-07-29 06:15"],
+            datasets: [
+                { label: 'Latency (ms)', data: ["1.43"], borderColor: 'rgb(255, 99, 132)', yAxisID: 'y' },
+                { label: 'Memory (MB)', data: ["0.0"], borderColor: 'rgb(54, 162, 235)', yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'Latency (ms)' } },
+                y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Memory (MB)' }, grid: { drawOnChartArea: false } },
+            }
+        }
+    });
+    </script>
+</body></html>

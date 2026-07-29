@@ -68,10 +68,19 @@ class PlannerLLMOutput(BaseModel):
     confidence_score: float = Field(default=1.0)
     reasoning: str | None = None
 
+class QueryIntelligenceOutput(BaseModel):
+    sql: str | None = Field(default=None, description="The executable PostgreSQL query, or null if insufficient context.")
+    explanation: str = Field(description="Step-by-step explanation of what the query does, or why it cannot be generated.")
+    referenced_semantics: list[str] = Field(default_factory=list, description="Names of the semantic objects used.")
+    confidence: float = Field(description="Confidence score 0.0 to 1.0")
+
 # --- API Request/Response Models ---
 
 class ChatRequest(BaseModel):
     message: str
+
+class QueryIntelligenceRequest(BaseModel):
+    question: str
 
 class ChatMessageOut(BaseModel):
     id: uuid.UUID

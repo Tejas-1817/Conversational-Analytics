@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import SemanticMetric
-from app.semantic.validation_service import ValidationService
+from app.semantic.validation_service import SemanticValidationService as ValidationService
 from app.semantic.version_service import VersionService
 
 

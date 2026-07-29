@@ -18,7 +18,7 @@ callers omit them and the defaults from settings are used.
 from __future__ import annotations
 
 import uuid
-from typing import Optional
+from typing import Optional, Iterator
 
 import structlog
 from sqlalchemy.orm import Session
@@ -108,14 +108,14 @@ def _assert_approved(obj_id: uuid.UUID, status: str) -> None:
 def _collect_objects(
     tenant_id: uuid.UUID,
     db: Session,
-) -> list[EmbeddedObject]:
+) -> Iterator[EmbeddedObject]:
     """Collect all approved semantic objects for a tenant and build embed texts.
 
     Each object is given a stable composite ID:
         "<object_type>:<uuid>" — e.g. "metric:3f2a..."
     This allows targeted upserts (idempotent) without a separate lookup table.
+    Yields objects iteratively to prevent loading massive datasets into memory.
     """
-    objects: list[EmbeddedObject] = []
     tenant_str = str(tenant_id)
 
     # 1. Tables (scoped via DataSource.tenant_id)
@@ -127,11 +127,11 @@ def _collect_objects(
             TableMeta.status == _APPROVED,
             TableMeta.is_active.is_(True),
         )
-        .all()
+        .yield_per(1000)
     )
     for t in tables:
         _assert_approved(t.id, t.status)
-        objects.append(EmbeddedObject(
+        yield EmbeddedObject(
             id=f"table:{t.id}",
             text=_table_text(t),
             embedding=[],          # filled in after batch encode
@@ -141,7 +141,7 @@ def _collect_objects(
                 "tenant_id": tenant_str,
                 "source_id": str(t.source_id),
             },
-        ))
+        )
 
     # 2. Columns (scoped via table → DataSource)
     columns = (
@@ -153,11 +153,11 @@ def _collect_objects(
             ColumnMeta.status == _APPROVED,
             ColumnMeta.is_active.is_(True),
         )
-        .all()
+        .yield_per(1000)
     )
     for col, tbl in columns:
         _assert_approved(col.id, col.status)
-        objects.append(EmbeddedObject(
+        yield EmbeddedObject(
             id=f"column:{col.id}",
             text=_column_text(col, tbl.table_name),
             embedding=[],
@@ -167,7 +167,7 @@ def _collect_objects(
                 "tenant_id": tenant_str,
                 "source_id": str(tbl.source_id),
             },
-        ))
+        )
 
     # 3. Semantic Metrics
     metrics = (
@@ -176,11 +176,11 @@ def _collect_objects(
             SemanticMetric.tenant_id == tenant_id,
             SemanticMetric.status == _APPROVED,
         )
-        .all()
+        .yield_per(1000)
     )
     for m in metrics:
         _assert_approved(m.id, m.status)
-        objects.append(EmbeddedObject(
+        yield EmbeddedObject(
             id=f"metric:{m.id}",
             text=_metric_text(m),
             embedding=[],
@@ -190,7 +190,7 @@ def _collect_objects(
                 "tenant_id": tenant_str,
                 "source_id": str(m.source_table_id) if m.source_table_id else "",
             },
-        ))
+        )
 
     # 4. Semantic Dimensions
     dimensions = (
@@ -199,11 +199,11 @@ def _collect_objects(
             SemanticDimension.tenant_id == tenant_id,
             SemanticDimension.status == _APPROVED,
         )
-        .all()
+        .yield_per(1000)
     )
     for d in dimensions:
         _assert_approved(d.id, d.status)
-        objects.append(EmbeddedObject(
+        yield EmbeddedObject(
             id=f"dimension:{d.id}",
             text=_dimension_text(d),
             embedding=[],
@@ -213,7 +213,7 @@ def _collect_objects(
                 "tenant_id": tenant_str,
                 "source_id": str(d.source_table_id) if d.source_table_id else "",
             },
-        ))
+        )
 
     # 5. Business Glossary
     glossary_terms = (
@@ -222,11 +222,11 @@ def _collect_objects(
             BusinessGlossary.tenant_id == tenant_id,
             BusinessGlossary.status == _APPROVED,
         )
-        .all()
+        .yield_per(1000)
     )
     for g in glossary_terms:
         _assert_approved(g.id, g.status)
-        objects.append(EmbeddedObject(
+        yield EmbeddedObject(
             id=f"glossary:{g.id}",
             text=_glossary_text(g),
             embedding=[],
@@ -236,16 +236,16 @@ def _collect_objects(
                 "tenant_id": tenant_str,
                 "source_id": "",
             },
-        ))
+        )
 
     # 6. Synonyms — embed alongside their parent entity text
     synonyms = (
         db.query(SemanticSynonym)
         .filter(SemanticSynonym.tenant_id == tenant_id)
-        .all()
+        .yield_per(1000)
     )
     for syn in synonyms:
-        objects.append(EmbeddedObject(
+        yield EmbeddedObject(
             id=f"synonym:{syn.id}",
             text=f"Synonym: {syn.synonym} (refers to {syn.entity_type} {syn.entity_id})",
             embedding=[],
@@ -257,7 +257,7 @@ def _collect_objects(
                 "parent_entity_id": str(syn.entity_id),
                 "source_id": "",
             },
-        ))
+        )
 
     # 7. Approved Relationships — tenant-scoped via 4-table join
     from app.models import ColumnMeta as CM, TableMeta as TM  # alias to avoid shadowing
@@ -279,11 +279,11 @@ def _collect_objects(
             DataSource.tenant_id == tenant_id,
             Relationship.status == _APPROVED,
         )
-        .all()
+        .yield_per(1000)
     )
     for rel, from_col, from_table, to_col, to_table in rels:
         _assert_approved(rel.id, rel.status)
-        objects.append(EmbeddedObject(
+        yield EmbeddedObject(
             id=f"relationship:{rel.id}",
             text=_relationship_text(rel, from_col, from_table, to_col, to_table),
             embedding=[],
@@ -293,9 +293,7 @@ def _collect_objects(
                 "tenant_id": tenant_str,
                 "source_id": str(from_table.source_id),
             },
-        ))
-
-    return objects
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -334,33 +332,47 @@ def embed_approved_objects(
     log.info("embedding_job_start", tenant_id=str(tenant_id))
 
     # Collect approved objects
-    objects = _collect_objects(tenant_id, db)
+    object_stream = _collect_objects(tenant_id, db)
+    
+    upserted_total = 0
+    type_counts: dict[str, int] = {}
+    chunk: list[EmbeddedObject] = []
+    chunk_size = 500
+    
+    def process_chunk(objects_chunk: list[EmbeddedObject]):
+        nonlocal upserted_total
+        if not objects_chunk:
+            return
+            
+        texts = [obj.text for obj in objects_chunk]
+        vectors = provider.embed(texts)
+        assert len(vectors) == len(objects_chunk), "Provider returned wrong number of vectors"
+        
+        for obj, vec in zip(objects_chunk, vectors):
+            obj.embedding = vec
+            t = obj.metadata.get("object_type", "unknown")
+            type_counts[t] = type_counts.get(t, 0) + 1
+            
+        upserted = store.upsert(tenant_id, objects_chunk)
+        upserted_total += upserted
 
-    if not objects:
+    for obj in object_stream:
+        chunk.append(obj)
+        if len(chunk) >= chunk_size:
+            process_chunk(chunk)
+            chunk = []
+            
+    if chunk:
+        process_chunk(chunk)
+
+    if upserted_total == 0:
         log.info("embedding_job_no_approved_objects", tenant_id=str(tenant_id))
         return {"tenant_id": str(tenant_id), "objects_embedded": 0, "object_types": {}}
-
-    # Batch embed all texts in one call (most providers are faster in batches)
-    texts = [obj.text for obj in objects]
-    vectors = provider.embed(texts)
-    assert len(vectors) == len(objects), "Provider returned wrong number of vectors"
-
-    for obj, vec in zip(objects, vectors):
-        obj.embedding = vec
-
-    # Upsert into Chroma
-    upserted = store.upsert(tenant_id, objects)
-
-    # Summarise by type
-    type_counts: dict[str, int] = {}
-    for obj in objects:
-        t = obj.metadata.get("object_type", "unknown")
-        type_counts[t] = type_counts.get(t, 0) + 1
 
     log.info(
         "embedding_job_complete",
         tenant_id=str(tenant_id),
-        objects_embedded=upserted,
+        objects_embedded=upserted_total,
         breakdown=type_counts,
     )
 
@@ -373,7 +385,7 @@ def embed_approved_objects(
         action="embedding_job_completed",
         actor="system:embedding",
         after={
-            "objects_embedded": upserted,
+            "objects_embedded": upserted_total,
             "breakdown": type_counts,
         },
     )
@@ -381,6 +393,6 @@ def embed_approved_objects(
 
     return {
         "tenant_id": str(tenant_id),
-        "objects_embedded": upserted,
+        "objects_embedded": upserted_total,
         "object_types": type_counts,
     }

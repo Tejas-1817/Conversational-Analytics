@@ -1,0 +1,7 @@
+timestamp,test_name,latency_ms,cpu_percent,peak_memory_mb,sql_queries,error
+2026-07-29T06:13:30.459355+00:00,ingestion_pipeline,4849.86,74.0,2.97,968,
+2026-07-29T06:13:40.784232+00:00,concurrent_ingestion_5_workers,10307.67,88.8,4.28,1371,
+2026-07-29T06:13:44.977410+00:00,semantic_generation_pipeline,4187.47,85.7,2.73,150,
+2026-07-29T06:15:14.972525+00:00,embedding_generation,89479.38,74.1,195.86,8,
+2026-07-29T06:15:14.974468+00:00,query_intelligence_latency,0.12,0.0,0.0,0,
+2026-07-29T06:15:14.975295+00:00,query_intelligence_pipeline,1.43,0.0,0.0,0,

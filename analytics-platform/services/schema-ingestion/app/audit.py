@@ -25,6 +25,7 @@ from typing import Any
 
 import structlog
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import AuditLog
 
@@ -99,7 +100,8 @@ def _extract_request_context(request: Any | None) -> dict:
             "user_agent": request.headers.get("user-agent"),
             "request_id": request.headers.get("x-request-id") or correlation_id.get(),
         }
-    except Exception:
+    except Exception as e:
+        log.warning("audit_context_extraction_failed", error=str(e))
         return {}
 
 
@@ -145,15 +147,28 @@ def audit(
         user_agent=ctx.get("user_agent"),
         request_id=ctx.get("request_id"),
     )
-    session.add(entry)
-    log.info(
-        "audit_event",
-        event_type=event_type or action,
-        entity=entity_type,
-        entity_id=str(entity_id),
-        actor=actor,
-        tenant_id=str(tenant_id) if tenant_id else None,
-    )
+    
+    try:
+        session.add(entry)
+        log.info(
+            "audit_event",
+            event_type=event_type or action,
+            entity=entity_type,
+            entity_id=str(entity_id),
+            actor=actor,
+            tenant_id=str(tenant_id) if tenant_id else None,
+        )
+    except SQLAlchemyError as e:
+        log.critical(
+            "audit_write_failed",
+            error=str(e),
+            event_type=event_type or action,
+            entity=entity_type,
+            entity_id=str(entity_id),
+            actor=actor,
+            tenant_id=str(tenant_id) if tenant_id else None,
+            payload={"before": before, "after": after}
+        )
 
 
 # Backwards-compatible alias for old callers that used record()

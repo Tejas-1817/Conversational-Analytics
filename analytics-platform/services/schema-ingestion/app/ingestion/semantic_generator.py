@@ -17,7 +17,7 @@ from app.models import (
     SemanticModel,
     TableMeta,
 )
-from app.semantic.enrichment_service import SemanticEnrichmentService
+from app.semantic.generation_service import SemanticGenerationService
 from app.semantic.graph_validator import SemanticGraphValidator
 from app.semantic.version_manager import SemanticVersionManager
 
@@ -97,7 +97,13 @@ def run_semantic_generation(session: Session, source: DataSource, metadata_versi
     }
 
     try:
-        tbl_metrics, tbl_warnings = SemanticEnrichmentService.enrich_tables_parallel(session, tables, source.tenant_id, semantic_model.id)
+        from app.config import get_settings
+        settings = get_settings()
+        max_workers = 1 if settings.llm_provider.lower() == "ollama" else 3
+        
+        tbl_metrics, tbl_warnings = SemanticGenerationService.generate_for_tables(
+            session, tables, source.tenant_id, semantic_model.id, max_workers=max_workers
+        )
         if tbl_metrics:
             for k, v in tbl_metrics.items():
                 if k in summary_metrics:
@@ -107,7 +113,7 @@ def run_semantic_generation(session: Session, source: DataSource, metadata_versi
         log.error("table_enrichment_failed", source=source.name, error=str(e))
 
     try:
-        glb_metrics, glb_warnings = SemanticEnrichmentService.enrich_global(session, source.id, semantic_model.id)
+        glb_metrics, glb_warnings = SemanticGenerationService.generate_global(session, source.id, semantic_model.id)
         if glb_metrics:
             summary_metrics["llm_requests"] += glb_metrics.get("llm_requests", 0)
             summary_metrics["llm_successes"] += glb_metrics.get("llm_successes", 0)

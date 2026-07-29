@@ -6,7 +6,7 @@ class TestSchema(BaseModel):
     hello: str
 
 base_url = "http://localhost:11434"
-model_name = "qwen2.5:7b"
+model_name = "deepseek-r1:14b"
 
 # Test 1: format = "json"
 try:

@@ -25,13 +25,20 @@ class BusinessContextBuilder:
         col_id_to_name = {}
         for col in columns:
             col_id_to_name[col.id] = col.column_name
+            # Sanitize profile_stats to reduce prompt size
+            clean_profile = None
+            if col.profile:
+                clean_profile = dict(col.profile)
+                if "top_values" in clean_profile and isinstance(clean_profile["top_values"], list):
+                    clean_profile["top_values"] = clean_profile["top_values"][:3]
+                
             column_context.append({
                 "name": col.column_name,
                 "data_type": col.data_type,
                 "is_nullable": col.is_nullable,
                 "is_primary_key": col.is_primary_key,
                 "role": col.role,
-                "profile_stats": col.profile  # e.g., distinct_count, min, max, top_values
+                "profile_stats": clean_profile
             })
 
         # Gather indexes

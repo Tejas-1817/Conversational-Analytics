@@ -8,6 +8,9 @@ from app.api.deps import get_current_user
 from app.db import get_session as get_db
 from app.engine.eval.runner import BenchmarkRunner
 from app.models import BenchmarkCollection, EvaluationDataset, EvaluationRun, User
+from app.engine.eval.benchmark_runner import BenchmarkRunnerService
+from app.engine.eval.benchmark_datasets import get_dataset
+from app.schemas_benchmark import BenchmarkRunRequest, BenchmarkReport
 from app.schemas_eval import (
     BenchmarkCollectionCreate,
     BenchmarkCollectionListOut,
@@ -103,3 +106,20 @@ def get_run_details(run_id: uuid.UUID, db: Session = Depends(get_db), current_us
         raise HTTPException(status_code=404, detail="Run not found")
 
     return run
+
+# --- New Query Intelligence Benchmarks ---
+
+@router.post("/benchmark/run", response_model=BenchmarkReport)
+def run_query_intelligence_benchmark(
+    request: BenchmarkRunRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Executes a benchmark suite directly against the Query Intelligence Service.
+    """
+    test_cases = get_dataset(request.dataset_name)
+    if not test_cases:
+        raise HTTPException(status_code=404, detail=f"Benchmark dataset '{request.dataset_name}' not found or is empty.")
+        
+    report = BenchmarkRunnerService.run_benchmark(db, request.tenant_id, test_cases)
+    return report

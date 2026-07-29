@@ -51,10 +51,9 @@ class OllamaProvider(ProviderInterface):
         if request and request.strategy is not StructuredOutputStrategy.JSON_MODE:
             output_format = request.output_schema or schema.model_json_schema()
 
-        # Fallback to "json" mode if the schema contains complex references ($defs)
-        # because Ollama's strict schema parser often rejects them with 400 Bad Request
-        if isinstance(output_format, dict) and "$defs" in output_format:
-            output_format = "json"
+        # We will log the error to verify the $defs rejection
+        # if isinstance(output_format, dict) and "$defs" in output_format:
+        #     output_format = "json"
 
         payload = {
             "model": self.model_name,
