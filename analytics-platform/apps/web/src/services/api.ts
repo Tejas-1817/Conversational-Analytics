@@ -74,7 +74,7 @@ export const fetchApi = async (endpoint: string, options: CustomRequestInit = {}
       const newAccessToken = await getRefreshToken();
       if (newAccessToken) {
         headers['Authorization'] = `Bearer ${newAccessToken}`;
-        res = await fetch(endpoint, { ...options, headers, _isRetry: true });
+        res = await fetch(endpoint, { ...options, headers, _isRetry: true } as any);
       }
     }
     

@@ -39,17 +39,56 @@ export const SemanticLayer = () => {
   const [selectedMetric, setSelectedMetric] = useState<any>(null);
   const [versions, setVersions] = useState<any[]>([]);
 
+  const [schemaMetadata, setSchemaMetadata] = useState<{ 
+    schema_name: string; 
+    last_updated: string; 
+    file_size: number; 
+    status: string;
+    query_start_time?: string;
+    query_end_time?: string;
+    execution_time_ms?: number;
+  } | null>(null);
+  const [schemaLoading, setSchemaLoading] = useState(true);
+  const [schemaError, setSchemaError] = useState('');
+
+  const formatLastUpdated = (isoString?: string) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+
+    const day = date.getDate().toString().padStart(2, '0');
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+
+    let hours = date.getHours();
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const strHours = hours.toString().padStart(2, '0');
+
+    return `${day} ${month} ${year}, ${strHours}:${minutes} ${ampm}`;
+  };
+
   const loadData = async () => {
-    const [mRes, dRes, jRes, gRes] = await Promise.all([
+    setSchemaLoading(true);
+    setSchemaError('');
+    const [mRes, dRes, jRes, gRes, metaRes] = await Promise.all([
       fetchAuth('/semantic/metrics'),
       fetchAuth('/semantic/dimensions'),
       fetchAuth('/semantic/joins'),
-      fetchAuth('/semantic/glossary')
+      fetchAuth('/semantic/glossary'),
+      fetchAuth('/schema/metadata').catch(() => null)
     ]);
     if (mRes.ok) setMetrics(await mRes.json());
     if (dRes.ok) setDimensions(await dRes.json());
     if (jRes.ok) setJoins(await jRes.json());
     if (gRes.ok) setGlossary(await gRes.json());
+    if (metaRes && metaRes.ok) {
+      setSchemaMetadata(await metaRes.json());
+    }
+    setSchemaLoading(false);
   };
 
   useEffect(() => {
@@ -123,6 +162,38 @@ export const SemanticLayer = () => {
   return (
     <div>
       <h2 className="card-title">Semantic Layer</h2>
+
+      {/* Schema Metadata Header */}
+      <div style={{
+        display: 'flex',
+        gap: '2rem',
+        alignItems: 'center',
+        padding: '0.75rem 1.25rem',
+        marginBottom: '1rem',
+        backgroundColor: 'var(--bg-input, #1e1e2d)',
+        borderRadius: 'var(--radius-sm, 6px)',
+        border: '1px solid var(--border-color, #2b2b40)'
+      }}>
+        <div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Schema Name</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main, #fff)' }}>
+            {schemaLoading ? 'Loading...' : (schemaMetadata?.schema_name || 'poc_text_to_sql')}
+          </div>
+        </div>
+
+        <div style={{ borderLeft: '1px solid var(--border-color, #2b2b40)', paddingLeft: '1.5rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Last Updated</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main, #fff)' }}>
+            {schemaLoading ? (
+              <span style={{ color: 'var(--text-muted, #888)' }}>Loading...</span>
+            ) : schemaError ? (
+              <span style={{ color: 'var(--danger, #ef4444)' }}>Error loading metadata</span>
+            ) : (
+              formatLastUpdated(schemaMetadata?.last_updated)
+            )}
+          </div>
+        </div>
+      </div>
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
         {['metrics', 'dimensions', 'joins', 'glossary'].map(t => (
           <button 

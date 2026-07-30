@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     
     # Ollama Settings
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "deepseek-r1:14b"  # Benchmarked: ~53s/turn vs ~227s for 14b (4.1x speedup)
+    ollama_model: str = "gemma4:12b "  # Benchmarked: ~53s/turn vs ~227s for 14b (4.1x speedup)
     
     # Hugging Face Settings
     huggingface_api_key: str = ""

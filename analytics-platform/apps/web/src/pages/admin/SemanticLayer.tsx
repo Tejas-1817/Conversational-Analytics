@@ -28,24 +28,71 @@ export const SemanticLayer = () => {
   const [selectedMetric, setSelectedMetric] = useState<any>(null);
   const [versions, setVersions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [schemaMetadata, setSchemaMetadata] = useState<{ 
+    schema_name: string; 
+    last_updated: string; 
+    file_size: number; 
+    status: string;
+    query_start_time?: string;
+    query_end_time?: string;
+    execution_time_ms?: number;
+  } | null>(null);
+  const [schemaLoading, setSchemaLoading] = useState(true);
+  const [schemaError, setSchemaError] = useState('');
+
+  const formatLastUpdated = (isoString?: string, showSeconds = false, showMs = false) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+
+    const day = date.getDate().toString().padStart(2, '0');
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+
+    let hours = date.getHours();
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+    const ms = date.getMilliseconds().toString().padStart(3, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const strHours = hours.toString().padStart(2, '0');
+
+    let timeStr = `${strHours}:${minutes} ${ampm}`;
+    if (showMs) {
+      timeStr = `${strHours}:${minutes}:${seconds}.${ms} ${ampm}`;
+    } else if (showSeconds) {
+      timeStr = `${strHours}:${minutes}:${seconds} ${ampm}`;
+    }
+    return `${day} ${month} ${year}, ${timeStr}`;
+  };
 
   const loadData = async () => {
     setLoading(true);
+    setSchemaLoading(true);
+    setSchemaError('');
     try {
-      const [mRes, dRes, jRes, gRes] = await Promise.all([
+      const [mRes, dRes, jRes, gRes, metaRes] = await Promise.all([
         fetchApi('/semantic/metrics').catch(() => []),
         fetchApi('/semantic/dimensions').catch(() => []),
         fetchApi('/semantic/joins').catch(() => []),
-        fetchApi('/semantic/glossary').catch(() => [])
+        fetchApi('/semantic/glossary').catch(() => []),
+        fetchApi('/schema/metadata').catch(() => fetchApi('/semantic/schema-metadata')).catch(err => {
+          setSchemaError(err.message || 'Failed to load metadata');
+          return null;
+        })
       ]);
       setMetrics(mRes);
       setDimensions(dRes);
       setJoins(jRes);
       setGlossary(gRes);
+      if (metaRes) setSchemaMetadata(metaRes);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
+      setSchemaLoading(false);
     }
   };
 
@@ -196,6 +243,38 @@ export const SemanticLayer = () => {
               <Plus size={18} /> Create {activeTab.charAt(0).toUpperCase() + activeTab.slice(1, -1)}
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Schema Metadata Panel */}
+      <div style={{
+        display: 'flex',
+        gap: '2rem',
+        alignItems: 'center',
+        padding: '0.75rem 1.25rem',
+        marginBottom: '1.25rem',
+        backgroundColor: 'var(--bg-input, #1e1e2d)',
+        borderRadius: 'var(--radius-sm, 6px)',
+        border: '1px solid var(--border-color, #2b2b40)'
+      }}>
+        <div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Schema Name</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main, #fff)' }}>
+            {schemaLoading ? 'Loading...' : (schemaMetadata?.schema_name || 'poc_text_to_sql')}
+          </div>
+        </div>
+
+        <div style={{ borderLeft: '1px solid var(--border-color, #2b2b40)', paddingLeft: '1.5rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Last Updated</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main, #fff)' }}>
+            {schemaLoading ? (
+              <span style={{ color: 'var(--text-muted, #888)' }}>Loading...</span>
+            ) : schemaError ? (
+              <span style={{ color: 'var(--danger, #ef4444)' }}>Error loading metadata</span>
+            ) : (
+              formatLastUpdated(schemaMetadata?.last_updated)
+            )}
+          </div>
         </div>
       </div>
 

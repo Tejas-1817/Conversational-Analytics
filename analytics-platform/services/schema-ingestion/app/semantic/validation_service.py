@@ -55,7 +55,7 @@ class SemanticValidationService:
         dim_results, dim_valid = cls._validate_dimensions(table, col_map, enrichment.dimensions)
         meas_results, meas_valid = cls._validate_measures(table, col_map, enrichment.measures)
         kpi_results, kpi_valid = cls._validate_kpis(db, table, enrichment.kpis)
-        rel_results, rel_valid = cls._validate_relationships(db, table, col_map, enrichment.relationships)
+        rel_results, rel_valid = cls._validate_relationships(db, table, col_map, getattr(enrichment, 'relationships', []))
         gloss_results, gloss_valid = cls._validate_glossary(table, enrichment.glossary_terms)
 
         all_results = dim_results + meas_results + kpi_results + rel_results + gloss_results

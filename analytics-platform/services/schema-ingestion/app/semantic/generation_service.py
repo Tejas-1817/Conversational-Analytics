@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
     TableMeta, ColumnMeta, SemanticDimension, SemanticMetric,
-    BusinessGlossary, SemanticJoin, SemanticKPI,
+    BusinessGlossary, SemanticJoin, SemanticKPI, Relationship,
     BusinessOntology, DashboardRecommendation, SuggestedQuestion,
     AIContext, ChartRecommendation
 )
@@ -35,7 +35,7 @@ class SemanticGenerationService:
         tables: list[TableMeta],
         tenant_id: uuid.UUID,
         semantic_model_id: uuid.UUID,
-        max_workers: int = 1
+        max_workers: int = 3
     ):
         """
         Executes semantic generation for each table. 
@@ -102,7 +102,7 @@ class SemanticGenerationService:
                     "kpis_failed": 0
                 }
 
-        if max_workers == 1:
+        if max_workers == 3:
             for table in tables:
                 res = _process_single_table(table)
                 table_stats.append(res)

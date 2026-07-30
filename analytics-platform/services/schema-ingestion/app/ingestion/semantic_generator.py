@@ -99,7 +99,7 @@ def run_semantic_generation(session: Session, source: DataSource, metadata_versi
     try:
         from app.config import get_settings
         settings = get_settings()
-        max_workers = 1 if settings.llm_provider.lower() == "ollama" else 3
+        max_workers = 3 if settings.llm_provider.lower() == "ollama" else 3
         
         tbl_metrics, tbl_warnings = SemanticGenerationService.generate_for_tables(
             session, tables, source.tenant_id, semantic_model.id, max_workers=max_workers

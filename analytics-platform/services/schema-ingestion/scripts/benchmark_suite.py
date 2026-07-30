@@ -77,7 +77,16 @@ class TelemetryContext:
 
 def _mock_llm_generate_structured(*args, **kwargs):
     schema = kwargs.get("schema")
-    if schema == AITableDimensionsSchema:
+    if schema == AITableEnrichmentSchema:
+        return AITableEnrichmentSchema(
+            business_description="Mock description",
+            dimensions=[],
+            measures=[],
+            kpis=[],
+            glossary_terms=[],
+            confidence_score=0.9
+        )
+    elif schema == AITableDimensionsSchema:
         return AITableDimensionsSchema(business_description="Mock description", dimensions=[])
     elif schema == AITableMeasuresSchema:
         return AITableMeasuresSchema(measures=[], kpis=[])
@@ -184,7 +193,7 @@ def run_benchmarks(output_csv: str):
         with patch("app.llm.orchestrator.ai_orchestrator.generate_structured", side_effect=_mock_llm_generate_structured):
             with TelemetryContext("semantic_generation_pipeline", results):
                 with session_scope() as s2:
-                    SemanticGenerationService.generate_for_tables(s2, tables, tenant_id, model_id, max_workers=1)
+                    SemanticGenerationService.generate_for_tables(s2, tables, tenant_id, model_id, max_workers=3)
         
         # 4. Embeddings
         print("Starting 4. Embeddings Generation...")

@@ -19,15 +19,20 @@ Built with a **Local-First**, privacy-focused architecture powered by an AI Sema
 - **Multi-Stage Ingestion Pipeline**:
   1. **Introspection**: Reflects database tables, columns, data types, and primary/foreign keys.
   2. **Data Profiling**: Computes column stats, null rates, and sample value distributions.
-  3. **Relationship Detection**: Discovers hidden foreign key relationships via value-overlap testing and AI heuristics.
+  3. **Relationship Detection**: Discovers and maps physical foreign key relationships deterministically, bypassing slow LLM heuristics.
   4. **Role Classification**: Automatically labels columns as dimensions, measures, keys, or attributes.
-  5. **Semantic Generation**: Generates business metrics, dimensions, synonyms, and documentation with graph validation and atomic version promotion.
+  5. **Semantic Generation**: Highly optimized, single-pass LLM enrichment combining metric, dimension, and glossary term generation with deterministic rule-based time dimensions and table caching.
 - **Semantic Layer Management**: Full CRUD interface for Metrics, Dimensions, Joins, and Business Glossary with automated formula parsing and validation.
 
 ### 📊 Dynamic Dashboards & Visualization
 - **Drag & Drop Layout**: Customizable, resizable widget grid.
 - **Data Exporting**: One-click data export to CSV and JSON formats.
 - **Global Filters**: Date ranges and dimension slicers that filter dashboard widgets dynamically.
+
+### 🧪 Testing & Validation Frameworks
+- **Performance & Scalability Suite** (`scripts/benchmark_suite.py`): Command-line suite to benchmark ingestion latency, memory consumption, SQL query counts, and LLM throughput with CSV and HTML reports.
+- **Customer Acceptance Testing (CAT) Framework** (`scripts/cat_framework.py`): End-to-end evaluation framework that validates retrieval precision, SQL accuracy, hallucination detection, and execution correctness against mock enterprise domains (HR, Sales, CRM, Finance, Inventory).
+
 
 ### 🔒 Enterprise Governance & Security
 - **Strict Multi-Tenancy**: Built-in tenant isolation with tenant-scoped sessions and Row-Level Security (RLS) enforcement.

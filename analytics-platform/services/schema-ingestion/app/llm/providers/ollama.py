@@ -51,9 +51,9 @@ class OllamaProvider(ProviderInterface):
         if request and request.strategy is not StructuredOutputStrategy.JSON_MODE:
             output_format = request.output_schema or schema.model_json_schema()
 
-        # We will log the error to verify the $defs rejection
-        # if isinstance(output_format, dict) and "$defs" in output_format:
-        #     output_format = "json"
+        # Fallback to simple JSON mode if schema contains $defs (which Ollama fails on)
+        if isinstance(output_format, dict) and "$defs" in output_format:
+            output_format = "json"
 
         payload = {
             "model": self.model_name,
