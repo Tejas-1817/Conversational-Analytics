@@ -18,6 +18,10 @@ from app.chat_sql.sql_validator import SQLValidator
 log = structlog.get_logger(__name__)
 
 
+import uuid
+from app.models import Conversation, ConversationMessage
+
+
 class ChatService:
     """Text-to-SQL & Analytics Chat Service."""
 
@@ -29,8 +33,14 @@ class ChatService:
         self.sql_executor = SQLExecutor()
         self.answer_synthesizer = AnswerSynthesizer()
 
-    def process_text_to_sql(self, question: str) -> Dict[str, Any]:
-        """Loads connected database schema, prompts LLM, executes SQL, synthesizes answer, and returns DTO."""
+    def process_text_to_sql(
+        self,
+        question: str,
+        conversation_id: str | None = None,
+        db_session: Any | None = None,
+        user: Any | None = None,
+    ) -> Dict[str, Any]:
+        """Loads connected database schema, prompts LLM, executes SQL, synthesizes answer, persists messages, and returns DTO."""
         # 1. Fetch live introspected PostgreSQL schema
         db_name, ddl, catalog = self.schema_provider.get_connected_schema()
 
@@ -63,7 +73,64 @@ class ChatService:
 
         log.info("chat_sql_processed", database=db_name, question=question[:50], row_count=row_count, execution_time_ms=execution_time_ms)
 
+        # 7. Persist Conversation & Messages to PostgreSQL if session and user provided
+        res_conv_id = conversation_id
+        if db_session and user:
+            try:
+                conv = None
+                if conversation_id:
+                    try:
+                        conv_uuid = uuid.UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id
+                        conv = db_session.query(Conversation).filter(
+                            Conversation.id == conv_uuid,
+                            Conversation.tenant_id == user.tenant_id
+                        ).first()
+                    except Exception:
+                        pass
+
+                if not conv:
+                    conv = Conversation(
+                        tenant_id=user.tenant_id,
+                        user_id=user.id,
+                        title=question[:40] if question else "New Conversation"
+                    )
+                    db_session.add(conv)
+                    db_session.flush()
+                elif not conv.title or conv.title == "New Conversation":
+                    conv.title = question[:40]
+
+                res_conv_id = str(conv.id)
+
+                # Store user question message
+                user_msg = ConversationMessage(
+                    conversation_id=conv.id,
+                    role="user",
+                    content=question,
+                    status="complete"
+                )
+                db_session.add(user_msg)
+
+                # Store assistant answer message
+                asst_msg = ConversationMessage(
+                    conversation_id=conv.id,
+                    role="assistant",
+                    content=answer,
+                    generated_sql=validated_sql,
+                    result_data={"rows": result_data},
+                    execution_time_ms=int(execution_time_ms),
+                    status="complete"
+                )
+                db_session.add(asst_msg)
+                db_session.commit()
+            except Exception as exc:
+                log.warning("failed_to_persist_chat_messages", error=str(exc))
+                try:
+                    db_session.rollback()
+                except Exception:
+                    pass
+
         return {
+            "conversation_id": res_conv_id,
             "question": question,
             "answer": answer,
             "sql": validated_sql,

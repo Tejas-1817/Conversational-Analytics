@@ -15,17 +15,28 @@ export const ChatInterface = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const loadConversations = async () => {
+  const loadConversationsList = async () => {
     try {
       const data = await fetchApi('/engine/conversations');
       setConversations(data);
-      if (data.length > 0 && !convId) {
-        loadConversation(data[0].id);
-      } else if (data.length === 0 && !convId) {
-        handleNewChat();
-      }
+      return data;
     } catch (e) {
       console.error(e);
+      return [];
+    }
+  };
+
+  const loadConversations = async () => {
+    const data = await loadConversationsList();
+    const savedConvId = localStorage.getItem('active_conversation_id');
+    const targetConv = data.find((c: any) => c.id === savedConvId);
+
+    if (targetConv) {
+      await loadConversation(targetConv.id);
+    } else if (data.length > 0) {
+      await loadConversation(data[0].id);
+    } else {
+      await handleNewChat();
     }
   };
 
@@ -37,7 +48,21 @@ export const ChatInterface = () => {
     try {
       const data = await fetchApi(`/engine/conversations/${id}`);
       setConvId(data.id);
-      setMessages(data.messages || []);
+      localStorage.setItem('active_conversation_id', data.id);
+
+      const normalizedMessages = (data.messages || []).map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        answer: m.role === 'assistant' ? m.content : undefined,
+        sql: m.generated_sql,
+        result_data: m.result_data?.rows || (Array.isArray(m.result_data) ? m.result_data : []),
+        execution_time_ms: m.execution_time_ms,
+        status: m.status,
+        generated_at: m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+        database: 'analytics_db'
+      }));
+      setMessages(normalizedMessages);
     } catch (e) {
       console.error(e);
     }
@@ -47,8 +72,9 @@ export const ChatInterface = () => {
     try {
       const data = await fetchApi('/engine/conversations', { method: 'POST' });
       setConvId(data.id);
+      localStorage.setItem('active_conversation_id', data.id);
       setMessages([]);
-      loadConversations();
+      await loadConversationsList();
     } catch (e) {
       console.error(e);
     }
@@ -62,13 +88,12 @@ export const ChatInterface = () => {
     const intervalId = setInterval(async () => {
       try {
         const msg = await fetchApi(`/engine/conversations/${conversationId}/messages/${messageId}`);
-        // Always update the message state to reflect live trace changes
         setMessages(prev => prev.map(m => m.id === messageId ? msg : m));
         
         if (msg.status === 'complete' || msg.status === 'error') {
           clearInterval(intervalId);
           setLoading(false);
-          loadConversations();
+          loadConversationsList();
         }
       } catch (err) {
         console.error('Polling error', err);
@@ -91,8 +116,16 @@ export const ChatInterface = () => {
     try {
       const data = await fetchApi('/api/v1/chat/sql', {
         method: 'POST',
-        body: JSON.stringify({ question: questionText })
+        body: JSON.stringify({
+          question: questionText,
+          conversation_id: convId
+        })
       });
+
+      if (data.conversation_id && data.conversation_id !== convId) {
+        setConvId(data.conversation_id);
+        localStorage.setItem('active_conversation_id', data.conversation_id);
+      }
 
       const botMsg = {
         id: Date.now() + 1,
@@ -108,6 +141,7 @@ export const ChatInterface = () => {
         content: data.answer || data.sql
       };
       setMessages(prev => [...prev, botMsg]);
+      await loadConversationsList();
     } catch (err: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: err.message || 'Failed to generate SQL query.', isError: true }]);
     } finally {

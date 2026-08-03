@@ -11,14 +11,33 @@ interface ChartProps {
 const COLORS = ['#4F46E5', '#8B5CF6', '#22C55E', '#F59E0B', '#EF4444', '#06B6D4'];
 
 export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType }) => {
-  if (!data || !data.rows || data.rows.length === 0) return (
-    <div className="flex items-center justify-center h-full text-muted" style={{ minHeight: '100px' }}>
-      No data available
-    </div>
-  );
+  // Normalize input data into columns & rows format
+  let rows: any[] = [];
+  let columns: string[] = [];
 
-  const { columns, rows } = data;
-  
+  if (Array.isArray(data)) {
+    rows = data;
+    if (rows.length > 0 && typeof rows[0] === 'object' && rows[0] !== null) {
+      columns = Object.keys(rows[0]);
+    }
+  } else if (data && typeof data === 'object') {
+    if (Array.isArray(data.rows)) {
+      rows = data.rows;
+      columns = data.columns || (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
+    } else if (Array.isArray(data.data)) {
+      rows = data.data;
+      columns = rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : [];
+    }
+  }
+
+  if (!rows || rows.length === 0 || columns.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted" style={{ minHeight: '100px' }}>
+        No data available
+      </div>
+    );
+  }
+
   // Basic heuristic: First column is usually X-axis (dimension/time), rest are Y-axis (metrics)
   const xAxisKey = columns[0];
   const yAxisKeys = columns.slice(1);
