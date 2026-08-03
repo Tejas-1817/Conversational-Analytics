@@ -14,7 +14,14 @@ _SessionLocal: sessionmaker | None = None
 def get_engine():
     global _engine, _SessionLocal
     if _engine is None:
-        _engine = create_engine(get_settings().metadata_db_url, pool_pre_ping=True, pool_size=5)
+        db_url = get_settings().metadata_db_url
+        if db_url.startswith("postgresql://"):
+            try:
+                import psycopg2
+            except ImportError:
+                # Fallback to psycopg (v3) driver if psycopg2 is not installed
+                db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        _engine = create_engine(db_url, pool_pre_ping=True, pool_size=5)
         _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
     return _engine
 

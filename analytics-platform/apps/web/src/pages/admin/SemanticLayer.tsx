@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fetchApi } from '../../services/api';
-import { BookOpen, Layers, GitBranch, Book, Activity, Plus, History, X, Search, CheckCircle2, AlertCircle } from 'lucide-react';
+import { BookOpen, Layers, GitBranch, Book, Activity, Plus, History, X, Search, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
 export const SemanticLayer = () => {
   const [activeTab, setActiveTab] = useState('metrics');
@@ -29,16 +29,23 @@ export const SemanticLayer = () => {
   const [versions, setVersions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [schemaMetadata, setSchemaMetadata] = useState<{ 
-    schema_name: string; 
-    last_updated: string; 
-    file_size: number; 
-    status: string;
-    query_start_time?: string;
-    query_end_time?: string;
-    execution_time_ms?: number;
+    database_name?: string;
+    status?: string;
+    generated_at?: string;
+    table_count?: number;
+    column_count?: number;
+    relationship_count?: number;
+    schema_name?: string; 
+    last_updated?: string; 
   } | null>(null);
   const [schemaLoading, setSchemaLoading] = useState(true);
+  const [refreshingSchema, setRefreshingSchema] = useState(false);
   const [schemaError, setSchemaError] = useState('');
+  const [draftMetrics, setDraftMetrics] = useState<any[]>([]);
+  const [draftDimensions, setDraftDimensions] = useState<any[]>([]);
+  const [draftRelationships, setDraftRelationships] = useState<any[]>([]);
+  const [draftJoinPaths, setDraftJoinPaths] = useState<any[]>([]);
+  const [regeneratingSemantic, setRegeneratingSemantic] = useState(false);
 
   const formatLastUpdated = (isoString?: string, showSeconds = false, showMs = false) => {
     if (!isoString) return '';
@@ -73,21 +80,27 @@ export const SemanticLayer = () => {
     setSchemaLoading(true);
     setSchemaError('');
     try {
-      const [mRes, dRes, jRes, gRes, metaRes] = await Promise.all([
+      const [mRes, dRes, jRes, gRes, metaRes, draftRes] = await Promise.all([
         fetchApi('/semantic/metrics').catch(() => []),
         fetchApi('/semantic/dimensions').catch(() => []),
         fetchApi('/semantic/joins').catch(() => []),
         fetchApi('/semantic/glossary').catch(() => []),
-        fetchApi('/schema/metadata').catch(() => fetchApi('/semantic/schema-metadata')).catch(err => {
-          setSchemaError(err.message || 'Failed to load metadata');
-          return null;
-        })
+        fetchApi('/schema/metadata').catch(() => fetchApi('/semantic/schema-metadata')).catch(() => null),
+        fetchApi('/api/v1/semantic-layer').catch(() => null)
       ]);
       setMetrics(mRes);
       setDimensions(dRes);
       setJoins(jRes);
       setGlossary(gRes);
-      if (metaRes) setSchemaMetadata(metaRes);
+      if (draftRes) {
+        setSchemaMetadata(draftRes);
+        if (draftRes.metrics) setDraftMetrics(draftRes.metrics);
+        if (draftRes.dimensions) setDraftDimensions(draftRes.dimensions);
+        if (draftRes.relationships) setDraftRelationships(draftRes.relationships);
+        if (draftRes.join_paths) setDraftJoinPaths(draftRes.join_paths);
+      } else if (metaRes) {
+        setSchemaMetadata(metaRes);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -96,9 +109,45 @@ export const SemanticLayer = () => {
     }
   };
 
+  const handleRefreshSchema = async () => {
+    setRefreshingSchema(true);
+    setSchemaError('');
+    try {
+      const metaRes = await fetchApi('/schema/refresh', { method: 'POST' });
+      setSchemaMetadata(metaRes);
+      await loadData();
+    } catch (err: any) {
+      setSchemaError(err.message || 'Failed to refresh schema');
+    } finally {
+      setRefreshingSchema(false);
+    }
+  };
+
+  const handleRegenerateSemanticLayer = async () => {
+    setRegeneratingSemantic(true);
+    setSchemaError('');
+    try {
+      const draftRes = await fetchApi('/api/v1/semantic-layer/regenerate', { method: 'POST' });
+      setSchemaMetadata(draftRes);
+      if (draftRes.metrics) setDraftMetrics(draftRes.metrics);
+      if (draftRes.dimensions) setDraftDimensions(draftRes.dimensions);
+      if (draftRes.relationships) setDraftRelationships(draftRes.relationships);
+      if (draftRes.join_paths) setDraftJoinPaths(draftRes.join_paths);
+      await loadData();
+    } catch (err: any) {
+      setSchemaError(err.message || 'Failed to regenerate semantic layer');
+    } finally {
+      setRegeneratingSemantic(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
+
+  const filteredMetrics = (draftMetrics.length > 0 ? draftMetrics : metrics).filter(m => (m.metric_name || m.name || '').toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredDimensions = (draftDimensions.length > 0 ? draftDimensions : dimensions).filter(d => (d.dimension_name || d.business_name || d.name || '').toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredGlossary = glossary.filter(g => (g.term || '').toLowerCase().includes(searchQuery.toLowerCase()) || (g.business_definition || '').toLowerCase().includes(searchQuery.toLowerCase()));
 
   // Simple formula validation: check for balanced parentheses and non-empty
   const isFormulaValid = (expr: string) => {
@@ -163,15 +212,14 @@ export const SemanticLayer = () => {
       }, 1000);
       loadData();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to create dimension');
     }
   };
 
   const handleCreateGlossary = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!term.trim()) return setError('Term is required');
-    if (!definition.trim()) return setError('Definition is required');
+    if (!term.trim() || !definition.trim()) return setError('Term and definition are required');
     
     try {
       await fetchApi('/semantic/glossary', {
@@ -187,17 +235,17 @@ export const SemanticLayer = () => {
       }, 1000);
       loadData();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to add glossary term');
     }
   };
   
-  const loadVersions = async (m: any) => {
+  const handleSelectMetric = async (m: any) => {
     setSelectedMetric(m);
     try {
       const v = await fetchApi(`/semantic/metrics/${m.id}/versions`);
       setVersions(v);
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e) {
+      console.error(e);
     }
   };
   
@@ -212,22 +260,19 @@ export const SemanticLayer = () => {
     }
   };
 
-  const filteredMetrics = metrics.filter(m => m.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  const filteredDimensions = dimensions.filter(d => d.business_name.toLowerCase().includes(searchQuery.toLowerCase()));
-  const filteredGlossary = glossary.filter(g => g.term.toLowerCase().includes(searchQuery.toLowerCase()) || g.business_definition.toLowerCase().includes(searchQuery.toLowerCase()));
-
   return (
-    <div style={{ position: 'relative', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div className="flex justify-between items-center mb-4">
+    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <h2 className="title" style={{ margin: 0 }}>
-            <BookOpen size={24} style={{ color: 'var(--primary)' }} /> Semantic Layer
-          </h2>
-          <p className="subtitle" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
-            Define business logic, metrics, and terminology.
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <BookOpen className="text-primary" size={24} /> Semantic Layer
+          </h1>
+          <p style={{ color: 'var(--text-muted)', margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
+            Deterministic candidate semantic objects extracted from database catalog (Draft State).
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <div style={{ position: 'relative' }}>
             <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input 
@@ -235,6 +280,7 @@ export const SemanticLayer = () => {
               placeholder="Search..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              className="input-field"
               style={{ paddingLeft: '2.5rem', width: '250px' }}
             />
           </div>
@@ -249,7 +295,7 @@ export const SemanticLayer = () => {
       {/* Schema Metadata Panel */}
       <div style={{
         display: 'flex',
-        gap: '2rem',
+        gap: '1.75rem',
         alignItems: 'center',
         padding: '0.75rem 1.25rem',
         marginBottom: '1.25rem',
@@ -258,29 +304,104 @@ export const SemanticLayer = () => {
         border: '1px solid var(--border-color, #2b2b40)'
       }}>
         <div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Schema Name</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Database Name</div>
           <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main, #fff)' }}>
-            {schemaLoading ? 'Loading...' : (schemaMetadata?.schema_name || 'poc_text_to_sql')}
+            {schemaLoading ? 'Loading...' : (schemaMetadata?.database_name || 'analytics_db')}
           </div>
         </div>
 
-        <div style={{ borderLeft: '1px solid var(--border-color, #2b2b40)', paddingLeft: '1.5rem' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Last Updated</div>
+        <div style={{ borderLeft: '1px solid var(--border-color, #2b2b40)', paddingLeft: '1.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Schema Status</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--warning, #f59e0b)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            {schemaLoading ? 'Loading...' : (
+              <>
+                {schemaMetadata?.status || 'Draft'} <CheckCircle2 size={15} />
+              </>
+            )}
+          </div>
+        </div>
+
+        <div style={{ borderLeft: '1px solid var(--border-color, #2b2b40)', paddingLeft: '1.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Schema Generated At</div>
           <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main, #fff)' }}>
             {schemaLoading ? (
               <span style={{ color: 'var(--text-muted, #888)' }}>Loading...</span>
             ) : schemaError ? (
               <span style={{ color: 'var(--danger, #ef4444)' }}>Error loading metadata</span>
             ) : (
-              formatLastUpdated(schemaMetadata?.last_updated)
+              formatLastUpdated(schemaMetadata?.generated_at || schemaMetadata?.last_updated)
             )}
           </div>
+        </div>
+
+        <div style={{ borderLeft: '1px solid var(--border-color, #2b2b40)', paddingLeft: '1.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Tables</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main, #fff)' }}>
+            {schemaLoading ? '...' : (schemaMetadata?.table_count ?? 0)}
+          </div>
+        </div>
+
+        <div style={{ borderLeft: '1px solid var(--border-color, #2b2b40)', paddingLeft: '1.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Columns</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main, #fff)' }}>
+            {schemaLoading ? '...' : (schemaMetadata?.column_count ?? 0)}
+          </div>
+        </div>
+
+        <div style={{ borderLeft: '1px solid var(--border-color, #2b2b40)', paddingLeft: '1.25rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #888)', fontWeight: 500, marginBottom: '0.2rem' }}>Relationships</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main, #fff)' }}>
+            {schemaLoading ? '...' : (schemaMetadata?.relationship_count ?? 0)}
+          </div>
+        </div>
+
+        <div style={{ borderLeft: '1px solid var(--border-color, #2b2b40)', paddingLeft: '1.25rem', display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+          <button
+            onClick={handleRegenerateSemanticLayer}
+            disabled={regeneratingSemantic || schemaLoading}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.45rem 0.85rem',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              borderRadius: '6px',
+              backgroundColor: 'var(--primary, #6366f1)',
+              color: '#fff',
+              border: 'none',
+              cursor: (regeneratingSemantic || schemaLoading) ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <RefreshCw size={14} style={{ animation: regeneratingSemantic ? 'spin 1s linear infinite' : 'none' }} />
+            {regeneratingSemantic ? 'Regenerating...' : 'Regenerate Semantic Layer'}
+          </button>
+
+          <button
+            onClick={handleRefreshSchema}
+            disabled={refreshingSchema || schemaLoading}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.45rem 0.85rem',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              borderRadius: '6px',
+              backgroundColor: 'var(--bg-card, #2b2b40)',
+              color: 'var(--text-main, #fff)',
+              border: '1px solid var(--border-color, #3b3b54)',
+              cursor: (refreshingSchema || schemaLoading) ? 'not-allowed' : 'pointer'
+            }}
+          >
+            <RefreshCw size={14} style={{ animation: refreshingSchema ? 'spin 1s linear infinite' : 'none' }} />
+            {refreshingSchema ? 'Refreshing...' : 'Refresh'}
+          </button>
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
         {[
-          { id: 'metrics', label: 'Metrics', icon: <Activity size={16} />, count: metrics.length },
           { id: 'dimensions', label: 'Dimensions', icon: <Layers size={16} />, count: dimensions.length },
           { id: 'joins', label: 'Joins', icon: <GitBranch size={16} />, count: joins.length },
           { id: 'glossary', label: 'Glossary', icon: <Book size={16} />, count: glossary.length }
@@ -349,7 +470,7 @@ export const SemanticLayer = () => {
                       <td><span className="badge badge-primary">v{m.version}</span></td>
                       <td>
                         <div className="flex items-center justify-end">
-                          <button className="btn-ghost" onClick={() => loadVersions(m)} style={{ padding: '0.5rem' }} title="Version History">
+                          <button className="btn-ghost" onClick={() => handleSelectMetric(m)} style={{ padding: '0.5rem' }} title="Version History">
                             <History size={16} />
                           </button>
                         </div>

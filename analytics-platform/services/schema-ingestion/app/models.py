@@ -918,3 +918,134 @@ class ApprovedSQLExample(Base):
     generated_sql: Mapped[str] = mapped_column(Text, nullable=False)
     approved_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+# =====================================================================
+# Deterministic Semantic Layer Entities (Draft State)
+# =====================================================================
+
+# =====================================================================
+# Deterministic Semantic Layer Entities (Draft State)
+# =====================================================================
+
+class DraftSemanticTable(Base):
+    __tablename__ = "draft_semantic_tables"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    database_name: Mapped[str] = mapped_column(Text, nullable=False)
+    schema_name: Mapped[str] = mapped_column(Text, nullable=False)
+    table_name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="Draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class DraftSemanticColumn(Base):
+    __tablename__ = "draft_semantic_columns"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    database_name: Mapped[str] = mapped_column(Text, nullable=False)
+    schema_name: Mapped[str] = mapped_column(Text, nullable=False)
+    table_name: Mapped[str] = mapped_column(Text, nullable=False)
+    column_name: Mapped[str] = mapped_column(Text, nullable=False)
+    data_type: Mapped[str] = mapped_column(Text, nullable=False)
+    is_primary_key: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    is_foreign_key: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="Draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class DraftSemanticRelationship(Base):
+    __tablename__ = "draft_semantic_relationships"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    database_name: Mapped[str] = mapped_column(Text, nullable=False)
+    source_table: Mapped[str] = mapped_column(Text, nullable=False)
+    source_column: Mapped[str] = mapped_column(Text, nullable=False)
+    target_table: Mapped[str] = mapped_column(Text, nullable=False)
+    target_column: Mapped[str] = mapped_column(Text, nullable=False)
+    relationship_type: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="Draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class DraftSemanticDimension(Base):
+    __tablename__ = "draft_semantic_dimensions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    database_name: Mapped[str] = mapped_column(Text, nullable=False)
+    schema_name: Mapped[str] = mapped_column(Text, nullable=False)
+    table_name: Mapped[str] = mapped_column(Text, nullable=False)
+    column_name: Mapped[str] = mapped_column(Text, nullable=False)
+    dimension_name: Mapped[str] = mapped_column(Text, nullable=False)
+    dimension_type: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="Draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class DraftSemanticMetric(Base):
+    __tablename__ = "draft_semantic_metrics"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    database_name: Mapped[str] = mapped_column(Text, nullable=False)
+    schema_name: Mapped[str] = mapped_column(Text, nullable=False)
+    table_name: Mapped[str] = mapped_column(Text, nullable=False)
+    column_name: Mapped[str] = mapped_column(Text, nullable=False)
+    metric_name: Mapped[str] = mapped_column(Text, nullable=False)
+    aggregation_type: Mapped[str] = mapped_column(Text, nullable=False)
+    expression: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="Draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class DraftSemanticTimeDimension(Base):
+    __tablename__ = "draft_semantic_time_dimensions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    database_name: Mapped[str] = mapped_column(Text, nullable=False)
+    schema_name: Mapped[str] = mapped_column(Text, nullable=False)
+    table_name: Mapped[str] = mapped_column(Text, nullable=False)
+    column_name: Mapped[str] = mapped_column(Text, nullable=False)
+    time_dimension_name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="Draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class DraftSemanticJoinPath(Base):
+    __tablename__ = "draft_semantic_join_paths"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    database_name: Mapped[str] = mapped_column(Text, nullable=False)
+    source_table: Mapped[str] = mapped_column(Text, nullable=False)
+    target_table: Mapped[str] = mapped_column(Text, nullable=False)
+    join_path_json: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="Draft")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class DraftSemanticVersion(Base):
+    __tablename__ = "draft_semantic_versions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    database_name: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="Draft")
+    metadata_summary: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class DraftSemanticAuditLog(Base):
+    __tablename__ = "draft_semantic_audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    database_name: Mapped[str] = mapped_column(Text, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    actor: Mapped[str] = mapped_column(Text, nullable=False, server_default="system:deterministic_generator")
+    details: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))

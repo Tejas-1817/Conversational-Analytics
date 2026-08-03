@@ -80,30 +80,37 @@ export const ChatInterface = () => {
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !convId) return;
+    if (!input.trim()) return;
 
-    const userMsg = { id: Date.now(), role: 'user', content: input };
+    const questionText = input.trim();
+    const userMsg = { id: Date.now(), role: 'user', content: questionText };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
 
     try {
-      const data = await fetchApi(`/engine/conversations/${convId}/query`, {
+      const data = await fetchApi('/api/v1/chat/sql', {
         method: 'POST',
-        body: JSON.stringify({ message: userMsg.content })
+        body: JSON.stringify({ question: questionText })
       });
-      setMessages(prev => [...prev, data]);
 
-      if (data.status === 'processing') {
-        // Async job — poll until complete or error
-        pollMessageStatus(convId, data.id);
-      } else {
-        // Synchronous completion (shouldn't happen with current backend, but safe)
-        setLoading(false);
-        loadConversations();
-      }
+      const botMsg = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        question: data.question,
+        answer: data.answer,
+        sql: data.sql,
+        result_data: data.result_data,
+        row_count: data.row_count,
+        execution_time_ms: data.execution_time_ms,
+        generated_at: data.generated_at,
+        database: data.database || 'analytics_db',
+        content: data.answer || data.sql
+      };
+      setMessages(prev => [...prev, botMsg]);
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: 'assistant', content: err.message || 'An error occurred.', isError: true }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: err.message || 'Failed to generate SQL query.', isError: true }]);
+    } finally {
       setLoading(false);
     }
   };
@@ -116,8 +123,8 @@ export const ChatInterface = () => {
         method: 'POST',
         body: JSON.stringify({
           name,
-          query: msg.intent?.original_query || 'Saved Insight',
-          chart_config: { chartType: msg.chart_recommendation, data: msg.result_data }
+          query: msg.question || msg.intent?.original_query || 'Saved Insight',
+          chart_config: { chartType: 'table', data: msg.result_data || [] }
         })
       });
       alert('Insight saved successfully! You can add it to a Dashboard.');
@@ -195,14 +202,14 @@ export const ChatInterface = () => {
                 <Bot size={32} />
               </div>
               <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>How can I help you today?</h2>
-              <p>Ask a question about your business data in plain English.</p>
+              <p>Ask a question about your business data in plain English to generate SQL & view live results.</p>
 
               <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left', opacity: 0.8 }}>
-                <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me revenue by region for 2026")}>
-                  <span className="text-sm">"Show me revenue by region for 2026"</span>
+                <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
+                  <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
                 </div>
-                <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("What is our average order value?")}>
-                  <span className="text-sm">"What is our average order value?"</span>
+                <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me top 5 users by created_at date")}>
+                  <span className="text-sm">"Show me top 5 users by created_at date"</span>
                 </div>
               </div>
             </div>
@@ -225,24 +232,58 @@ export const ChatInterface = () => {
                       </div>
                     )}
 
-                    {m.route && !m.isError && (
-                      <div style={{ marginBottom: '1rem', display: 'flex' }}>
-                        {m.route === 'analytics' && <div className="badge badge-primary"><Database size={12} style={{ marginRight: '4px' }} /> Analytics Mode</div>}
-                        {m.route === 'conversation' && <div className="badge badge-secondary" style={{ background: 'var(--bg-card)' }}><MessageSquare size={12} style={{ marginRight: '4px' }} /> Conversation Mode</div>}
-                        {m.route === 'help' && <div className="badge badge-secondary" style={{ background: 'var(--bg-card)' }}><Info size={12} style={{ marginRight: '4px' }} /> Help Mode</div>}
-                        {m.route === 'greeting' && <div className="badge badge-secondary" style={{ background: 'var(--bg-card)' }}><Bot size={12} style={{ marginRight: '4px' }} /> Assistant</div>}
-                      </div>
-                    )}
+                    {!m.isError && (m.sql || m.content || m.answer) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+                        {m.answer && (
+                          <div style={{ fontSize: '0.95rem', lineHeight: 1.6, fontWeight: 500, color: 'var(--text-main)' }}>
+                            {m.answer}
+                          </div>
+                        )}
 
-                    {!m.isError && (
-                      <div style={{ lineHeight: 1.6, marginBottom: m.generated_sql ? '1.5rem' : '0' }}>
-                        {m.content}
-                      </div>
-                    )}
+                        {m.result_data && m.result_data.length > 0 && (
+                          <div className="card" style={{ padding: '1.25rem', border: '1px solid var(--border-color)', background: 'var(--bg-dark)' }}>
+                            <div className="flex justify-between items-center mb-3">
+                              <div className="flex items-center gap-2">
+                                <Table size={16} className="text-muted" />
+                                <span className="text-sm font-semibold">Result Data ({m.row_count || m.result_data.length} rows)</span>
+                              </div>
+                              <button className="btn-secondary" onClick={() => handleSaveInsight(m)} style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>
+                                <Save size={14} /> Save Insight
+                              </button>
+                            </div>
+                            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                              <ChartRenderer data={m.result_data} chartType="table" />
+                            </div>
+                          </div>
+                        )}
 
-                    {!m.isError && m.generated_sql && (
-                      <div className="my-4">
-                        <SqlBlock sql={m.generated_sql} defaultOpen={false} />
+                        {m.sql && (
+                          <div className="my-1">
+                            <SqlBlock sql={m.sql} defaultOpen={false} />
+                          </div>
+                        )}
+
+                        {m.question && (
+                          <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '1.25rem',
+                            fontSize: '0.75rem',
+                            color: 'var(--text-muted)',
+                            padding: '0.5rem 0.75rem',
+                            backgroundColor: 'var(--bg-input, #1e1e2d)',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border-color, #2b2b40)',
+                            marginTop: '0.25rem'
+                          }}>
+                            <div><strong style={{ color: 'var(--text-main)' }}>Question:</strong> {m.question}</div>
+                            <div><strong style={{ color: 'var(--text-main)' }}>Database Name:</strong> {m.database || 'analytics_db'}</div>
+                            {m.execution_time_ms !== undefined && (
+                              <div><strong style={{ color: 'var(--text-main)' }}>Execution Time:</strong> {m.execution_time_ms}ms</div>
+                            )}
+                            <div><strong style={{ color: 'var(--text-main)' }}>Generation Time:</strong> {m.generated_at}</div>
+                          </div>
+                        )}
                       </div>
                     )}
 

@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api import api_keys, auth, dashboards, engine, eval, jobs, metadata, oidc, schema, semantic, sources, tenants, users
+from app.api import api_keys, auth, chat_sql, dashboards, deterministic_semantic, engine, eval, jobs, metadata, oidc, schema, semantic, sources, tenants, users
 from app.config import get_settings
 from app.db import get_engine, session_scope
 from app.models import User
@@ -181,6 +181,8 @@ app.include_router(api_keys.router)
 app.include_router(oidc.router)
 app.include_router(eval.router)
 app.include_router(schema.router)
+app.include_router(deterministic_semantic.router)
+app.include_router(chat_sql.router)
 
 
 # ---------------------------------------------------------------------------
@@ -194,31 +196,85 @@ def bootstrap_admin():
         log.warning("skipping_admin_bootstrap_missing_credentials")
         return
 
-    with session_scope() as session:
-        admin = session.query(User).filter(User.email == settings.admin_bootstrap_email).first()
-        if not admin:
-            log.info("bootstrapping_first_admin", email=settings.admin_bootstrap_email)
-            new_admin = User(
-                tenant_id=settings.default_tenant_id,
-                email=settings.admin_bootstrap_email,
-                password_hash=get_password_hash(settings.admin_bootstrap_password),
-                role="ADMIN",
-            )
-            session.add(new_admin)
-            session.flush()
+    # Automatically create missing metadata tables and enums if database is empty
+    try:
+        from app.models import (
+            Base, Tenant, User, RevokedToken, Conversation, ConversationMessage,
+            ApiKey, OIDCProvider, DataSource, TableMeta, ColumnMeta, IndexMeta, AuditLog
+        )
+        engine = get_engine()
+        enum_defs = {
+            "approval_status": "('draft', 'reviewed', 'approved', 'rejected', 'needs_clarification')",
+            "column_role": "('dimension', 'measure', 'key', 'attribute', 'unknown')",
+            "additivity_type": "('additive', 'semi_additive', 'non_additive', 'not_applicable')",
+            "rel_source": "('declared_fk', 'naming', 'value_overlap', 'llm')",
+            "job_status": "('queued', 'running', 'succeeded', 'failed', 'succeeded_with_warnings')",
+            "source_type": "('postgres', 'mysql', 'snowflake', 'bigquery')",
+            "user_role": "('ADMIN', 'ANALYST', 'VIEWER')",
+            "agg_type": "('SUM', 'AVG', 'COUNT', 'COUNT_DISTINCT', 'MIN', 'MAX', 'CUSTOM')",
+            "join_type": "('INNER', 'LEFT', 'RIGHT', 'FULL')",
+            "entity_type": "('METRIC', 'DIMENSION', 'GLOSSARY')",
+            "time_grain": "('YEAR', 'QUARTER', 'MONTH', 'WEEK', 'DAY', 'HOUR', 'NONE')",
+            "col_security_action": "('deny', 'mask', 'hash', 'partial_mask')",
+            "generation_status": "('GENERATING', 'ACTIVE', 'REVIEW_REQUIRED', 'REJECTED', 'DRAFT', 'VALIDATED', 'ARCHIVED')",
+            "generation_source": "('MANUAL', 'AI')"
+        }
+        with engine.begin() as conn:
+            for enum_name, values in enum_defs.items():
+                check_sql = text(f"SELECT 1 FROM pg_type WHERE typname = '{enum_name}'")
+                res = conn.execute(check_sql).fetchone()
+                if not res:
+                    conn.execute(text(f"CREATE TYPE {enum_name} AS ENUM {values}"))
 
-            # Audit the bootstrap creation
-            from app.audit import AuditEvent, audit
-            audit(
-                session,
-                tenant_id=new_admin.tenant_id,
-                entity_type="users",
-                entity_id=new_admin.id,
-                action=AuditEvent.USER_CREATED,
-                actor="system:bootstrap",
-                after={"email": settings.admin_bootstrap_email, "role": "ADMIN"},
-            )
-            session.commit()
+        infra_tables = [
+            Tenant.__table__, User.__table__, RevokedToken.__table__,
+            Conversation.__table__, ConversationMessage.__table__, ApiKey.__table__,
+            OIDCProvider.__table__, DataSource.__table__, TableMeta.__table__,
+            ColumnMeta.__table__, IndexMeta.__table__, AuditLog.__table__
+        ]
+        for tbl in infra_tables:
+            try:
+                Base.metadata.create_all(bind=engine, tables=[tbl])
+            except Exception as e:
+                log.warning("table_creation_warning", table=tbl.name, error=str(e))
+    except Exception as exc:
+        log.warning("database_table_creation_warning", error=str(exc))
+
+    try:
+        with session_scope() as session:
+            admin = session.query(User).filter(User.email == settings.admin_bootstrap_email).first()
+            if not admin:
+                log.info("bootstrapping_first_admin", email=settings.admin_bootstrap_email)
+                new_admin = User(
+                    tenant_id=settings.default_tenant_id,
+                    email=settings.admin_bootstrap_email,
+                    password_hash=get_password_hash(settings.admin_bootstrap_password),
+                    role="ADMIN",
+                )
+                session.add(new_admin)
+                session.flush()
+
+                # Audit the bootstrap creation
+                from app.audit import AuditEvent, audit
+                audit(
+                    session,
+                    tenant_id=new_admin.tenant_id,
+                    entity_type="users",
+                    entity_id=new_admin.id,
+                    action=AuditEvent.USER_CREATED,
+                    actor="system:bootstrap",
+                    after={"email": settings.admin_bootstrap_email, "role": "ADMIN"},
+                )
+                session.commit()
+            else:
+                # Refresh password hash if invalid
+                from app.security.auth import verify_password
+                if not verify_password(settings.admin_bootstrap_password, admin.password_hash):
+                    admin.password_hash = get_password_hash(settings.admin_bootstrap_password)
+                    session.commit()
+                    log.info("refreshed_admin_password_hash")
+    except Exception as exc:
+        log.warning("admin_bootstrap_skipping", error=str(exc))
 
 
 # ---------------------------------------------------------------------------

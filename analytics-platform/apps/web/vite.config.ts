@@ -24,7 +24,8 @@ export default defineConfig({
       '/semantic': apiProxy,
       '/schema': apiProxy,
       '/engine': apiProxy,
-      '/dashboards': apiProxy
+      '/dashboards': apiProxy,
+      '/api': apiProxy
     }
   },
   test: {

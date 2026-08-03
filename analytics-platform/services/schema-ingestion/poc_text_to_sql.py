@@ -73,6 +73,9 @@ class TextToSQLResponse(BaseModel):
     tables_referenced: List[str] = Field(default_factory=list, description="List of tables used.")
     sql_query: Optional[str] = Field(default=None, description="Clean SQL query without markdown blocks.")
     unanswerable_reason: Optional[str] = Field(default=None, description="Explanation if unanswerable.")
+    start_time: Optional[str] = Field(default=None, description="Query execution start timestamp.")
+    end_time: Optional[str] = Field(default=None, description="Query execution end timestamp.")
+    execution_duration: Optional[str] = Field(default=None, description="Formatted execution duration.")
 
 
 # =====================================================================
@@ -91,23 +94,44 @@ def save_query_metrics(start_dt: datetime, end_dt: datetime, question: str):
         }
         with open(metrics_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        print(f"[METRICS SAVED] Query Start: {start_dt.strftime('%H:%M:%S')}, End: {end_dt.strftime('%H:%M:%S')}, Duration: {duration_ms}ms")
-    except Exception as e:
-        print(f"[METRICS ERROR]: {e}")
+    except Exception:
+        pass
+
+
+def get_active_schema() -> tuple[str, dict]:
+    """Get active dynamic schema DDL and metadata, falling back to static schema if DB is offline."""
+    try:
+        from app.services.dynamic_schema_service import schema_service
+        sdata = schema_service.get_schema()
+        ddl = sdata.get("ddl")
+        metadata = sdata.get("schema_metadata", {})
+        if ddl and metadata.get("tables"):
+            return ddl, metadata
+    except Exception:
+        pass
+    return SAMPLE_SCHEMA_DDL, SCHEMA_METADATA
 
 
 class OllamaTextToSQLEngine:
-    def __init__(self, base_url: str, model_name: str):
+    def __init__(self, base_url: str, model_name: str, ddl: Optional[str] = None, metadata: Optional[dict] = None):
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
+        self._custom_ddl = ddl
+        self._custom_metadata = metadata
+
+    def _get_schema_context(self) -> tuple[str, dict]:
+        if self._custom_ddl and self._custom_metadata:
+            return self._custom_ddl, self._custom_metadata
+        return get_active_schema()
 
     def _build_prompt(self, question: str) -> str:
+        active_ddl, _ = self._get_schema_context()
         json_schema = json.dumps(TextToSQLResponse.model_json_schema(), indent=2)
         return f"""You are a strict, expert Text-to-SQL engine targeting PostgreSQL.
 Translate the user question into a valid SQL query using ONLY the provided DDL schema.
 
 ### DATABASE SCHEMA (DDL):
-{SAMPLE_SCHEMA_DDL}
+{active_ddl}
 
 ### CRITICAL RULES:
 1. NO HALLUCINATIONS: Do NOT reference any table or column not present in the DDL above.
@@ -123,7 +147,8 @@ JSON Output:"""
         if not response.is_answerable or not response.sql_query:
             return True, "Marked unanswerable."
 
-        valid_tables: Set[str] = set(SCHEMA_METADATA["tables"].keys())
+        _, active_metadata = self._get_schema_context()
+        valid_tables: Set[str] = set(active_metadata.get("tables", {}).keys())
         for table in response.tables_referenced:
             if table.lower() not in valid_tables:
                 return False, f"Hallucination Detected: Table '{table}' does not exist in schema."
@@ -135,7 +160,8 @@ JSON Output:"""
         return True, "Valid"
 
     def generate_sql(self, question: str) -> TextToSQLResponse:
-        start_dt = datetime.now(timezone.utc)
+        start_dt = datetime.now()
+        start_utc = datetime.now(timezone.utc)
         prompt = self._build_prompt(question)
         payload = {
             "model": self.model_name,
@@ -148,8 +174,11 @@ JSON Output:"""
         res = requests.post(f"{self.base_url}/api/generate", json=payload, timeout=600.0)
         res.raise_for_status()
 
-        end_dt = datetime.now(timezone.utc)
-        save_query_metrics(start_dt, end_dt, question)
+        end_dt = datetime.now()
+        end_utc = datetime.now(timezone.utc)
+        duration_sec = (end_dt - start_dt).total_seconds()
+        
+        save_query_metrics(start_utc, end_utc, question)
 
         raw_text = res.json().get("response", "").strip()
 
@@ -162,6 +191,11 @@ JSON Output:"""
 
         parsed_json = json.loads(raw_text)
         result = TextToSQLResponse(**parsed_json)
+
+        # Attach execution timing
+        result.start_time = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+        result.end_time = end_dt.strftime("%Y-%m-%d %H:%M:%S")
+        result.execution_duration = f"{duration_sec:.2f}s ({duration_sec * 1000:.0f}ms)"
 
         # Apply schema guardrail
         valid, msg = self.validate_schema(result)
@@ -196,6 +230,9 @@ if __name__ == "__main__":
             print("\nGenerating SQL query, please wait...")
             res = engine.generate_sql(user_question)
             print("\n" + "-" * 70)
+            print(f"Query Start   : {res.start_time}")
+            print(f"Query End     : {res.end_time}")
+            print(f"Execution Time: {res.execution_duration}")
             print(f"Reasoning     : {res.reasoning}")
             print(f"Is Answerable : {res.is_answerable}")
             if res.is_answerable:
