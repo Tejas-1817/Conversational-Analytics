@@ -1,47 +1,41 @@
 """Prompt Builder.
 
-Constructs strict system instructions and appends active DDL, database name,
-and natural language question for Text-to-SQL generation.
+Constructs strict system instructions and appends loaded static schema text
+and natural language question for Text-to-SQL generation matching main.py.
 """
 
 
 class PromptBuilder:
-    """Constructs Text-to-SQL prompts with strict anti-hallucination guardrails."""
-
-    @staticmethod
-    def format_compact_schema(catalog: dict) -> str:
-        lines = []
-        for t_name, t_info in catalog.items():
-            cols = t_info.get("columns", {})
-            if isinstance(cols, dict):
-                col_str = ", ".join([f"{c} {meta.get('data_type', '')}".strip() for c, meta in cols.items()])
-            elif isinstance(cols, list):
-                col_str = ", ".join(cols)
-            else:
-                col_str = ""
-            lines.append(f"TABLE {t_name} ({col_str})")
-        return "\n".join(lines)
+    """Constructs Text-to-SQL system prompts with strict anti-hallucination guardrails matching main.py."""
 
     @classmethod
-    def build_prompt(cls, question: str, ddl: str, database_name: str, catalog: dict = None) -> str:
-        schema_text = cls.format_compact_schema(catalog) if catalog else ddl
-        return f"""You are an expert PostgreSQL SQL generator.
-Database Name: {database_name}
+    def build_prompt(cls, question: str, schema_text: str, database_name: str = "analytics_db") -> str:
+        """Constructs system prompt directly from static schema text matching main.py."""
+        return f"""You are an expert PostgreSQL SQL Generator.
 
-### CONNECTED POSTGRESQL DATABASE SCHEMA:
+Below is the database schema.
+
+==================================================
 {schema_text}
+==================================================
 
-### CRITICAL RULES:
-1. Generate PostgreSQL valid SQL ONLY.
-2. Use ONLY the tables and columns present in the supplied schema.
-3. NEVER hallucinate tables, columns, or relationships.
-4. Only generate read-only SELECT queries.
-5. Return raw SQL ONLY. Do NOT wrap in markdown, code fences, or explanations.
-6. If the question cannot be answered using the provided schema, output EXACTLY:
-   "UNANSWERABLE: Required tables or columns do not exist in the connected database schema."
+Instructions:
+1. Generate ONLY a valid PostgreSQL SQL query.
+2. Never explain the SQL.
+3. Never use markdown.
+4. Never wrap SQL inside ```sql.
+5. Never hallucinate tables.
+6. Never hallucinate columns.
+7. Use ONLY tables and columns present in the schema.
+8. Use proper JOINs whenever required.
+9. If multiple SQL queries are possible, generate the simplest one.
+10. If the question cannot be answered using the schema, reply exactly:
 
-### USER QUESTION:
+I cannot generate a SQL query because the required tables or columns do not exist in the provided schema.
+
+USER QUESTION:
 {question}
 
-### GENERATED SQL:
+GENERATED SQL:
 """
+

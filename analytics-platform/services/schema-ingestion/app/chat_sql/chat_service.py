@@ -19,7 +19,7 @@ log = structlog.get_logger(__name__)
 
 
 import uuid
-from app.models import Conversation, ConversationMessage
+from app.models import Conversation, ConversationMessage, DataSource
 
 
 class ChatService:
@@ -41,39 +41,61 @@ class ChatService:
         user: Any | None = None,
     ) -> Dict[str, Any]:
         """Loads connected database schema, prompts LLM, executes SQL, synthesizes answer, persists messages, and returns DTO."""
-        # 1. Fetch live introspected PostgreSQL schema
-        db_name, ddl, catalog = self.schema_provider.get_connected_schema()
+        # 1. Load static schema file via _load_schema(schema_file)
+        db_name, schema_text = self.schema_provider.get_connected_schema()
 
-        # 2. Build anti-hallucination prompt with active DDL
+        # 2. Dynamically resolve caller's active connected customer DataSource
+        active_source = None
+        if db_session and user and hasattr(user, "tenant_id"):
+            try:
+                active_source = db_session.query(DataSource).filter_by(
+                    tenant_id=user.tenant_id,
+                    status="connected"
+                ).first()
+                if active_source and active_source.database_name:
+                    db_name = active_source.database_name
+            except Exception as exc:
+                log.warning("failed_to_resolve_active_datasource", error=str(exc))
+
+        # 3. Build system prompt using loaded static schema text
         prompt = self.prompt_builder.build_prompt(
             question=question,
-            ddl=ddl,
-            database_name=db_name,
-            catalog=catalog
+            schema_text=schema_text,
+            database_name=db_name
         )
 
-        # 3. Call LLM for raw PostgreSQL SQL generation
+        # 4. Call LLM for raw PostgreSQL SQL generation
         try:
             raw_sql = self.llm_provider.generate_sql(prompt)
         except Exception as exc:
             log.error("chat_sql_generation_error", error=str(exc))
             raw_sql = "UNANSWERABLE"
 
-        # 4. Validate SQL query safety & schema adherence
-        validated_sql = self.sql_validator.validate_sql(raw_sql, catalog)
+        # 5. Validate SQL query safety & schema adherence
+        validated_sql = self.sql_validator.validate_sql(raw_sql)
 
-        # 5. Execute read-only SELECT query against PostgreSQL
-        result_data, row_count, execution_time_ms = self.sql_executor.execute_query(validated_sql)
+        # 6. Execute read-only SELECT query against active customer DataSource
+        result_data, row_count, execution_time_ms, columns = self.sql_executor.execute_query(
+            validated_sql,
+            source=active_source
+        )
 
-        # 6. Synthesize plain English business answer from result data
+        # 7. Synthesize plain English business answer from result data
         answer = self.answer_synthesizer.synthesize_answer(question, result_data, validated_sql)
 
         format_date = lambda d: d.strftime("%d %b %Y, %I:%M %p")
         generated_at = format_date(datetime.now(timezone.utc))
 
-        log.info("chat_sql_processed", database=db_name, question=question[:50], row_count=row_count, execution_time_ms=execution_time_ms)
+        log.info(
+            "chat_sql_processed",
+            database=db_name,
+            question=question[:50],
+            row_count=row_count,
+            column_count=len(columns),
+            execution_time_ms=execution_time_ms
+        )
 
-        # 7. Persist Conversation & Messages to PostgreSQL if session and user provided
+        # 8. Persist Conversation & Messages to PostgreSQL if session and user provided
         res_conv_id = conversation_id
         if db_session and user:
             try:
@@ -116,7 +138,7 @@ class ChatService:
                     role="assistant",
                     content=answer,
                     generated_sql=validated_sql,
-                    result_data={"rows": result_data},
+                    result_data={"rows": result_data, "columns": columns, "row_count": row_count},
                     execution_time_ms=int(execution_time_ms),
                     status="complete"
                 )
@@ -130,11 +152,14 @@ class ChatService:
                     pass
 
         return {
+            "success": True,
             "conversation_id": res_conv_id,
             "question": question,
             "answer": answer,
             "sql": validated_sql,
             "result_data": result_data,
+            "rows": result_data,
+            "columns": columns,
             "row_count": row_count,
             "execution_time_ms": execution_time_ms,
             "generated_at": generated_at,

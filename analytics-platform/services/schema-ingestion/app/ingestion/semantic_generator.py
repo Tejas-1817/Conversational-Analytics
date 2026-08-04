@@ -98,29 +98,21 @@ def run_semantic_generation(session: Session, source: DataSource, metadata_versi
 
     try:
         from app.config import get_settings
-        settings = get_settings()
-        max_workers = 3 if settings.llm_provider.lower() == "ollama" else 3
+        from app.semantic_engine.deterministic_semantic_generator import DeterministicSemanticGenerator
         
-        tbl_metrics, tbl_warnings = SemanticGenerationService.generate_for_tables(
-            session, tables, source.tenant_id, semantic_model.id, max_workers=max_workers
-        )
-        if tbl_metrics:
-            for k, v in tbl_metrics.items():
-                if k in summary_metrics:
-                    summary_metrics[k] += v
-        all_warnings.extend(tbl_warnings)
-    except Exception as e:
-        log.error("table_enrichment_failed", source=source.name, error=str(e))
+        settings = get_settings()
+        
+        # 1. Execute fast deterministic generation (Instant 1-second execution, zero LLM delays)
+        try:
+            det_gen = DeterministicSemanticGenerator()
+            det_summary = det_gen.generate_draft_semantic_layer(force_regenerate=True)
+            log.info("deterministic_semantic_layer_generated", summary=det_summary)
+        except Exception as e:
+            log.warning("deterministic_generation_warning", error=str(e))
 
-    try:
-        glb_metrics, glb_warnings = SemanticGenerationService.generate_global(session, source.id, semantic_model.id)
-        if glb_metrics:
-            summary_metrics["llm_requests"] += glb_metrics.get("llm_requests", 0)
-            summary_metrics["llm_successes"] += glb_metrics.get("llm_successes", 0)
-            summary_metrics["llm_failures"] += glb_metrics.get("llm_failures", 0)
-        all_warnings.extend(glb_warnings)
+        log.info("skipping_llm_semantic_enrichment", source=source.name, reason="instant_deterministic_mode")
     except Exception as e:
-        log.error("global_enrichment_failed", source=source.name, error=str(e))
+        log.error("deterministic_semantic_generation_failed", source=source.name, error=str(e))
 
     # Stage 4: Validate Graph
     is_valid = SemanticGraphValidator.validate(session, semantic_model.id)

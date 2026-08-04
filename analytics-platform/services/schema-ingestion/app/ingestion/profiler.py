@@ -50,20 +50,29 @@ def run_profiling(session: Session, source: DataSource, engine: Engine) -> dict:
                     }
 
                     if any(h in column.data_type.lower() for h in _ORDERABLE_HINTS):
-                        mn, mx = conn.execute(text(f"SELECT min(v), max(v) FROM {sample}")).one()  # noqa: S608 — identifiers quoted via identifier_preparer, limits are config ints
+                        mn, mx = conn.execute(
+                            text(f"SELECT min(v), max(v) FROM {sample}")
+                        ).one()
                         profile["min"], profile["max"] = str(mn), str(mx)
 
-                    top = conn.execute(text(
-                        f"SELECT v, count(*) AS c FROM {sample} WHERE v IS NOT NULL "  # noqa: S608 — identifiers quoted via identifier_preparer, limits are config ints
-                        f"GROUP BY v ORDER BY c DESC LIMIT {settings.profile_top_n_values}"
-                    )).all()
-                    profile["sample_values"] = mask_samples(column.column_name, [r[0] for r in top])
+                    top = conn.execute(
+                                text(
+                                    f"SELECT v, count(*) AS c FROM {sample} "
+                                    f"WHERE v IS NOT NULL "
+                                    f"GROUP BY v ORDER BY c DESC "
+                                    f"LIMIT {settings.profile_top_n_values}"
+                                )
+                            ).all()
+
+                    profile["sample_values"] = mask_samples(
+                        column.column_name,
+                        [r[0] for r in top],
+                    )
 
                     column.profile = profile
-                    stats["columns_profiled"] += 1
 
-            stats["tables_profiled"] += 1
-        except Exception as exc:  # one bad table must not sink the run
+                stats["columns_profiled"] += 1
+        except Exception as exc:
             stats["errors"] += 1
             log.warning("profiling_failed", table=f"{table.schema_name}.{table.table_name}", error=str(exc))
 

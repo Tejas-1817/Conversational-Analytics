@@ -16,6 +16,22 @@ from app.db import get_engine
 log = structlog.get_logger()
 
 _SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "mysql", "performance_schema", "sys"}
+_SYSTEM_TABLES = {
+    "users", "tenants", "conversations", "conversation_messages", "data_sources",
+    "ingestion_jobs", "dashboards", "saved_insights", "audit_log", "tenant_policies",
+    "api_keys", "revoked_tokens", "oidc_providers", "tables_meta", "columns_meta",
+    "index_meta", "relationships", "metadata_versions", "semantic_synonyms",
+    "column_security_policies", "rls_policies", "user_feedback", "approved_sql_examples",
+    "dashboard_widgets", "benchmark_collections", "evaluation_datasets", "evaluation_runs",
+    "semantic_models", "semantic_dimensions", "semantic_joins", "semantic_feedback",
+    "semantic_metrics", "business_glossary", "evaluation_results", "business_ontology",
+    "ai_context", "metric_allowed_dimensions", "metric_allowed_filters", "glossary_links",
+    "metric_versions", "dimension_versions", "join_versions", "semantic_kpis",
+    "dashboard_recommendations", "suggested_questions", "chart_recommendations",
+    "draft_semantic_columns", "draft_semantic_relationships", "draft_semantic_dimensions",
+    "draft_semantic_tables", "draft_semantic_metrics", "draft_semantic_time_dimensions",
+    "draft_semantic_join_paths", "draft_semantic_versions", "draft_semantic_audit_logs"
+}
 
 
 class DynamicSchemaService:
@@ -53,6 +69,9 @@ class DynamicSchemaService:
                 continue
 
             for table_name in table_names:
+                if table_name.lower() in _SYSTEM_TABLES:
+                    continue
+
                 table_count += 1
                 table_key = f"{schema}.{table_name}" if schema != "public" else table_name
                 

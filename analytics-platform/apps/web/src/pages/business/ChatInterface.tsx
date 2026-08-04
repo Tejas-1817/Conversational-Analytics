@@ -89,7 +89,7 @@ export const ChatInterface = () => {
       try {
         const msg = await fetchApi(`/engine/conversations/${conversationId}/messages/${messageId}`);
         setMessages(prev => prev.map(m => m.id === messageId ? msg : m));
-        
+
         if (msg.status === 'complete' || msg.status === 'error') {
           clearInterval(intervalId);
           setLoading(false);
@@ -133,8 +133,10 @@ export const ChatInterface = () => {
         question: data.question,
         answer: data.answer,
         sql: data.sql,
-        result_data: data.result_data,
-        row_count: data.row_count,
+        result_data: Array.isArray(data.rows) ? data.rows : (Array.isArray(data.result_data) ? data.result_data : []),
+        rows: Array.isArray(data.rows) ? data.rows : (Array.isArray(data.result_data) ? data.result_data : []),
+        columns: data.columns || (Array.isArray(data.rows) && data.rows.length > 0 ? Object.keys(data.rows[0]) : []),
+        row_count: data.row_count !== undefined ? data.row_count : (Array.isArray(data.rows) ? data.rows.length : 0),
         execution_time_ms: data.execution_time_ms,
         generated_at: data.generated_at,
         database: data.database || 'analytics_db',
@@ -413,7 +415,7 @@ export const ChatInterface = () => {
           <div ref={messagesEndRef} style={{ height: '1px' }} />
         </div>
 
-        <div style={{ paddingBottom: '2rem', paddingTop: '1rem', background: 'var(--bg-main)', position: 'sticky', bottom: 0, borderTop: '1px solid var(--border-color)' }}>
+        <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: -46, borderTop: '1px solid var(--border-color)', zIndex: 20 }}>
           <form onSubmit={sendMessage} className="chat-input-wrapper" style={{ margin: '0 auto', maxWidth: '800px' }}>
             <input
               style={{ flex: 1, padding: '1rem', fontSize: '0.95rem' }}

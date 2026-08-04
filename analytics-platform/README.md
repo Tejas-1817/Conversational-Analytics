@@ -21,7 +21,8 @@ Built with a **Local-First**, privacy-focused architecture powered by an AI Sema
   2. **Data Profiling**: Computes column stats, null rates, and sample value distributions.
   3. **Relationship Detection**: Discovers and maps physical foreign key relationships deterministically, bypassing slow LLM heuristics.
   4. **Role Classification**: Automatically labels columns as dimensions, measures, keys, or attributes.
-  5. **Semantic Generation**: Highly optimized, single-pass LLM enrichment combining metric, dimension, and glossary term generation with deterministic rule-based time dimensions and table caching.
+  5. **Export Snapshot**: Exports PII-masked, versioned JSON schema snapshots under `SCHEMA_SNAPSHOT_DIR` for auditability and offline diffing.
+  6. **Semantic Generation**: Highly optimized, single-pass LLM enrichment combining metric, dimension, and glossary term generation with deterministic rule-based time dimensions and table caching.
 - **Semantic Layer Management**: Full CRUD interface for Metrics, Dimensions, Joins, and Business Glossary with automated formula parsing and validation.
 
 ### 📊 Dynamic Dashboards & Visualization
@@ -144,7 +145,7 @@ The seeding script generates pre-configured credentials for quick testing:
 ## 📖 Usage Walkthrough
 
 1. **Log In**: Log in as `admin@company.com` / `admin123`.
-2. **Data Sources**: Go to **Administration ➔ Data Sources**. Set up or test database connections (`127.0.0.1:5432` for local pgAdmin DB or `127.0.0.1:5443` for demo container). Click **Trigger Ingestion** to run the 5-stage pipeline.
+2. **Data Sources**: Go to **Administration ➔ Data Sources**. Set up or test database connections (`127.0.0.1:5432` for local pgAdmin DB or `127.0.0.1:5443` for demo container). Click **Trigger Ingestion** to run the 6-stage pipeline (including versioned snapshot export under `SCHEMA_SNAPSHOT_DIR` default `./data/schema-snapshots`).
 3. **Jobs Progress**: Watch live multi-stage job progress in **Administration ➔ Jobs**.
 4. **Semantic Layer**: Explore auto-generated metrics (e.g., *Revenue*), dimensions (e.g., *Region*, *Date*), and business glossary terms.
 5. **Ask AI Chat**: Ask plain English questions like *"Show me total revenue by month"*. View the generated query, execution trace, and auto-recommended line chart.

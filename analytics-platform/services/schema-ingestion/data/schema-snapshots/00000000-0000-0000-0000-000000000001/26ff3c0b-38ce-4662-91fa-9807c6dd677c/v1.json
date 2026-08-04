@@ -1,0 +1,1671 @@
+{
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "source_id": "26ff3c0b-38ce-4662-91fa-9807c6dd677c",
+  "source_name": "Altzor",
+  "version_number": 1,
+  "stage": "export_snapshot",
+  "exported_at": "2026-08-03T17:19:28.112529+00:00",
+  "tables": [
+    {
+      "table_id": "e5cd672c-f0c5-4888-9ba3-9021e3034759",
+      "schema_name": "public",
+      "table_name": "customer_addresses",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "b8deea82-62aa-47af-9c56-09f24e769355",
+          "column_name": "address_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "<masked: sensitive column>"
+          ]
+        },
+        {
+          "column_id": "aeae6df0-c5a3-487e-a5a8-9e39cad03c0c",
+          "column_name": "address_type",
+          "data_type": "VARCHAR(30)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "<masked: sensitive column>"
+          ]
+        },
+        {
+          "column_id": "52cb6cf2-7031-4852-bfc6-4fbfaf18d55d",
+          "column_name": "city",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Delhi",
+            "Bengaluru",
+            "Pune",
+            "Hyderabad",
+            "Mumbai"
+          ]
+        },
+        {
+          "column_id": "0bb5b188-63a2-496d-8280-6730a5ef2b83",
+          "column_name": "country",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "India"
+          ]
+        },
+        {
+          "column_id": "6d6f6ece-bd25-4112-9f3b-0b04afb9a195",
+          "column_name": "customer_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "4",
+            "10",
+            "6",
+            "2",
+            "9",
+            "7",
+            "3",
+            "1",
+            "5",
+            "8"
+          ]
+        },
+        {
+          "column_id": "04391512-856a-44be-a26f-0625a528d609",
+          "column_name": "postal_code",
+          "data_type": "VARCHAR(20)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "425024",
+            "485371",
+            "485534",
+            "494776",
+            "420495",
+            "451444",
+            "427329",
+            "431211",
+            "445901",
+            "454957"
+          ]
+        },
+        {
+          "column_id": "aaea5dbf-1925-4cfb-8fbc-e6e20a825240",
+          "column_name": "state",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Karnataka",
+            "Delhi",
+            "Tamil Nadu",
+            "Maharashtra",
+            "Telangana"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "786f520b-1095-478b-86d0-177aaa8ffce3",
+      "schema_name": "public",
+      "table_name": "suppliers",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "cb219e4b-574c-4d7f-bfe7-0be06ba3c3cc",
+          "column_name": "city",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Hyderabad",
+            "Delhi",
+            "Pune",
+            "Bengaluru",
+            "Mumbai"
+          ]
+        },
+        {
+          "column_id": "41f2f31c-b625-421a-9bdc-379a1e3cb51a",
+          "column_name": "contact_person",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Contact 7",
+            "Contact 4",
+            "Contact 3",
+            "Contact 2",
+            "Contact 5",
+            "Contact 1",
+            "Contact 9",
+            "Contact 8",
+            "Contact 10",
+            "Contact 6"
+          ]
+        },
+        {
+          "column_id": "2be4da4f-4ef9-48f8-872c-4e4852e1ffd9",
+          "column_name": "country",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "India"
+          ]
+        },
+        {
+          "column_id": "d5781166-ebb9-4cdd-afef-bb52acdb7516",
+          "column_name": "supplier_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "4",
+            "10",
+            "6",
+            "2",
+            "9",
+            "7",
+            "3",
+            "1",
+            "5",
+            "8"
+          ]
+        },
+        {
+          "column_id": "e3ea98f6-63c9-4a37-813d-a8a305ac6875",
+          "column_name": "supplier_name",
+          "data_type": "VARCHAR(200)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Supplier 4",
+            "Supplier 7",
+            "Supplier 6",
+            "Supplier 9",
+            "Supplier 8",
+            "Supplier 3",
+            "Supplier 5",
+            "Supplier 2",
+            "Supplier 10",
+            "Supplier 1"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "365f84f8-8939-4951-84d0-2c818e10f46b",
+      "schema_name": "public",
+      "table_name": "inventory",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "17b8c7b8-efcd-48b6-92f5-6b9efe7c47cb",
+          "column_name": "inventory_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "1dfb5f94-f2b6-49c0-be60-9adb6e947725",
+          "column_name": "last_updated",
+          "data_type": "TIMESTAMP",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****:08:***-***-****"
+          ]
+        },
+        {
+          "column_id": "ab89fc94-b837-48ee-89c6-03774538d253",
+          "column_name": "product_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "aae7125a-9a65-41df-a640-2e1716f7627a",
+          "column_name": "reorder_level",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "20"
+          ]
+        },
+        {
+          "column_id": "5318eb5f-75e2-4b92-8aae-779b28f42b7a",
+          "column_name": "stock_quantity",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "190",
+            "170",
+            "180",
+            "200",
+            "120",
+            "160",
+            "150",
+            "140",
+            "110",
+            "130"
+          ]
+        },
+        {
+          "column_id": "6dd288c0-56ae-46b1-bc5f-4961a9a3ae88",
+          "column_name": "warehouse",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Warehouse 1"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "0c927333-6011-4d19-b8bb-2e2c3d8608d2",
+      "schema_name": "public",
+      "table_name": "stores",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "401a300b-ddf0-4eab-8991-37c39d972f8e",
+          "column_name": "city",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Delhi",
+            "Bengaluru",
+            "Mumbai",
+            "Pune"
+          ]
+        },
+        {
+          "column_id": "478c0ed8-f470-47c4-b679-d34ae7cc834b",
+          "column_name": "manager_name",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Manager 10",
+            "Manager 9",
+            "Manager 3",
+            "Manager 6",
+            "Manager 8",
+            "Manager 7",
+            "Manager 2",
+            "Manager 1",
+            "Manager 4",
+            "Manager 5"
+          ]
+        },
+        {
+          "column_id": "4be1024c-0c15-494f-92a0-9d5e70e2047e",
+          "column_name": "state",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Karnataka",
+            "Tamil Nadu",
+            "Delhi",
+            "Telangana"
+          ]
+        },
+        {
+          "column_id": "f17a8276-c486-4e44-aaaa-e05fcfff16bb",
+          "column_name": "store_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "4",
+            "10",
+            "6",
+            "2",
+            "9",
+            "7",
+            "3",
+            "1",
+            "5",
+            "8"
+          ]
+        },
+        {
+          "column_id": "81569dc9-e3ab-466d-a8c8-a9475edca77c",
+          "column_name": "store_name",
+          "data_type": "VARCHAR(150)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Store 1",
+            "Store 4",
+            "Store 3",
+            "Store 7",
+            "Store 8",
+            "Store 6",
+            "Store 2",
+            "Store 9",
+            "Store 10",
+            "Store 5"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "3c13d091-2e0b-438f-b24f-eb3d081ea99c",
+      "schema_name": "public",
+      "table_name": "employees",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "ca03a649-397b-4332-aefe-18109ed167eb",
+          "column_name": "department",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Sales"
+          ]
+        },
+        {
+          "column_id": "b7934272-bfc8-4c4e-8b79-317b968c90da",
+          "column_name": "designation",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Executive"
+          ]
+        },
+        {
+          "column_id": "a51e3ba1-3df3-45b2-95db-21bb493658e4",
+          "column_name": "employee_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "4",
+            "10",
+            "6",
+            "2",
+            "9",
+            "7",
+            "3",
+            "1",
+            "5",
+            "8"
+          ]
+        },
+        {
+          "column_id": "6f48fbd0-d163-4991-a453-d612efebfe21",
+          "column_name": "first_name",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Emp6",
+            "Emp4",
+            "Emp1",
+            "Emp8",
+            "Emp9",
+            "Emp3",
+            "Emp5",
+            "Emp2",
+            "Emp7",
+            "Emp10"
+          ]
+        },
+        {
+          "column_id": "eceac44d-972c-4281-bb88-4a9c494f9b57",
+          "column_name": "hire_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        },
+        {
+          "column_id": "9fd17ffe-96c6-4d74-8edb-5edc5859484c",
+          "column_name": "last_name",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Last5",
+            "Last3",
+            "Last7",
+            "Last4",
+            "Last9",
+            "Last2",
+            "Last8",
+            "Last6",
+            "Last10",
+            "Last1"
+          ]
+        },
+        {
+          "column_id": "7d9d159d-ef6f-4e52-9261-f98222c650f0",
+          "column_name": "salary",
+          "data_type": "NUMERIC(12, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "65000.00",
+            "75000.00",
+            "50000.00",
+            "35000.00",
+            "70000.00",
+            "80000.00",
+            "45000.00",
+            "60000.00",
+            "55000.00",
+            "40000.00"
+          ]
+        },
+        {
+          "column_id": "9f5532b5-5bfc-46fe-9c1b-97f1525443d2",
+          "column_name": "store_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "4",
+            "10",
+            "6",
+            "2",
+            "9",
+            "7",
+            "3",
+            "1",
+            "5",
+            "8"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "cb82d8a5-c740-46bc-a7bb-18f9757258bd",
+      "schema_name": "public",
+      "table_name": "shipments",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "cc6a52d0-7dfd-406e-b998-20b9e395ba0e",
+          "column_name": "courier",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "BlueDart"
+          ]
+        },
+        {
+          "column_id": "8741bc67-402a-44ef-8c60-1168d5205fc2",
+          "column_name": "delivered_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        },
+        {
+          "column_id": "8ebbe7b2-4c8b-44f0-891e-9eb0cac40251",
+          "column_name": "order_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "4",
+            "10",
+            "6",
+            "2",
+            "9",
+            "7",
+            "3",
+            "1",
+            "5",
+            "8"
+          ]
+        },
+        {
+          "column_id": "fbf83e52-b253-4a5b-971e-041bb64e1292",
+          "column_name": "shipment_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "4",
+            "10",
+            "6",
+            "2",
+            "9",
+            "7",
+            "3",
+            "1",
+            "5",
+            "8"
+          ]
+        },
+        {
+          "column_id": "5dc1711b-94c5-4a3a-9ac9-f8ed5c77ba3f",
+          "column_name": "shipped_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        },
+        {
+          "column_id": "9a990429-453b-4ee2-a823-e79626d79a47",
+          "column_name": "shipping_status",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Delivered"
+          ]
+        },
+        {
+          "column_id": "6f8a5e85-a63d-42c8-a782-ce4561499157",
+          "column_name": "tracking_number",
+          "data_type": "VARCHAR(255)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "TRK00010",
+            "TRK00004",
+            "TRK00008",
+            "TRK00007",
+            "TRK00002",
+            "TRK00001",
+            "TRK00005",
+            "TRK00003",
+            "TRK00009",
+            "TRK00006"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "8f1b021c-b718-4019-84e8-57d91f5cd5c1",
+      "schema_name": "public",
+      "table_name": "reviews",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "b7dab45a-0885-44af-86e2-b829921b58f0",
+          "column_name": "customer_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "7607682d-5fb1-4789-80ec-8e7e0bb0ca32",
+          "column_name": "product_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "86514090-1b03-41da-8f6b-d9f09dad585e",
+          "column_name": "rating",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "5"
+          ]
+        },
+        {
+          "column_id": "c5038e07-da39-48d6-822f-d7834f11c62b",
+          "column_name": "review_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        },
+        {
+          "column_id": "6b78f652-f794-4dd1-a4ff-c93420bad95f",
+          "column_name": "review_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "be94cd0d-87eb-4777-9ff3-1d3911c35cf0",
+          "column_name": "review_text",
+          "data_type": "TEXT",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Excellent product"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "ef5dbefd-9f42-4c9e-a110-d2786e4cf62a",
+      "schema_name": "public",
+      "table_name": "promotions",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "e6a4d560-e27e-465b-85d3-49ff19228781",
+          "column_name": "discount_percent",
+          "data_type": "NUMERIC(5, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "14.00",
+            "9.00",
+            "13.00",
+            "6.00",
+            "10.00",
+            "8.00",
+            "7.00",
+            "11.00",
+            "15.00",
+            "12.00"
+          ]
+        },
+        {
+          "column_id": "cd378916-4221-418d-9165-19e76d7bc7ec",
+          "column_name": "end_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****"
+          ]
+        },
+        {
+          "column_id": "a9c79959-71d3-4dbe-8b33-d1309276363d",
+          "column_name": "promotion_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "1ac6dca5-2201-470a-9196-6d08f404a109",
+          "column_name": "promotion_name",
+          "data_type": "VARCHAR(150)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Promo 9",
+            "Promo 10",
+            "Promo 7",
+            "Promo 3",
+            "Promo 4",
+            "Promo 5",
+            "Promo 6",
+            "Promo 8",
+            "Promo 2",
+            "Promo 1"
+          ]
+        },
+        {
+          "column_id": "c3bf49b4-68b3-4b72-bb84-5fc164408f0e",
+          "column_name": "promotion_type",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Seasonal"
+          ]
+        },
+        {
+          "column_id": "c333a25f-06fe-403d-beb9-baa31c23067e",
+          "column_name": "start_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "bd3aa7c4-1805-4dd0-a741-7473b94e4990",
+      "schema_name": "public",
+      "table_name": "categories",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "8467e6cd-7395-491f-9673-3d203cb148c0",
+          "column_name": "category_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "3",
+            "5",
+            "4",
+            "2",
+            "1"
+          ]
+        },
+        {
+          "column_id": "a1d2dcfb-757a-484b-a84e-336b0a0f0fa8",
+          "column_name": "category_name",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Sports",
+            "Electronics",
+            "Home",
+            "Books",
+            "Fashion"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "6de3edd4-ab34-4369-90c2-0f89ae085014",
+      "schema_name": "public",
+      "table_name": "products",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "547a4e32-77e2-4d6f-9dfd-034245eb7f02",
+          "column_name": "category_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "3",
+            "5",
+            "4",
+            "2",
+            "1"
+          ]
+        },
+        {
+          "column_id": "45aee9a7-56df-46b4-a264-cb58caa45609",
+          "column_name": "product_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "1bfd9267-9877-4a66-87bd-e851d500d5e4",
+          "column_name": "product_name",
+          "data_type": "VARCHAR(255)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Notebook",
+            "Smartphone",
+            "T-Shirt",
+            "Jeans",
+            "Cricket Bat",
+            "Dining Table",
+            "Football",
+            "Python Book",
+            "Laptop",
+            "Sofa"
+          ]
+        },
+        {
+          "column_id": "5f265ca8-338a-43cc-a991-c2a60e4d07c4",
+          "column_name": "selling_price",
+          "data_type": "NUMERIC(12, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "3200.00",
+            "30000.00",
+            "900.00",
+            "22000.00",
+            "1200.00",
+            "1800.00",
+            "2500.00",
+            "65000.00",
+            "450.00",
+            "35000.00"
+          ]
+        },
+        {
+          "column_id": "b9cba0fa-0443-43a1-a51b-b29c164d8d19",
+          "column_name": "status",
+          "data_type": "VARCHAR(30)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "ACTIVE"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "78f0ce1e-3089-4b8d-928a-5e381b274b5d",
+      "schema_name": "public",
+      "table_name": "order_items",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "0f5ca110-d254-4676-9367-299dce60a549",
+          "column_name": "unit_price",
+          "data_type": "NUMERIC(12, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "3200.00",
+            "30000.00",
+            "900.00",
+            "22000.00",
+            "1200.00",
+            "1800.00",
+            "2500.00",
+            "65000.00",
+            "450.00",
+            "35000.00"
+          ]
+        },
+        {
+          "column_id": "6397a67d-eed8-4eb7-be6f-f2b291485cf4",
+          "column_name": "total_price",
+          "data_type": "NUMERIC(12, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "3200.00",
+            "30000.00",
+            "900.00",
+            "22000.00",
+            "1200.00",
+            "1800.00",
+            "2500.00",
+            "65000.00",
+            "450.00",
+            "35000.00"
+          ]
+        },
+        {
+          "column_id": "a20a33a8-a05a-4370-ac01-5a45036279bd",
+          "column_name": "order_item_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "b6be080b-f48c-4968-b036-1bd9fa9ecfe9",
+          "column_name": "quantity",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "1"
+          ]
+        },
+        {
+          "column_id": "ccf686e5-8969-438d-8ef3-7f3b56f85659",
+          "column_name": "order_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "dd8e5f73-b385-483c-862f-d73b2fbbd6b4",
+          "column_name": "product_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "242ecd86-079f-4ebb-8dad-735ea09ffe74",
+      "schema_name": "public",
+      "table_name": "payments",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "2af8e1f5-5194-41b1-9fc0-9d611717a1e7",
+          "column_name": "payment_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        },
+        {
+          "column_id": "4d8a8276-2eed-473c-8e9a-5121e21d38bd",
+          "column_name": "order_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "c6e9f2b2-8b6c-4294-8c6a-450731134012",
+          "column_name": "payment_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "ed30fdec-69ed-45a6-b2ec-4bac24c47e9f",
+          "column_name": "amount",
+          "data_type": "NUMERIC(12, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "3200.00",
+            "30000.00",
+            "900.00",
+            "22000.00",
+            "1200.00",
+            "1800.00",
+            "2500.00",
+            "65000.00",
+            "450.00",
+            "35000.00"
+          ]
+        },
+        {
+          "column_id": "f5a2c5b4-6f55-4071-a283-4e37026c9ec5",
+          "column_name": "payment_method",
+          "data_type": "VARCHAR(30)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "UPI",
+            "Cash",
+            "Card"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "695ded17-d3d7-46be-8ce3-4bdcb7734d34",
+      "schema_name": "public",
+      "table_name": "product_reviews",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "0ef3b915-8a5e-4420-811f-1afa9999c1b7",
+          "column_name": "review_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        },
+        {
+          "column_id": "3cf15556-8747-486b-8a62-8edc5d61254d",
+          "column_name": "product_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "5",
+            "2",
+            "1"
+          ]
+        },
+        {
+          "column_id": "93d9cb13-9df3-4888-b47a-627c7d2d2bb4",
+          "column_name": "customer_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "5",
+            "2",
+            "1"
+          ]
+        },
+        {
+          "column_id": "a10c9016-321a-40a4-b0d9-af1b889b07e7",
+          "column_name": "review_text",
+          "data_type": "TEXT",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Decent cricket bat for beginners, a bit heavy.",
+            "The sofa is incredibly comfortable and looks great in my living room.",
+            "Excellent laptop, very fast and reliable!",
+            "Great smartphone, but the battery life could be better."
+          ]
+        },
+        {
+          "column_id": "adc45156-4882-4867-8bc0-e6cf29e4bb6a",
+          "column_name": "review_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "3",
+            "4",
+            "2",
+            "1"
+          ]
+        },
+        {
+          "column_id": "b1a50b4f-6870-48c5-9582-8ebda906d942",
+          "column_name": "rating",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "5",
+            "3",
+            "4"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "e02456f4-6cbf-4ffc-a826-66ca3a9a56a4",
+      "schema_name": "public",
+      "table_name": "customers",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "3c749fdd-5fe7-4d5a-b6f8-ad5c85ced113",
+          "column_name": "first_name",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Sophia",
+            "Michael",
+            "William",
+            "Olivia",
+            "Amelia",
+            "John",
+            "James",
+            "Benjamin",
+            "Emma",
+            "Charlotte"
+          ]
+        },
+        {
+          "column_id": "569f5a32-9f04-4c79-a7f7-f12e4aada935",
+          "column_name": "customer_segment",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Gold",
+            "Silver",
+            "Bronze"
+          ]
+        },
+        {
+          "column_id": "72e62f6b-bd08-425e-a9a2-5ee897bedf07",
+          "column_name": "status",
+          "data_type": "VARCHAR(30)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "ACTIVE"
+          ]
+        },
+        {
+          "column_id": "af5c3cb5-345b-4913-9e23-e6930f9e195d",
+          "column_name": "customer_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "e0266685-ee2a-4b89-a0a3-60741b39ffc4",
+          "column_name": "registration_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "24dc4572-a32a-43c8-a961-d7fefca8ece4",
+      "schema_name": "public",
+      "table_name": "orders",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "49506055-9d9a-429c-a772-5d9d4891bf54",
+          "column_name": "total_amount",
+          "data_type": "NUMERIC(12, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "3200.00",
+            "30000.00",
+            "900.00",
+            "22000.00",
+            "1200.00",
+            "1800.00",
+            "2500.00",
+            "65000.00",
+            "450.00",
+            "35000.00"
+          ]
+        },
+        {
+          "column_id": "51b97aed-0a79-4728-90dd-93f319add124",
+          "column_name": "order_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "548cea65-f9a4-4df7-8d86-af9f6de824be",
+          "column_name": "order_status",
+          "data_type": "VARCHAR(30)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Delivered"
+          ]
+        },
+        {
+          "column_id": "ca819beb-fc4c-4511-b936-59530a2d2bc9",
+          "column_name": "customer_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "9",
+            "3",
+            "5",
+            "4",
+            "10",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "f26b8586-8d67-4aeb-a3f3-b189110b5347",
+          "column_name": "order_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_id": "7cd52cd9-4d86-43dc-bc94-59128abc4cdf",
+      "from_column_id": "9f5532b5-5bfc-46fe-9c1b-97f1525443d2",
+      "to_column_id": "f17a8276-c486-4e44-aaaa-e05fcfff16bb",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "7497c782-4914-4633-b822-b101645d5ebd",
+      "from_column_id": "547a4e32-77e2-4d6f-9dfd-034245eb7f02",
+      "to_column_id": "8467e6cd-7395-491f-9673-3d203cb148c0",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "c1e03f20-8461-41af-b9d0-84a0098b65ba",
+      "from_column_id": "ccf686e5-8969-438d-8ef3-7f3b56f85659",
+      "to_column_id": "51b97aed-0a79-4728-90dd-93f319add124",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "a6740fd8-202b-4732-9c5c-175c40771995",
+      "from_column_id": "dd8e5f73-b385-483c-862f-d73b2fbbd6b4",
+      "to_column_id": "45aee9a7-56df-46b4-a264-cb58caa45609",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "91d661c5-11fb-4d94-b9c6-f712c1607f3d",
+      "from_column_id": "4d8a8276-2eed-473c-8e9a-5121e21d38bd",
+      "to_column_id": "51b97aed-0a79-4728-90dd-93f319add124",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "d3e07c9d-722c-45a1-b1d0-6606cbbfbaf0",
+      "from_column_id": "93d9cb13-9df3-4888-b47a-627c7d2d2bb4",
+      "to_column_id": "af5c3cb5-345b-4913-9e23-e6930f9e195d",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "f29c6161-4411-4719-84f4-1e9ecac58421",
+      "from_column_id": "3cf15556-8747-486b-8a62-8edc5d61254d",
+      "to_column_id": "45aee9a7-56df-46b4-a264-cb58caa45609",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "bc58fa09-d0fa-447e-b7f8-e4c2b8ad937a",
+      "from_column_id": "ca819beb-fc4c-4511-b936-59530a2d2bc9",
+      "to_column_id": "af5c3cb5-345b-4913-9e23-e6930f9e195d",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "8377b71e-1b8e-42f6-a18a-2c0e8ecc8491",
+      "from_column_id": "6d6f6ece-bd25-4112-9f3b-0b04afb9a195",
+      "to_column_id": "af5c3cb5-345b-4913-9e23-e6930f9e195d",
+      "cardinality": "many_to_one",
+      "source": "value_overlap",
+      "confidence": 1.0,
+      "status": "draft"
+    },
+    {
+      "relationship_id": "64106a54-fb63-4a1f-9253-8be74b69dbab",
+      "from_column_id": "ab89fc94-b837-48ee-89c6-03774538d253",
+      "to_column_id": "45aee9a7-56df-46b4-a264-cb58caa45609",
+      "cardinality": "many_to_one",
+      "source": "value_overlap",
+      "confidence": 1.0,
+      "status": "draft"
+    },
+    {
+      "relationship_id": "2bbf3a8e-4c94-418b-815e-050bce85522b",
+      "from_column_id": "8ebbe7b2-4c8b-44f0-891e-9eb0cac40251",
+      "to_column_id": "51b97aed-0a79-4728-90dd-93f319add124",
+      "cardinality": "many_to_one",
+      "source": "value_overlap",
+      "confidence": 1.0,
+      "status": "draft"
+    },
+    {
+      "relationship_id": "8a4941e9-81d3-4473-9aff-67cddee8353b",
+      "from_column_id": "7607682d-5fb1-4789-80ec-8e7e0bb0ca32",
+      "to_column_id": "45aee9a7-56df-46b4-a264-cb58caa45609",
+      "cardinality": "many_to_one",
+      "source": "value_overlap",
+      "confidence": 1.0,
+      "status": "draft"
+    },
+    {
+      "relationship_id": "dc0bf174-6cef-4e47-8f59-2234c80cca69",
+      "from_column_id": "b7dab45a-0885-44af-86e2-b829921b58f0",
+      "to_column_id": "af5c3cb5-345b-4913-9e23-e6930f9e195d",
+      "cardinality": "many_to_one",
+      "source": "value_overlap",
+      "confidence": 1.0,
+      "status": "draft"
+    }
+  ]
+}

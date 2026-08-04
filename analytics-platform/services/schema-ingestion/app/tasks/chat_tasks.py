@@ -4,7 +4,7 @@ import structlog
 from datetime import datetime, timezone
 from rq.timeouts import JobTimeoutException
 from app.db import session_scope
-from app.models import ConversationMessage, Conversation
+from app.models import ConversationMessage, Conversation, DataSource, TableMeta
 from app.engine.context_manager import ConversationContextManager
 from app.engine.nlu_service import NLUService
 from app.engine.retrieval_service import RetrievalService
@@ -26,6 +26,7 @@ ANALYTICS_STAGES = [
     ("resolving_entities", "Identifying relevant metrics and dimensions..."),
     ("planning_query",     "Building the query plan..."),
     ("generating_sql",     "Compiling SQL..."),
+    ("connecting_to_source", "Connecting to target database..."),
     ("executing_query",    "Running the query..."),
     ("generating_insights","Generating natural language insights..."),
 ]
@@ -167,10 +168,28 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
             asst_msg.generated_sql = compiled.sql
             _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
 
-            # Stage 5: executing_query
+            # Stage 5: connecting_to_source
             active_stage_key, active_stage_label = ANALYTICS_STAGES[4]
             _append_trace(db, asst_msg, active_stage_key, active_stage_label, "in_progress")
-            result = ExecutorService.execute(db, compiled)
+
+            target_source = None
+            if resolution.metric and resolution.metric.source_table_id:
+                table_meta = db.query(TableMeta).filter_by(id=resolution.metric.source_table_id).first()
+                if table_meta and table_meta.source_id:
+                    target_source = db.query(DataSource).filter_by(id=table_meta.source_id, tenant_id=tenant_id).first()
+
+            if target_source is None:
+                target_source = db.query(DataSource).filter_by(tenant_id=tenant_id).order_by(DataSource.created_at.desc()).first()
+
+            if target_source is None:
+                raise ConnectionError("Could not connect to the data source: No active data source found for this tenant.")
+
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
+
+            # Stage 6: executing_query
+            active_stage_key, active_stage_label = ANALYTICS_STAGES[5]
+            _append_trace(db, asst_msg, active_stage_key, active_stage_label, "in_progress")
+            result = ExecutorService.execute(target_source, compiled)
             asst_msg.execution_time_ms = result.execution_time_ms
             asst_msg.result_data       = {"columns": result.columns, "rows": result.rows}
             _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
@@ -184,8 +203,8 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
             asst_msg.confidence_score  = max(0.0, confidence)
             asst_msg.confidence_reason = " | ".join(reasons)
 
-            # Stage 6: generating_insights
-            active_stage_key, active_stage_label = ANALYTICS_STAGES[5]
+            # Stage 7: generating_insights
+            active_stage_key, active_stage_label = ANALYTICS_STAGES[6]
             _append_trace(db, asst_msg, active_stage_key, active_stage_label, "in_progress")
             if len(result.rows) == 0:
                 asst_msg.content           = "I ran the query, but no data was found for the requested filters."
@@ -193,7 +212,7 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
             else:
                 explanation               = NLGenerator.generate_explanation(raw_query, plan, result)
                 asst_msg.content          = explanation
-                asst_msg.chart_recommendation = ChartRecommender.recommend(plan)
+                asst_msg.chart_recommendation = ChartRecommender.recommend(plan, row_count=len(result.rows), column_count=len(result.columns))
             _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
 
             asst_msg.status = "complete"

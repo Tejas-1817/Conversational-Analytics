@@ -224,6 +224,85 @@ class DeterministicSemanticGenerator:
                         status="Draft"
                     ))
 
+                # Populate production Approved Semantic Layer objects so Semantic Layer UI displays them
+                import uuid
+                from app.models import DataSource, SemanticModel, SemanticDimension, SemanticMetric, BusinessGlossary
+                tenant_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
+                source = session.query(DataSource).filter_by(tenant_id=tenant_id, status="connected").first()
+                model_id = None
+                if source:
+                    sem_model = session.query(SemanticModel).filter_by(source_id=source.id, is_active=True).first()
+                    if not sem_model:
+                        sem_model = SemanticModel(
+                            source_id=source.id,
+                            tenant_id=tenant_id,
+                            semantic_version=1,
+                            is_active=True,
+                            generation_status="ACTIVE",
+                            created_by="system",
+                            updated_by="system"
+                        )
+                        session.add(sem_model)
+                        session.flush()
+                    model_id = sem_model.id
+
+                # Promote Dimensions to SemanticDimension (status='approved')
+                existing_dims = {d.business_name for d in session.query(SemanticDimension).filter_by(tenant_id=tenant_id).all()}
+                for dim in dimensions:
+                    dim_bname = dim["dimension_name"].replace("_", " ").title()
+                    if dim_bname not in existing_dims:
+                        session.add(SemanticDimension(
+                            tenant_id=tenant_id,
+                            semantic_model_id=model_id,
+                            business_name=dim_bname,
+                            description=f"Semantic dimension for {dim['table_name']}.{dim['column_name']}",
+                            data_type="TEXT",
+                            is_time_dimension=(dim.get("dimension_type") == "TIME"),
+                            time_granularity="NONE",
+                            status="approved",
+                            created_by="system",
+                            updated_by="system",
+                            generation_source="AI"
+                        ))
+                        existing_dims.add(dim_bname)
+
+                # Promote Metrics to SemanticMetric (status='approved')
+                existing_mets = {m.name for m in session.query(SemanticMetric).filter_by(tenant_id=tenant_id).all()}
+                for m in metrics:
+                    m_name = m["metric_name"]
+                    if m_name not in existing_mets:
+                        session.add(SemanticMetric(
+                            tenant_id=tenant_id,
+                            semantic_model_id=model_id,
+                            name=m_name,
+                            business_name=m_name.replace("_", " ").title(),
+                            description=f"Semantic metric for {m['table_name']}.{m['column_name']}",
+                            expression=m["expression"],
+                            aggregation_type=m["aggregation_type"],
+                            status="approved",
+                            created_by="system",
+                            updated_by="system",
+                            generation_source="AI"
+                        ))
+                        existing_mets.add(m_name)
+
+                # Promote Terms to BusinessGlossary (status='approved')
+                existing_terms = {g.term for g in session.query(BusinessGlossary).filter_by(tenant_id=tenant_id).all()}
+                for m in metrics:
+                    term_name = m["metric_name"].replace("_", " ").title()
+                    if term_name not in existing_terms:
+                        session.add(BusinessGlossary(
+                            tenant_id=tenant_id,
+                            semantic_model_id=model_id,
+                            term=term_name,
+                            business_definition=f"Calculated metric {m['metric_name']} using {m['aggregation_type']}({m['column_name']}) on {m['table_name']}.",
+                            status="approved",
+                            created_by="system",
+                            updated_by="system",
+                            generation_source="AI"
+                        ))
+                        existing_terms.add(term_name)
+
                 # Record Semantic Version & Audit Log
                 session.add(DraftSemanticVersion(
                     database_name=db_name,

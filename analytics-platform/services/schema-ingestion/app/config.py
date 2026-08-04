@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     overlap_min_confidence: float = 0.90
 
     default_tenant_id: str = "00000000-0000-0000-0000-000000000001"
+    schema_snapshot_dir: str = "./data/schema-snapshots"
 
     # =========================================================================
     # Phase 6 — Security & Multi-Tenancy

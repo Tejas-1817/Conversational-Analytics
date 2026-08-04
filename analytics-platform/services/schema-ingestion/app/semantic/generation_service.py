@@ -464,9 +464,9 @@ class SemanticGenerationService:
                 cardinality=rel.cardinality or "many_to_one",
                 created_by="system",
                 updated_by="system",
-                generation_source="SYSTEM",
+                generation_source="AI",
                 confidence=1.0,
-                prompt_version="SYSTEM",
+                prompt_version="v1.0",
                 review_status="ACTIVE"
             ))
 

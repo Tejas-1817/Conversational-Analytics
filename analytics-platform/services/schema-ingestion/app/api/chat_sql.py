@@ -25,11 +25,14 @@ class SQLQueryRequest(BaseModel):
 
 
 class SQLQueryResponse(BaseModel):
+    success: bool = True
     conversation_id: Optional[str] = None
     question: str
     sql: str
     answer: Optional[str] = None
     result_data: Optional[List[Dict[str, Any]]] = None
+    rows: Optional[List[Dict[str, Any]]] = None
+    columns: Optional[List[str]] = None
     row_count: Optional[int] = 0
     execution_time_ms: Optional[float] = 0.0
     generated_at: str

@@ -1,31 +1,33 @@
 """Schema Provider.
 
-Retrieves introspected database DDL and catalog metadata directly
-from the currently connected PostgreSQL database via DynamicSchemaService.
-NEVER uses static schema files.
+Loads static schema file directly using pathlib.Path with UTF-8 encoding.
+Does NOT use DynamicSchemaService or dynamic DB introspection for Ask AI.
 """
-from typing import Any, Dict, Tuple
+from pathlib import Path
+from typing import Tuple
+import structlog
 
-from app.services.dynamic_schema_service import DynamicSchemaService
+log = structlog.get_logger(__name__)
+
+DEFAULT_SCHEMA_FILE = r"C:\Users\Admin\Downloads\Analytics_Database_Schema.txt"
 
 
 class SchemaProvider:
-    """Provides live connected PostgreSQL database schema and metadata."""
+    """Provides static database schema text for Ask AI workflow."""
 
-    def __init__(self):
-        self.schema_service = DynamicSchemaService()
+    def __init__(self, schema_file: str = DEFAULT_SCHEMA_FILE):
+        self.schema_file = schema_file
 
-    def get_connected_schema(self) -> Tuple[str, str, Dict[str, Any]]:
-        """Returns (database_name, combined_ddl, catalog_dict)."""
-        schema_info = self.schema_service.get_schema()
-        db_name = schema_info.get("database_name", "analytics_db")
-        ddl = schema_info.get("ddl", "")
-        catalog = schema_info.get("catalog", {}).get("tables", {})
+    @staticmethod
+    def _load_schema(schema_file: str) -> str:
+        """Loads static schema file text with UTF-8 encoding, verifying file existence."""
+        path = Path(schema_file)
+        if not path.exists():
+            raise FileNotFoundError(f"Schema file not found: {schema_file}")
+        return path.read_text(encoding="utf-8")
 
-        if not catalog and "schema_metadata" in schema_info:
-            catalog = {
-                t: {"columns": {c: {} for c in cols}}
-                for t, cols in schema_info["schema_metadata"].get("tables", {}).items()
-            }
+    def get_connected_schema(self) -> Tuple[str, str]:
+        """Returns (database_name, schema_text)."""
+        schema_text = self._load_schema(self.schema_file)
+        return "analytics_db", schema_text
 
-        return db_name, ddl, catalog

@@ -1,0 +1,606 @@
+{
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "source_id": "d6b2c333-f161-46fe-b80c-21d79974c693",
+  "source_name": "Altzor",
+  "version_number": 1,
+  "stage": "export_snapshot",
+  "exported_at": "2026-08-03T14:39:58.946468+00:00",
+  "tables": [
+    {
+      "table_id": "2ff88227-1ee6-410f-8532-b41b56cd7770",
+      "schema_name": "public",
+      "table_name": "customers",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "09fff949-61ad-45d0-a27b-d91b958c9101",
+          "column_name": "created_at",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        },
+        {
+          "column_id": "0cbc5e4f-2ebb-44c4-bae8-8307e9b67084",
+          "column_name": "last_name",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Patel",
+            "Johnson",
+            "Smith",
+            "Wilson",
+            "Brown"
+          ]
+        },
+        {
+          "column_id": "1e55cafb-30b5-45de-9882-1b6568f70aa6",
+          "column_name": "email",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "<masked: sensitive column>"
+          ]
+        },
+        {
+          "column_id": "59d074ed-0295-48e8-8af5-82c3d5bb2052",
+          "column_name": "state",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "NY",
+            "CA",
+            "TX",
+            "IL",
+            "WA"
+          ]
+        },
+        {
+          "column_id": "9cd3734f-1726-4083-9c16-05931e639c2c",
+          "column_name": "first_name",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Alice",
+            "Raj",
+            "John",
+            "David",
+            "Emma"
+          ]
+        },
+        {
+          "column_id": "ae044d7e-6f7a-4fcf-ae6f-0c86efca1846",
+          "column_name": "city",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "New York",
+            "Dallas",
+            "Chicago",
+            "Seattle",
+            "San Jose"
+          ]
+        },
+        {
+          "column_id": "e888afb4-1c17-4c05-8c7f-7e8c45502e8a",
+          "column_name": "customer_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "4",
+            "2",
+            "3",
+            "1",
+            "5"
+          ]
+        },
+        {
+          "column_id": "fb899d77-0556-4c65-aa21-fe47c9b1d75f",
+          "column_name": "status",
+          "data_type": "VARCHAR(20)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "ACTIVE",
+            "INACTIVE"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "60fb49b2-e2d9-4c5f-b831-561e36465de7",
+      "schema_name": "public",
+      "table_name": "orders",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "1e23efd4-f533-4c8a-840b-9aaef4bcedb4",
+          "column_name": "customer_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "3",
+            "5",
+            "4",
+            "2",
+            "1"
+          ]
+        },
+        {
+          "column_id": "2423860f-21fa-4854-90c0-e2ceefeb1148",
+          "column_name": "order_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        },
+        {
+          "column_id": "44baeb85-7f44-4fa0-9c55-c05fe47512f1",
+          "column_name": "payment_method",
+          "data_type": "VARCHAR(30)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Credit Card",
+            "UPI",
+            "Debit Card",
+            "Cash"
+          ]
+        },
+        {
+          "column_id": "6b246700-cb3d-4bc1-b1d5-23e7661685ce",
+          "column_name": "employee_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "3",
+            "2",
+            "4"
+          ]
+        },
+        {
+          "column_id": "8a1ee7f2-b818-4b84-8615-63fc6c05e4d5",
+          "column_name": "order_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "3",
+            "5",
+            "4",
+            "2",
+            "1"
+          ]
+        },
+        {
+          "column_id": "b2c01ea9-9c62-4a87-a189-a13845395183",
+          "column_name": "total_amount",
+          "data_type": "NUMERIC(10, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "805.00",
+            "850.00",
+            "30.00",
+            "220.00",
+            "150.00"
+          ]
+        },
+        {
+          "column_id": "ee740062-7bf5-49e3-9a1c-a6222c476fbd",
+          "column_name": "order_status",
+          "data_type": "VARCHAR(20)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "COMPLETED",
+            "PENDING"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "48263a66-aa55-4931-b7f6-4c1b0770676b",
+      "schema_name": "public",
+      "table_name": "employees",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "1bc1fa41-7187-4d0a-bbce-814834cc5222",
+          "column_name": "last_name",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Beesly",
+            "Martin",
+            "Scott",
+            "Schrute",
+            "Halpert"
+          ]
+        },
+        {
+          "column_id": "3bd19729-4e79-4204-ad76-ec0a60cdb0a1",
+          "column_name": "designation",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Executive",
+            "Assistant Manager",
+            "Manager",
+            "Accountant"
+          ]
+        },
+        {
+          "column_id": "4226ea6b-9256-46f5-8a5d-f529e8b7d4a8",
+          "column_name": "department",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Sales",
+            "Finance"
+          ]
+        },
+        {
+          "column_id": "4687c9d8-416c-4628-b009-9666833f29be",
+          "column_name": "status",
+          "data_type": "VARCHAR(20)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "ACTIVE"
+          ]
+        },
+        {
+          "column_id": "5c74c3f3-d0d6-429e-aa60-4e647e8c7038",
+          "column_name": "employee_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "3",
+            "5",
+            "4",
+            "2",
+            "1"
+          ]
+        },
+        {
+          "column_id": "69e12c9f-54af-44cf-b6a7-394e7e9f18b8",
+          "column_name": "first_name",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Michael",
+            "Jim",
+            "Dwight",
+            "Pam",
+            "Angela"
+          ]
+        },
+        {
+          "column_id": "c086ad47-6494-4fe7-96de-4e42801dddb4",
+          "column_name": "salary",
+          "data_type": "NUMERIC(10, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "60000.00",
+            "65000.00",
+            "70000.00",
+            "85000.00",
+            "55000.00"
+          ]
+        },
+        {
+          "column_id": "cf478a4e-bb36-4ef2-b422-29fb965f9b73",
+          "column_name": "hire_date",
+          "data_type": "DATE",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****",
+            "***-***-****"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "83b3c2b8-32d8-4385-82b9-63275da6b469",
+      "schema_name": "public",
+      "table_name": "order_items",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "1fdae759-dc16-463a-b62d-32d07cf7c47e",
+          "column_name": "unit_price",
+          "data_type": "NUMERIC(10, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "25.00",
+            "800.00",
+            "5.00",
+            "220.00",
+            "150.00"
+          ]
+        },
+        {
+          "column_id": "2d7fef94-8f67-47e6-a0ee-c65f34a97ad1",
+          "column_name": "line_total",
+          "data_type": "NUMERIC(10, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "800.00",
+            "5.00",
+            "25.00",
+            "50.00",
+            "220.00",
+            "150.00"
+          ]
+        },
+        {
+          "column_id": "6acf3abd-4449-4b90-bb4f-b77e633743a2",
+          "column_name": "order_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "5",
+            "4",
+            "1",
+            "3",
+            "2"
+          ]
+        },
+        {
+          "column_id": "8b930657-1495-41f2-be1b-a83828ae1912",
+          "column_name": "product_id",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "key",
+          "sample_values": [
+            "4",
+            "2",
+            "1",
+            "3",
+            "5"
+          ]
+        },
+        {
+          "column_id": "a81af490-20cb-4ecb-9dbb-5fdcb07e3240",
+          "column_name": "order_item_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "3",
+            "5",
+            "4",
+            "6",
+            "2",
+            "7",
+            "1",
+            "8"
+          ]
+        },
+        {
+          "column_id": "d34e18f0-c901-47ff-8086-39511c79f961",
+          "column_name": "quantity",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "1",
+            "2"
+          ]
+        }
+      ]
+    },
+    {
+      "table_id": "8f471caa-dd9c-4f91-b687-aac250bc0936",
+      "schema_name": "public",
+      "table_name": "products",
+      "business_name": null,
+      "description": null,
+      "columns": [
+        {
+          "column_id": "1469f664-b568-470d-bfbe-ea46c9ec98e1",
+          "column_name": "unit_price",
+          "data_type": "NUMERIC(10, 2)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "25.00",
+            "800.00",
+            "5.00",
+            "220.00",
+            "150.00"
+          ]
+        },
+        {
+          "column_id": "2d208ed2-1bf1-4611-9b14-d897f663f39a",
+          "column_name": "product_name",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Notebook",
+            "Mouse",
+            "Desk Chair",
+            "Monitor",
+            "Laptop"
+          ]
+        },
+        {
+          "column_id": "379eaebc-13ec-4b4e-a57d-df1b393ebc02",
+          "column_name": "supplier_name",
+          "data_type": "VARCHAR(100)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Tech Supplies",
+            "Office World",
+            "Display Inc",
+            "Paper House"
+          ]
+        },
+        {
+          "column_id": "3ef65cb2-4467-48b7-b137-b41ec1156f4b",
+          "column_name": "status",
+          "data_type": "VARCHAR(20)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "ACTIVE"
+          ]
+        },
+        {
+          "column_id": "afd4d3d1-7ede-4157-8bf1-cfb65ca8d537",
+          "column_name": "category",
+          "data_type": "VARCHAR(50)",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "dimension",
+          "sample_values": [
+            "Electronics",
+            "Furniture",
+            "Stationery"
+          ]
+        },
+        {
+          "column_id": "e1799aad-3ffa-4862-97d2-874725db0f53",
+          "column_name": "stock_quantity",
+          "data_type": "INTEGER",
+          "is_nullable": true,
+          "is_pk": false,
+          "role": "measure",
+          "sample_values": [
+            "500",
+            "200",
+            "40",
+            "50",
+            "25"
+          ]
+        },
+        {
+          "column_id": "fd5651fd-3fad-4bd2-a4ee-1f2593a9056f",
+          "column_name": "product_id",
+          "data_type": "INTEGER",
+          "is_nullable": false,
+          "is_pk": true,
+          "role": "key",
+          "sample_values": [
+            "3",
+            "5",
+            "4",
+            "2",
+            "1"
+          ]
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationship_id": "f592bf2c-79ec-4106-b30b-d42c49ea6f25",
+      "from_column_id": "1e23efd4-f533-4c8a-840b-9aaef4bcedb4",
+      "to_column_id": "e888afb4-1c17-4c05-8c7f-7e8c45502e8a",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "60064774-0d54-4aeb-b5cd-4f29940ea105",
+      "from_column_id": "6b246700-cb3d-4bc1-b1d5-23e7661685ce",
+      "to_column_id": "5c74c3f3-d0d6-429e-aa60-4e647e8c7038",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "fa4a73e7-96a3-46f7-986e-070a60a4d938",
+      "from_column_id": "6acf3abd-4449-4b90-bb4f-b77e633743a2",
+      "to_column_id": "8a1ee7f2-b818-4b84-8615-63fc6c05e4d5",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    },
+    {
+      "relationship_id": "74fba5c0-5f92-46e7-bbec-40539a48fa99",
+      "from_column_id": "8b930657-1495-41f2-be1b-a83828ae1912",
+      "to_column_id": "fd5651fd-3fad-4bd2-a4ee-1f2593a9056f",
+      "cardinality": "many_to_one",
+      "source": "declared_fk",
+      "confidence": 1.0,
+      "status": "approved"
+    }
+  ]
+}

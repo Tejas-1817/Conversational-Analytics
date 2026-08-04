@@ -15,6 +15,7 @@ from app.ingestion.classifier import run_classification
 from app.ingestion.introspector import run_introspection
 from app.ingestion.profiler import run_profiling
 from app.ingestion.relationships import run_relationship_detection
+from app.ingestion.schema_export import export_schema_snapshot
 from app.ingestion.semantic_generator import run_semantic_generation
 from app.models import DataSource, IngestionJob, MetadataVersion
 
@@ -57,6 +58,7 @@ def run_pipeline(job_id: str, source_id: str) -> None:
                 ("profile", lambda: run_profiling(session, source, engine)),
                 ("relationships", lambda: run_relationship_detection(session, source, engine)),
                 ("classify", lambda: run_classification(session, source)),
+                ("export_snapshot", lambda: export_schema_snapshot(session, source, version)),
                 ("semantic_generation", lambda: run_semantic_generation(session, source, version.id)),
             ):
                 job.stage = stage_name

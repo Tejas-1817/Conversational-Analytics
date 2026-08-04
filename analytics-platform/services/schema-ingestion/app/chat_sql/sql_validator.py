@@ -16,7 +16,7 @@ class SQLValidator:
     """Validates SQL query safety and schema adherence."""
 
     @staticmethod
-    def validate_sql(sql: str, catalog: Dict[str, Any]) -> str:
+    def validate_sql(sql: str, catalog: Dict[str, Any] = None) -> str:
         """Validates generated SQL against catalog tables and read-only rule."""
         clean_sql = sql.strip()
 
@@ -33,12 +33,11 @@ class SQLValidator:
             if re.search(r"\b" + kw + r"\b", clean_sql, re.IGNORECASE):
                 return UNANSWERABLE_MSG
 
-        # Rule 2: Table existence validation
-        tables_in_catalog = set(catalog.keys())
-        if not tables_in_catalog:
+        # Rule 2: Table existence validation if catalog provided
+        if not catalog:
             return clean_sql
 
-        # Extract table references after FROM and JOIN
+        tables_in_catalog = set(catalog.keys())
         found_tables = re.findall(r"\b(?:FROM|JOIN)\s+([a-zA-Z0-9_]+)", clean_sql, re.IGNORECASE)
         for t in found_tables:
             t_lower = t.lower()
