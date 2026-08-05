@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
-import { Save, Send, AlertTriangle, Info, CheckCircle2, Copy, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock } from 'lucide-react';
+import { Save, Send, AlertTriangle, Info, CheckCircle2, Copy, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, X } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
 import { SqlBlock } from '../../components/chat/SqlBlock';
 
@@ -12,8 +12,38 @@ export const ChatInterface = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleDeleteClick = (e: React.MouseEvent, conversation: any) => {
+    e.stopPropagation();
+    setDeleteTarget(conversation);
+  };
+
+  const confirmDeleteChat = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await fetchApi(`/engine/conversations/${deleteTarget.id}`, { method: 'DELETE' });
+      const updated = await loadConversationsList();
+
+      if (convId === deleteTarget.id) {
+        if (updated.length > 0) {
+          await loadConversation(updated[0].id);
+        } else {
+          await handleNewChat();
+        }
+      }
+      setDeleteTarget(null);
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete chat');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
 
   const loadConversationsList = async () => {
     try {
@@ -178,9 +208,9 @@ export const ChatInterface = () => {
   );
 
   return (
-    <div style={{ display: 'flex', gap: '2rem', height: '100%' }}>
+    <div style={{ display: 'flex', gap: '2rem', height: '100%', flex: 1, minHeight: 0 }}>
       {/* Sidebar */}
-      <div style={{ width: '280px', display: 'flex', flexDirection: 'column', gap: '1.5rem', flexShrink: 0, borderRight: '1px solid var(--border-color)', paddingRight: '1rem' }}>
+      <div style={{ width: '220px', display: 'flex', flexDirection: 'column', gap: '1.5rem', flexShrink: 0, borderRight: '1px solid var(--border-color)', paddingRight: '1rem', height: '100%', minHeight: 0 }}>
         <div>
           <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleNewChat}>
             <Plus size={16} style={{ marginRight: '0.5rem' }} /> New Chat
@@ -214,13 +244,33 @@ export const ChatInterface = () => {
                 color: convId === c.id ? 'var(--primary)' : 'var(--text-main)',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'space-between',
                 gap: '0.5rem',
                 fontSize: '0.85rem'
               }}
-              className="hover-bg-light"
+              className="hover-bg-light group"
             >
-              <MessageSquare size={14} style={{ flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c.title || 'New Conversation'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', flex: 1 }}>
+                <MessageSquare size={14} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || 'New Conversation'}</span>
+              </div>
+              <button
+                className="btn-ghost"
+                title="Delete Chat"
+                onClick={(e) => handleDeleteClick(e, c)}
+                style={{
+                  padding: '0.2rem 0.35rem',
+                  borderRadius: '4px',
+                  color: 'var(--text-muted)',
+                  opacity: convId === c.id ? 0.9 : 0.6,
+                  transition: 'all 0.15s ease',
+                  lineHeight: 1
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.opacity = convId === c.id ? '0.9' : '0.6'; }}
+              >
+                <Trash2 size={13} />
+              </button>
             </div>
           ))}
           {filteredConversations.length === 0 && (
@@ -230,17 +280,17 @@ export const ChatInterface = () => {
       </div>
 
       {/* Main Chat Area */}
-      <div className="chat-container" style={{ flex: 1, height: '100%' }}>
-        <div className="chat-messages" style={{ padding: '0 1rem' }}>
+      <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, margin: '0 auto', maxWidth: '860px', width: '100%' }}>
+        <div className="chat-messages" style={{ flex: 1, overflowY: 'auto', padding: '0 1rem', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {messages.length === 0 && (
-            <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.6, maxWidth: '500px' }}>
-              <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+            <div style={{ margin: 'auto', textAlign: 'center', maxWidth: '500px' }}>
+              <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(91, 82, 232, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
                 <Bot size={32} />
               </div>
-              <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>How can I help you today?</h2>
-              <p>Ask a question about your business data in plain English to generate SQL & view live results.</p>
+              <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem', color: 'var(--text-main)' }}>How can I help you today?</h2>
+              <p style={{ color: 'var(--text-muted)' }}>Ask a question about your business data in plain English to generate SQL & view live results.</p>
 
-              <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left', opacity: 0.8 }}>
+              <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left' }}>
                 <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
                   <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
                 </div>
@@ -415,7 +465,7 @@ export const ChatInterface = () => {
           <div ref={messagesEndRef} style={{ height: '1px' }} />
         </div>
 
-        <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: -46, borderTop: '1px solid var(--border-color)', zIndex: 20 }}>
+        <div style={{ background: 'var(--bg-main)', flexShrink: 0, paddingTop: '0.75rem', paddingBottom: '0.5rem', width: '100%', zIndex: 20 }}>
           <form onSubmit={sendMessage} className="chat-input-wrapper" style={{ margin: '0 auto', maxWidth: '800px' }}>
             <input
               style={{ flex: 1, padding: '1rem', fontSize: '0.95rem' }}
@@ -442,11 +492,45 @@ export const ChatInterface = () => {
               <Send size={18} style={{ transform: 'translateX(-1px)' }} />
             </button>
           </form>
-          <div className="text-center text-muted mt-2" style={{ fontSize: '0.75rem' }}>
-
-          </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="modal-content" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                <AlertTriangle size={18} style={{ color: '#ef4444' }} /> Delete Chat
+              </div>
+              <button className="btn-ghost" onClick={() => setDeleteTarget(null)} disabled={isDeleting} style={{ padding: '4px' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
+              <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
+                Are you sure you want to delete this chat?
+              </p>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem', background: 'var(--bg-main)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                "{deleteTarget.title || 'New Conversation'}"
+              </div>
+            </div>
+            <div className="modal-footer" style={{ padding: '0.75rem 1.25rem', gap: '0.5rem' }}>
+              <button className="btn-secondary" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteChat}
+                disabled={isDeleting}
+                style={{ background: '#ef4444', borderColor: '#ef4444', color: 'white' }}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

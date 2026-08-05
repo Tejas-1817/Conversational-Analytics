@@ -56,6 +56,19 @@ def get_conversation(conv_id: uuid.UUID, db: Session = Depends(get_session), use
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conv
 
+@router.delete("/conversations/{conv_id}", status_code=204)
+def delete_conversation(conv_id: uuid.UUID, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    conv = db.scalar(select(Conversation).where(
+        Conversation.id == conv_id,
+        Conversation.tenant_id == user.tenant_id
+    ))
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    db.delete(conv)
+    db.commit()
+    return None
+
+
 @router.post("/conversations/{conv_id}/query", response_model=ChatMessageOut)
 def ask_question(conv_id: uuid.UUID, req: ChatRequest, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     conv = db.scalar(select(Conversation).where(

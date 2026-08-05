@@ -76,7 +76,7 @@ export const Jobs = () => {
                     <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{j.source_id.slice(0, 8)}...</td>
                     <td>
                       <span className="badge badge-default" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        {j.stage}
+                        {j.stage.replace(/_/g, ' ')}
                       </span>
                     </td>
                     <td>
