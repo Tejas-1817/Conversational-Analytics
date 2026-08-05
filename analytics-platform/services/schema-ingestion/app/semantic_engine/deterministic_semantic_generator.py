@@ -46,6 +46,35 @@ class DeterministicSemanticGenerator:
 
     def generate_draft_semantic_layer(self, force_regenerate: bool = False) -> Dict[str, Any]:
         """Generate draft semantic layer objects directly from database catalog."""
+        from app.config import get_settings
+        if not get_settings().enable_semantic_generation:
+            log.info(
+                "semantic_generation_disabled",
+                semantic_generation_enabled=False,
+                skipping_semantic_generation=True,
+                reason="Feature disabled",
+                caller="DeterministicSemanticGenerator"
+            )
+            from datetime import datetime, timezone
+            now_str = datetime.now(timezone.utc).isoformat()
+            return {
+                "status": "disabled",
+                "message": "Semantic generation is currently disabled.",
+                "database_name": "analytics_db",
+                "generated_at": now_str,
+                "table_count": 0,
+                "column_count": 0,
+                "relationship_count": 0,
+                "dimension_count": 0,
+                "metric_count": 0,
+                "time_dimension_count": 0,
+                "join_path_count": 0,
+                "metrics": [],
+                "dimensions": [],
+                "joins": [],
+                "models": []
+            }
+
         # 1. Fetch live database schema catalog metadata
         schema_info = self.schema_service.get_schema(force_refresh=force_regenerate)
         catalog = schema_info.get("catalog", {})
@@ -233,14 +262,16 @@ class DeterministicSemanticGenerator:
                 if source:
                     sem_model = session.query(SemanticModel).filter_by(source_id=source.id, is_active=True).first()
                     if not sem_model:
+                        meta_ver = session.query(MetadataVersion).filter_by(source_id=source.id).order_by(MetadataVersion.version_number.desc()).first()
+                        meta_ver_id = meta_ver.id if meta_ver else uuid.uuid4()
                         sem_model = SemanticModel(
                             source_id=source.id,
                             tenant_id=tenant_id,
+                            metadata_version_id=meta_ver_id,
                             semantic_version=1,
                             is_active=True,
                             generation_status="ACTIVE",
-                            created_by="system",
-                            updated_by="system"
+                            generated_by_model="deterministic"
                         )
                         session.add(sem_model)
                         session.flush()

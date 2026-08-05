@@ -169,6 +169,21 @@ class MetadataVersion(Base):
     source: Mapped[DataSource] = relationship(back_populates="metadata_versions")
 
 
+class SchemaRegistry(Base):
+    __tablename__ = "schema_registries"
+    __table_args__ = (UniqueConstraint("source_id", "schema_version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=False)
+    database_name: Mapped[str] = mapped_column(Text, nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
 class IndexMeta(Base):
     __tablename__ = "index_meta"
     __table_args__ = (UniqueConstraint("table_id", "index_name"),)

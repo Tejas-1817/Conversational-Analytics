@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
-import { Save, Send, AlertTriangle, Info, CheckCircle2, Copy, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock } from 'lucide-react';
+import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2 } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
 import { SqlBlock } from '../../components/chat/SqlBlock';
 
@@ -50,18 +50,32 @@ export const ChatInterface = () => {
       setConvId(data.id);
       localStorage.setItem('active_conversation_id', data.id);
 
-      const normalizedMessages = (data.messages || []).map((m: any) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        answer: m.role === 'assistant' ? m.content : undefined,
-        sql: m.generated_sql,
-        result_data: m.result_data?.rows || (Array.isArray(m.result_data) ? m.result_data : []),
-        execution_time_ms: m.execution_time_ms,
-        status: m.status,
-        generated_at: m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
-        database: 'analytics_db'
-      }));
+      const normalizedMessages = (data.messages || []).map((m: any) => {
+        let parsedData = m.result_data;
+        if (typeof parsedData === 'string') {
+          try { parsedData = JSON.parse(parsedData); } catch (e) {}
+        }
+        const rows = Array.isArray(parsedData) ? parsedData : (parsedData?.rows || parsedData?.data || []);
+        const cols = Array.isArray(parsedData?.columns) ? parsedData.columns : (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
+
+        return {
+          id: m.id,
+          role: m.role,
+          question: m.role === 'assistant' ? m.question : m.content,
+          content: m.content,
+          answer: m.role === 'assistant' ? m.content : undefined,
+          sql: m.generated_sql,
+          result_data: rows,
+          rows: rows,
+          columns: cols,
+          chart_recommendation: m.recommended_visualization?.chart_type || m.chart_recommendation,
+          recommended_visualization: m.recommended_visualization,
+          execution_time_ms: m.execution_time_ms,
+          status: m.status,
+          generated_at: m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+          database: 'analytics_db'
+        };
+      });
       setMessages(normalizedMessages);
     } catch (e) {
       console.error(e);
@@ -127,6 +141,9 @@ export const ChatInterface = () => {
         localStorage.setItem('active_conversation_id', data.conversation_id);
       }
 
+      const recVis = data.recommended_visualization || data.chart_recommendation;
+      const chartTypeRes = typeof recVis === 'object' && recVis !== null ? recVis.chart_type : (typeof recVis === 'string' ? recVis : undefined);
+      
       const botMsg = {
         id: Date.now() + 1,
         role: 'assistant',
@@ -137,6 +154,8 @@ export const ChatInterface = () => {
         rows: Array.isArray(data.rows) ? data.rows : (Array.isArray(data.result_data) ? data.result_data : []),
         columns: data.columns || (Array.isArray(data.rows) && data.rows.length > 0 ? Object.keys(data.rows[0]) : []),
         row_count: data.row_count !== undefined ? data.row_count : (Array.isArray(data.rows) ? data.rows.length : 0),
+        chart_recommendation: chartTypeRes,
+        recommended_visualization: recVis,
         execution_time_ms: data.execution_time_ms,
         generated_at: data.generated_at,
         database: data.database || 'analytics_db',
@@ -167,6 +186,24 @@ export const ChatInterface = () => {
     } catch (e: any) {
       alert(e.message);
     }
+  };
+
+  const handleDownloadCSV = (msg: any) => {
+    const rows = msg.rows || msg.result_data || [];
+    if (!rows.length) return;
+    const columns = msg.columns || Object.keys(rows[0]);
+    const csvLines = [
+      columns.join(','),
+      ...rows.map((row: any) => columns.map((col: string) => JSON.stringify(row[col] ?? '')).join(','))
+    ];
+    const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `query_result_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleCopy = (text: string) => {
@@ -269,80 +306,109 @@ export const ChatInterface = () => {
                     )}
 
                     {!m.isError && (m.sql || m.content || m.answer) && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
+                        {/* 1. Executive Summary */}
                         {m.answer && (
-                          <div style={{ fontSize: '0.95rem', lineHeight: 1.6, fontWeight: 500, color: 'var(--text-main)' }}>
+                          <div style={{
+                            fontSize: '1rem',
+                            lineHeight: 1.6,
+                            fontWeight: 600,
+                            color: 'var(--text-main, #f8fafc)',
+                            background: 'rgba(255, 255, 255, 0.02)',
+                            padding: '1rem 1.25rem',
+                            borderRadius: '12px',
+                            border: '1px solid var(--border-color, #2b2b40)'
+                          }}>
                             {m.answer}
                           </div>
                         )}
 
+                        {/* 2. Primary Visualization */}
                         {m.result_data && m.result_data.length > 0 && (
-                          <div className="card" style={{ padding: '1.25rem', border: '1px solid var(--border-color)', background: 'var(--bg-dark)' }}>
-                            <div className="flex justify-between items-center mb-3">
+                          <div className="card" style={{ padding: '1.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-dark)' }}>
+                            <div className="flex justify-between items-center mb-4">
                               <div className="flex items-center gap-2">
-                                <Table size={16} className="text-muted" />
-                                <span className="text-sm font-semibold">Result Data ({m.row_count || m.result_data.length} rows)</span>
+                                <BarChart2 size={18} className="text-primary" style={{ color: '#6366F1' }} />
+                                <span className="text-base font-bold" style={{ color: 'var(--text-main)' }}>
+                                  {m.title || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || 'Analytics Insight'}
+                                </span>
                               </div>
-                              <button className="btn-secondary" onClick={() => handleSaveInsight(m)} style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>
-                                <Save size={14} /> Save Insight
-                              </button>
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button className="btn-secondary" onClick={() => handleDownloadCSV(m)} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }} title="Download CSV">
+                                  <Download size={14} style={{ marginRight: '0.25rem' }} /> Download CSV
+                                </button>
+                                <button className="btn-secondary" onClick={() => handleSaveInsight(m)} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }}>
+                                  <Save size={14} style={{ marginRight: '0.25rem' }} /> Save Insight
+                                </button>
+                              </div>
                             </div>
-                            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                              <ChartRenderer data={m.result_data} chartType="table" />
-                            </div>
+
+                            {(() => {
+                              const rows = m.result_data || m.rows || [];
+                              const cols = m.columns || (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
+                              
+                              let resolvedType = m.visualization || m.chart_recommendation;
+                              if (typeof m.recommended_visualization === 'object' && m.recommended_visualization !== null) {
+                                resolvedType = m.recommended_visualization.visualization || m.recommended_visualization.chart_type || resolvedType;
+                              } else if (typeof m.recommended_visualization === 'string') {
+                                resolvedType = m.recommended_visualization;
+                              }
+
+                              if (!resolvedType) {
+                                if (rows.length === 1 && cols.length === 1) resolvedType = 'kpi_card';
+                                else if (rows.length === 1 && cols.length > 1) resolvedType = 'detail_card';
+                                else if (rows.length > 20) resolvedType = 'table';
+                                else if (rows.length > 1 && cols.length >= 2) resolvedType = 'bar_chart';
+                                else resolvedType = 'table';
+                              }
+
+                              const cardTitle = m.title || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
+                              const containerHeight = resolvedType === 'kpi_card' ? '180px' : (resolvedType === 'detail_card' ? '220px' : (resolvedType === 'multi_kpi' ? '160px' : '360px'));
+
+                              return (
+                                <div style={{ height: containerHeight, width: '100%' }}>
+                                  <ChartRenderer data={rows} chartType={resolvedType} title={cardTitle} columns={cols} />
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
 
+                        {/* 3. Collapsible SQL Accordion */}
                         {m.sql && (
-                          <div className="my-1">
-                            <SqlBlock sql={m.sql} defaultOpen={false} />
-                          </div>
-                        )}
-
-                        {m.question && (
-                          <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '1.25rem',
-                            fontSize: '0.75rem',
-                            color: 'var(--text-muted)',
-                            padding: '0.5rem 0.75rem',
-                            backgroundColor: 'var(--bg-input, #1e1e2d)',
-                            borderRadius: '6px',
+                          <details style={{
+                            backgroundColor: 'var(--bg-card, #1a1a24)',
                             border: '1px solid var(--border-color, #2b2b40)',
-                            marginTop: '0.25rem'
+                            borderRadius: '10px',
+                            padding: '0.6rem 1rem',
+                            fontSize: '0.85rem'
                           }}>
-                            <div><strong style={{ color: 'var(--text-main)' }}>Question:</strong> {m.question}</div>
-                            <div><strong style={{ color: 'var(--text-main)' }}>Database Name:</strong> {m.database || 'analytics_db'}</div>
-                            {m.execution_time_ms !== undefined && (
-                              <div><strong style={{ color: 'var(--text-main)' }}>Execution Time:</strong> {m.execution_time_ms}ms</div>
-                            )}
-                            <div><strong style={{ color: 'var(--text-main)' }}>Generation Time:</strong> {m.generated_at}</div>
-                          </div>
+                            <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted, #94a3b8)', userSelect: 'none', outline: 'none' }}>
+                               Show Generated SQL Query
+                            </summary>
+                            <div style={{ marginTop: '0.75rem' }}>
+                              <SqlBlock sql={m.sql} defaultOpen={true} />
+                            </div>
+                          </details>
                         )}
-                      </div>
-                    )}
 
-                    {m.status === 'processing' && (
-                      <div className="mt-4 p-4 border border-gray-100 rounded-lg bg-white shadow-sm">
-                        <PipelineProgress trace={m.trace} />
-                      </div>
-                    )}
-
-                    {m.result_data && (
-                      <div className="card mt-4" style={{ padding: '1.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-dark)' }}>
-                        <div className="flex justify-between items-center mb-4">
-                          <div className="flex items-center gap-2">
-                            <Table size={16} className="text-muted" />
-                            <span className="text-sm font-medium">Result Data</span>
-                          </div>
-                          <button className="btn-secondary" onClick={() => handleSaveInsight(m)} style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>
-                            <Save size={14} /> Save Insight
-                          </button>
-                        </div>
-                        <div style={{ height: m.chart_recommendation === 'kpi_card' ? '120px' : '350px' }}>
-                          <ChartRenderer data={m.result_data} chartType={m.chart_recommendation || 'table'} />
-                        </div>
+                        {/* 4. Collapsible Raw Data Accordion */}
+                        {m.result_data && m.result_data.length > 0 && (
+                          <details style={{
+                            backgroundColor: 'var(--bg-card, #1a1a24)',
+                            border: '1px solid var(--border-color, #2b2b40)',
+                            borderRadius: '10px',
+                            padding: '0.6rem 1rem',
+                            fontSize: '0.85rem'
+                          }}>
+                            <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted, #94a3b8)', userSelect: 'none', outline: 'none' }}>
+                               View Raw Data Grid ({m.row_count || m.result_data.length} rows)
+                            </summary>
+                            <div style={{ marginTop: '0.75rem', height: '320px', overflowY: 'auto' }}>
+                              <ChartRenderer data={m.result_data} chartType="table" columns={m.columns} />
+                            </div>
+                          </details>
+                        )}
                       </div>
                     )}
 

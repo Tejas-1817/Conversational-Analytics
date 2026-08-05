@@ -23,7 +23,7 @@ log = structlog.get_logger()
 
 
 def run_pipeline(job_id: str, source_id: str) -> None:
-    """RQ entry point. Signature must stay picklable (str UUIDs)."""
+    """RQ entry point for automated 5-stage schema extraction & registry pipeline."""
     with session_scope() as session:
         job = session.get(IngestionJob, uuid.UUID(job_id))
         source = session.get(DataSource, uuid.UUID(source_id))
@@ -45,57 +45,72 @@ def run_pipeline(job_id: str, source_id: str) -> None:
         session.commit()
 
         engine = None
+        stats: dict = {}
         try:
+            # Stage 1: Connection Validation
+            job.stage = "Connection Validation"
+            session.commit()
+            log.info("stage_started", stage="Connection Validation", source=source.name)
+            
             engine = build_engine(source)
-            stats: dict = {}
+            from app.connectors.factory import test_connection, verify_read_only
+            test_connection(engine)
+            verify_read_only(engine, source.type)
+            stats["connection_validation"] = {"status": "succeeded", "database": source.database_name}
+            job.stats = dict(stats)
+            session.commit()
+            log.info("stage_finished", stage="Connection Validation", status="succeeded")
 
-            has_warnings = False
-            all_warnings = []
-            final_summary = {}
+            # Stage 2: Schema Extraction
+            job.stage = "Schema Extraction"
+            session.commit()
+            log.info("stage_started", stage="Schema Extraction", source=source.name)
+            
+            intro_res = run_introspection(session, source, engine)
+            stats["schema_extraction"] = intro_res
+            job.stats = dict(stats)
+            session.commit()
+            log.info("stage_finished", stage="Schema Extraction", **intro_res)
 
-            for stage_name, runner in (
-                ("introspect", lambda: run_introspection(session, source, engine)),
-                ("profile", lambda: run_profiling(session, source, engine)),
-                ("relationships", lambda: run_relationship_detection(session, source, engine)),
-                ("classify", lambda: run_classification(session, source)),
-                ("export_snapshot", lambda: export_schema_snapshot(session, source, version)),
-                ("semantic_generation", lambda: run_semantic_generation(session, source, version.id)),
-            ):
-                job.stage = stage_name
-                session.commit()
-                log.info("stage_started", stage=stage_name, source=source.name)
-                
-                stage_result = runner()
-                if stage_result.get("status") == "succeeded_with_warnings":
-                    has_warnings = True
-                    
-                if "warnings" in stage_result:
-                    all_warnings.extend(stage_result.pop("warnings"))
-                if "summary" in stage_result:
-                    final_summary = stage_result.pop("summary")
-                    
-                stats[stage_name] = stage_result
-                
-                # Rebuild stats dict to include warnings and summary at top level
-                current_stats = dict(stats)
-                if all_warnings:
-                    current_stats["warnings"] = all_warnings
-                if final_summary:
-                    current_stats["summary"] = final_summary
-                    
-                job.stats = current_stats
-                session.commit()
-                log.info("stage_finished", stage=stage_name, **stats[stage_name])
+            # Stage 3: Schema File Generation & Storage
+            job.stage = "Schema File Generation"
+            session.commit()
+            log.info("stage_started", stage="Schema File Generation", source=source.name)
+            
+            from app.ingestion.schema_export import export_human_readable_schema
+            export_res = export_human_readable_schema(session, source)
+            stats["schema_file_generation"] = export_res
+            job.stats = dict(stats)
+            session.commit()
+            log.info("stage_finished", stage="Schema File Generation", **export_res)
 
+            # Stage 4: Schema Registration & Active Activation
+            job.stage = "Schema Registration"
+            session.commit()
+            log.info("stage_started", stage="Schema Registration", source=source.name)
+            
+            from app.models import SchemaRegistry
+            active_reg = session.query(SchemaRegistry).filter_by(source_id=source.id, is_active=True).first()
+            stats["schema_registration"] = {
+                "status": "succeeded",
+                "active_version": active_reg.schema_version if active_reg else 1,
+                "file_path": active_reg.file_path if active_reg else ""
+            }
+            job.stats = dict(stats)
+            session.commit()
+            log.info("stage_finished", stage="Schema Registration", status="succeeded")
+
+            # Stage 5: Completed
+            job.stage = "Completed"
+            job.status = "succeeded"
+            version.sync_status = "succeeded"
+            source.status = "connected"
             source.last_ingested_at = datetime.now(timezone.utc)
-            if has_warnings:
-                job.status = "succeeded_with_warnings"
-                version.sync_status = "succeeded_with_warnings"
-            else:
-                job.status = "succeeded"
-                version.sync_status = "succeeded"
+            session.commit()
+            log.info("pipeline_completed_successfully", source=source.name)
+
         except Exception as exc:
-            log.exception("pipeline_failed", source=source.name)
+            log.exception("new_pipeline_failed", source=source.name)
             job.status = "failed"
             job.error = f"{type(exc).__name__}: {exc}"
             version.sync_status = "failed"

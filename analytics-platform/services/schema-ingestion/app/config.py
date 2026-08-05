@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     hf_top_p: float = 0.95
     hf_retry_count: int = 3
 
+    # Feature Flags
+    enable_enterprise_visualizations: bool = True
+
     # Phase 2 — Embedding pipeline
     embedding_model: str = "all-MiniLM-L6-v2"   # sentence-transformers model name
     chroma_persist_dir: str = "./chroma_store"   # local Chroma storage path
@@ -53,6 +56,9 @@ class Settings(BaseSettings):
     rag_distance_threshold: float = 0.60
     rag_top_k: int = 10             # number of Chroma candidates to fetch per query
     rag_enabled: bool = True        # set False in CI / offline environments
+
+    # Semantic layer feature flag
+    enable_semantic_generation: bool = False
 
 
     # Credential encryption key (Fernet, urlsafe base64, 32 bytes).

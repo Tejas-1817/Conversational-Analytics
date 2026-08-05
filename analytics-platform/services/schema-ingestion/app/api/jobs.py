@@ -38,10 +38,14 @@ def trigger_ingestion(source_id: uuid.UUID, session: Session = Depends(get_sessi
     if running is not None:
         raise HTTPException(status_code=409, detail=f"Job {running.id} is already {running.status}")
 
-    job = IngestionJob(source_id=source_id)
+    job = IngestionJob(source_id=source_id, stage="Connection Validation", status="running")
     session.add(job)
-    session.flush()
-    _queue().enqueue(run_pipeline, str(job.id), str(source_id), job_id=str(job.id))
+    session.commit()
+    try:
+        _queue().enqueue(run_pipeline, str(job.id), str(source_id), job_id=str(job.id))
+    except Exception:
+        # Fallback to direct synchronous execution if Redis queue is offline
+        run_pipeline(str(job.id), str(source_id))
     return job
 
 

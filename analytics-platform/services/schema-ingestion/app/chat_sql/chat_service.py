@@ -41,10 +41,7 @@ class ChatService:
         user: Any | None = None,
     ) -> Dict[str, Any]:
         """Loads connected database schema, prompts LLM, executes SQL, synthesizes answer, persists messages, and returns DTO."""
-        # 1. Load static schema file via _load_schema(schema_file)
-        db_name, schema_text = self.schema_provider.get_connected_schema()
-
-        # 2. Dynamically resolve caller's active connected customer DataSource
+        # 1. Dynamically resolve caller's active connected customer DataSource
         active_source = None
         if db_session and user and hasattr(user, "tenant_id"):
             try:
@@ -52,12 +49,19 @@ class ChatService:
                     tenant_id=user.tenant_id,
                     status="connected"
                 ).first()
-                if active_source and active_source.database_name:
-                    db_name = active_source.database_name
             except Exception as exc:
                 log.warning("failed_to_resolve_active_datasource", error=str(exc))
 
-        # 3. Build system prompt using loaded static schema text
+        # 2. Dynamically load active schema from SchemaRegistry or active DataSource
+        db_name, schema_text = self.schema_provider.get_connected_schema(
+            db_session=db_session,
+            user=user,
+            source=active_source
+        )
+        if active_source and active_source.database_name:
+            db_name = active_source.database_name
+
+        # 3. Build system prompt using loaded active schema text
         prompt = self.prompt_builder.build_prompt(
             question=question,
             schema_text=schema_text,
@@ -66,7 +70,7 @@ class ChatService:
 
         # 4. Call LLM for raw PostgreSQL SQL generation
         try:
-            raw_sql = self.llm_provider.generate_sql(prompt)
+            raw_sql = self.llm_provider.generate_sql(prompt, question=question)
         except Exception as exc:
             log.error("chat_sql_generation_error", error=str(exc))
             raw_sql = "UNANSWERABLE"
@@ -80,8 +84,19 @@ class ChatService:
             source=active_source
         )
 
-        # 7. Synthesize plain English business answer from result data
+        # 7. Synthesize plain English business executive summary
         answer = self.answer_synthesizer.synthesize_answer(question, result_data, validated_sql)
+
+        # 8. Recommend Visualization Type (KPI Card, Detail Card, Bar/Line/Pie Chart, Table)
+        from app.engine.chart_recommender import ChartRecommender
+        vis_payload = ChartRecommender.recommend_visualization(
+            rows=result_data,
+            columns=columns,
+            question=question,
+            sql=validated_sql
+        )
+        vis_type = vis_payload.get("visualization", "table")
+        title = vis_payload.get("title", question[:40] if question else "Query Results")
 
         format_date = lambda d: d.strftime("%d %b %Y, %I:%M %p")
         generated_at = format_date(datetime.now(timezone.utc))
@@ -92,10 +107,12 @@ class ChatService:
             question=question[:50],
             row_count=row_count,
             column_count=len(columns),
+            vis_type=vis_type,
+            title=title,
             execution_time_ms=execution_time_ms
         )
 
-        # 8. Persist Conversation & Messages to PostgreSQL if session and user provided
+        # 9. Persist Conversation & Messages to PostgreSQL if session and user provided
         res_conv_id = conversation_id
         if db_session and user:
             try:
@@ -114,12 +131,12 @@ class ChatService:
                     conv = Conversation(
                         tenant_id=user.tenant_id,
                         user_id=user.id,
-                        title=question[:40] if question else "New Conversation"
+                        title=title
                     )
                     db_session.add(conv)
                     db_session.flush()
                 elif not conv.title or conv.title == "New Conversation":
-                    conv.title = question[:40]
+                    conv.title = title
 
                 res_conv_id = str(conv.id)
 
@@ -138,7 +155,8 @@ class ChatService:
                     role="assistant",
                     content=answer,
                     generated_sql=validated_sql,
-                    result_data={"rows": result_data, "columns": columns, "row_count": row_count},
+                    result_data={"rows": result_data, "columns": columns, "row_count": row_count, "visualization": vis_type, "title": title},
+                    chart_recommendation=vis_type,
                     execution_time_ms=int(execution_time_ms),
                     status="complete"
                 )
@@ -155,12 +173,19 @@ class ChatService:
             "success": True,
             "conversation_id": res_conv_id,
             "question": question,
+            "summary": answer,
             "answer": answer,
             "sql": validated_sql,
             "result_data": result_data,
             "rows": result_data,
             "columns": columns,
             "row_count": row_count,
+            "column_count": len(columns),
+            "visualization": vis_type,
+            "title": title,
+            "profile": vis_payload.get("profile"),
+            "statistics": {"row_count": row_count, "column_count": len(columns), "execution_time_ms": execution_time_ms},
+            "recommended_visualization": vis_payload,
             "execution_time_ms": execution_time_ms,
             "generated_at": generated_at,
             "database": db_name

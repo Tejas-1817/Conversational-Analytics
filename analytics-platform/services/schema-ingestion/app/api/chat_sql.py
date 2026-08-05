@@ -28,12 +28,19 @@ class SQLQueryResponse(BaseModel):
     success: bool = True
     conversation_id: Optional[str] = None
     question: str
+    summary: Optional[str] = None
     sql: str
     answer: Optional[str] = None
     result_data: Optional[List[Dict[str, Any]]] = None
     rows: Optional[List[Dict[str, Any]]] = None
     columns: Optional[List[str]] = None
     row_count: Optional[int] = 0
+    column_count: Optional[int] = 0
+    visualization: Optional[str] = None
+    title: Optional[str] = None
+    profile: Optional[Dict[str, Any]] = None
+    statistics: Optional[Dict[str, Any]] = None
+    recommended_visualization: Optional[Dict[str, Any]] = None
     execution_time_ms: Optional[float] = 0.0
     generated_at: str
     database: str
