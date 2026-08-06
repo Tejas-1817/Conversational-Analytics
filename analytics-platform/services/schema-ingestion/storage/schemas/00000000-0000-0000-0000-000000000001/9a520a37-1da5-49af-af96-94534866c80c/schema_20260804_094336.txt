@@ -1,0 +1,47 @@
+Database Name: test
+
+TABLE: customers
+- customer_id (INTEGER, PK, NOT NULL)
+- first_name (VARCHAR(50))
+- last_name (VARCHAR(50))
+- email (VARCHAR(100))
+- city (VARCHAR(50))
+- state (VARCHAR(50))
+- status (VARCHAR(20))
+- created_at (DATE)
+
+TABLE: employees
+- employee_id (INTEGER, PK, NOT NULL)
+- first_name (VARCHAR(50))
+- last_name (VARCHAR(50))
+- department (VARCHAR(50))
+- designation (VARCHAR(50))
+- salary (NUMERIC(10, 2))
+- hire_date (DATE)
+- status (VARCHAR(20))
+
+TABLE: order_items
+- order_item_id (INTEGER, PK, NOT NULL)
+- order_id (INTEGER)
+- product_id (INTEGER)
+- quantity (INTEGER)
+- unit_price (NUMERIC(10, 2))
+- line_total (NUMERIC(10, 2))
+
+TABLE: orders
+- order_id (INTEGER, PK, NOT NULL)
+- customer_id (INTEGER)
+- employee_id (INTEGER)
+- order_date (DATE)
+- total_amount (NUMERIC(10, 2))
+- payment_method (VARCHAR(30))
+- order_status (VARCHAR(20))
+
+TABLE: products
+- product_id (INTEGER, PK, NOT NULL)
+- product_name (VARCHAR(100))
+- category (VARCHAR(50))
+- unit_price (NUMERIC(10, 2))
+- stock_quantity (INTEGER)
+- supplier_name (VARCHAR(100))
+- status (VARCHAR(20))

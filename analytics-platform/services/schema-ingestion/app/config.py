@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     
     # Ollama Settings
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "gemma4:12b "  # Benchmarked: ~53s/turn vs ~227s for 14b (4.1x speedup)
+    ollama_model: str = "gemma3:4b"  # Benchmarked: ~53s/turn vs ~227s for 14b (4.1x speedup)
     
     # Hugging Face Settings
     huggingface_api_key: str = ""
@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     hf_temperature: float = 0.0
     hf_top_p: float = 0.95
     hf_retry_count: int = 3
+
+    # Feature Flags
+    enable_enterprise_visualizations: bool = True
 
     # Phase 2 — Embedding pipeline
     embedding_model: str = "all-MiniLM-L6-v2"   # sentence-transformers model name
@@ -53,6 +56,9 @@ class Settings(BaseSettings):
     rag_distance_threshold: float = 0.60
     rag_top_k: int = 10             # number of Chroma candidates to fetch per query
     rag_enabled: bool = True        # set False in CI / offline environments
+
+    # Semantic layer feature flag
+    enable_semantic_generation: bool = False
 
 
     # Credential encryption key (Fernet, urlsafe base64, 32 bytes).

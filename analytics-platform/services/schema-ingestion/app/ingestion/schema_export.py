@@ -110,3 +110,112 @@ def export_schema_snapshot(
         "tables_exported": len(tables_data),
         "relationships_exported": len(relationships_data)
     }
+
+
+def export_human_readable_schema(session: Session, source: DataSource) -> Dict[str, Any]:
+    """Generates human-readable .txt schema file, updates SchemaRegistry, and tracks IngestionJob."""
+    start_time = datetime.now(timezone.utc)
+    
+    tenant_str = str(source.tenant_id)
+    source_str = str(source.id)
+    
+    # 1. Target directory under storage/schemas/{tenant_id}/{source_id}/
+    target_dir = Path("storage") / "schemas" / tenant_str / source_str
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    timestamp_str = start_time.strftime("%Y%m%d_%H%M%S")
+    txt_filename = f"database_schema_{timestamp_str}.sql"
+    filepath = target_dir / txt_filename
+    
+    # 2. Extract DDL text for all non-system business tables
+    from app.services.dynamic_schema_service import _SYSTEM_TABLES
+    tables = session.query(TableMeta).filter(
+        TableMeta.source_id == source.id,
+        TableMeta.is_active == True,
+        ~TableMeta.table_name.in_(_SYSTEM_TABLES)
+    ).order_by(TableMeta.table_name).all()
+    
+    lines = [f"-- Database Name: {source.database_name}\n"]
+    for t in tables:
+        lines.append(f"-- ==================================================")
+        lines.append(f"-- TABLE: {t.table_name}")
+        lines.append(f"-- ==================================================")
+        lines.append(f"TABLE: {t.table_name}")
+        cols = session.query(ColumnMeta).filter_by(table_id=t.id, is_active=True).order_by(ColumnMeta.ordinal_position).all()
+        for c in cols:
+            flags = []
+            if getattr(c, "is_primary_key", False):
+                flags.append("PK")
+            if not c.is_nullable:
+                flags.append("NOT NULL")
+            flag_str = f", {', '.join(flags)}" if flags else ""
+            lines.append(f"- {c.column_name} ({c.data_type}{flag_str})")
+        lines.append("")  # Empty spacer line
+    
+    schema_text = "\n".join(lines).strip()
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(schema_text)
+    
+    # 3. Update Schema Registry (Deactivate previous, Activate newest)
+    from app.models import SchemaRegistry, IngestionJob, Base
+    from app.db import get_engine
+    try:
+        Base.metadata.create_all(bind=get_engine(), tables=[SchemaRegistry.__table__])
+    except Exception as exc:
+        log.warning("schema_registries_table_creation_warning", error=str(exc))
+
+    previous_entries = session.query(SchemaRegistry).filter_by(source_id=source.id, is_active=True).all()
+    for prev in previous_entries:
+        prev.is_active = False
+    
+    latest_reg = session.query(SchemaRegistry).filter_by(source_id=source.id).order_by(SchemaRegistry.schema_version.desc()).first()
+    next_version = (latest_reg.schema_version + 1) if latest_reg else 1
+    
+    new_registry = SchemaRegistry(
+        tenant_id=source.tenant_id,
+        source_id=source.id,
+        database_name=source.database_name,
+        schema_version=next_version,
+        file_path=str(filepath),
+        is_active=True
+    )
+    session.add(new_registry)
+    session.flush()
+    
+    finish_time = datetime.now(timezone.utc)
+    duration_sec = round((finish_time - start_time).total_seconds(), 2)
+    
+    # 4. Record Ingestion Job
+    job = IngestionJob(
+        source_id=source.id,
+        stage="Schema Extraction",
+        status="succeeded",
+        started_at=start_time,
+        finished_at=finish_time,
+        stats={
+            "schema_version": next_version,
+            "file_path": str(filepath),
+            "table_count": len(tables),
+            "duration_sec": duration_sec,
+            "download_url": f"/api/v1/schemas/{new_registry.id}/download"
+        }
+    )
+    session.add(job)
+    session.commit()
+    
+    log.info(
+        "human_readable_schema_exported",
+        source=source.name,
+        version=next_version,
+        path=str(filepath),
+        tables=len(tables)
+    )
+    
+    return {
+        "status": "succeeded",
+        "schema_id": str(new_registry.id),
+        "version": next_version,
+        "file_path": str(filepath),
+        "table_count": len(tables)
+    }
+

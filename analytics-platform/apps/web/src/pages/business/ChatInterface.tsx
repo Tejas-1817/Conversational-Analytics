@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
-import { Save, Send, AlertTriangle, Info, CheckCircle2, Copy, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, X } from 'lucide-react';
+import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2 } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
 import { SqlBlock } from '../../components/chat/SqlBlock';
 
@@ -12,38 +12,8 @@ export const ChatInterface = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const handleDeleteClick = (e: React.MouseEvent, conversation: any) => {
-    e.stopPropagation();
-    setDeleteTarget(conversation);
-  };
-
-  const confirmDeleteChat = async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
-    try {
-      await fetchApi(`/engine/conversations/${deleteTarget.id}`, { method: 'DELETE' });
-      const updated = await loadConversationsList();
-
-      if (convId === deleteTarget.id) {
-        if (updated.length > 0) {
-          await loadConversation(updated[0].id);
-        } else {
-          await handleNewChat();
-        }
-      }
-      setDeleteTarget(null);
-    } catch (e: any) {
-      alert(e.message || 'Failed to delete chat');
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
 
   const loadConversationsList = async () => {
     try {
@@ -80,18 +50,32 @@ export const ChatInterface = () => {
       setConvId(data.id);
       localStorage.setItem('active_conversation_id', data.id);
 
-      const normalizedMessages = (data.messages || []).map((m: any) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        answer: m.role === 'assistant' ? m.content : undefined,
-        sql: m.generated_sql,
-        result_data: m.result_data?.rows || (Array.isArray(m.result_data) ? m.result_data : []),
-        execution_time_ms: m.execution_time_ms,
-        status: m.status,
-        generated_at: m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
-        database: 'analytics_db'
-      }));
+      const normalizedMessages = (data.messages || []).map((m: any) => {
+        let parsedData = m.result_data;
+        if (typeof parsedData === 'string') {
+          try { parsedData = JSON.parse(parsedData); } catch (e) {}
+        }
+        const rows = Array.isArray(parsedData) ? parsedData : (parsedData?.rows || parsedData?.data || []);
+        const cols = Array.isArray(parsedData?.columns) ? parsedData.columns : (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
+
+        return {
+          id: m.id,
+          role: m.role,
+          question: m.role === 'assistant' ? m.question : m.content,
+          content: m.content,
+          answer: m.role === 'assistant' ? m.content : undefined,
+          sql: m.generated_sql,
+          result_data: rows,
+          rows: rows,
+          columns: cols,
+          chart_recommendation: m.recommended_visualization?.chart_type || m.chart_recommendation,
+          recommended_visualization: m.recommended_visualization,
+          execution_time_ms: m.execution_time_ms,
+          status: m.status,
+          generated_at: m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+          database: 'analytics_db'
+        };
+      });
       setMessages(normalizedMessages);
     } catch (e) {
       console.error(e);
@@ -157,6 +141,9 @@ export const ChatInterface = () => {
         localStorage.setItem('active_conversation_id', data.conversation_id);
       }
 
+      const recVis = data.recommended_visualization || data.chart_recommendation;
+      const chartTypeRes = typeof recVis === 'object' && recVis !== null ? recVis.chart_type : (typeof recVis === 'string' ? recVis : undefined);
+      
       const botMsg = {
         id: Date.now() + 1,
         role: 'assistant',
@@ -167,6 +154,8 @@ export const ChatInterface = () => {
         rows: Array.isArray(data.rows) ? data.rows : (Array.isArray(data.result_data) ? data.result_data : []),
         columns: data.columns || (Array.isArray(data.rows) && data.rows.length > 0 ? Object.keys(data.rows[0]) : []),
         row_count: data.row_count !== undefined ? data.row_count : (Array.isArray(data.rows) ? data.rows.length : 0),
+        chart_recommendation: chartTypeRes,
+        recommended_visualization: recVis,
         execution_time_ms: data.execution_time_ms,
         generated_at: data.generated_at,
         database: data.database || 'analytics_db',
@@ -199,6 +188,24 @@ export const ChatInterface = () => {
     }
   };
 
+  const handleDownloadCSV = (msg: any) => {
+    const rows = msg.rows || msg.result_data || [];
+    if (!rows.length) return;
+    const columns = msg.columns || Object.keys(rows[0]);
+    const csvLines = [
+      columns.join(','),
+      ...rows.map((row: any) => columns.map((col: string) => JSON.stringify(row[col] ?? '')).join(','))
+    ];
+    const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `query_result_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
   };
@@ -208,9 +215,9 @@ export const ChatInterface = () => {
   );
 
   return (
-    <div style={{ display: 'flex', gap: '2rem', height: '100%', flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', gap: '2rem', height: '100%' }}>
       {/* Sidebar */}
-      <div style={{ width: '220px', display: 'flex', flexDirection: 'column', gap: '1.5rem', flexShrink: 0, borderRight: '1px solid var(--border-color)', paddingRight: '1rem', height: '100%', minHeight: 0 }}>
+      <div style={{ width: '280px', display: 'flex', flexDirection: 'column', gap: '1.5rem', flexShrink: 0, borderRight: '1px solid var(--border-color)', paddingRight: '1rem' }}>
         <div>
           <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleNewChat}>
             <Plus size={16} style={{ marginRight: '0.5rem' }} /> New Chat
@@ -244,33 +251,13 @@ export const ChatInterface = () => {
                 color: convId === c.id ? 'var(--primary)' : 'var(--text-main)',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
                 gap: '0.5rem',
                 fontSize: '0.85rem'
               }}
-              className="hover-bg-light group"
+              className="hover-bg-light"
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', flex: 1 }}>
-                <MessageSquare size={14} style={{ flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || 'New Conversation'}</span>
-              </div>
-              <button
-                className="btn-ghost"
-                title="Delete Chat"
-                onClick={(e) => handleDeleteClick(e, c)}
-                style={{
-                  padding: '0.2rem 0.35rem',
-                  borderRadius: '4px',
-                  color: 'var(--text-muted)',
-                  opacity: convId === c.id ? 0.9 : 0.6,
-                  transition: 'all 0.15s ease',
-                  lineHeight: 1
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.opacity = convId === c.id ? '0.9' : '0.6'; }}
-              >
-                <Trash2 size={13} />
-              </button>
+              <MessageSquare size={14} style={{ flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c.title || 'New Conversation'}</span>
             </div>
           ))}
           {filteredConversations.length === 0 && (
@@ -280,17 +267,17 @@ export const ChatInterface = () => {
       </div>
 
       {/* Main Chat Area */}
-      <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, margin: '0 auto', maxWidth: '860px', width: '100%' }}>
-        <div className="chat-messages" style={{ flex: 1, overflowY: 'auto', padding: '0 1rem', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="chat-container" style={{ flex: 1, height: '100%' }}>
+        <div className="chat-messages" style={{ padding: '0 1rem' }}>
           {messages.length === 0 && (
-            <div style={{ margin: 'auto', textAlign: 'center', maxWidth: '500px' }}>
-              <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(91, 82, 232, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+            <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.6, maxWidth: '500px' }}>
+              <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
                 <Bot size={32} />
               </div>
-              <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem', color: 'var(--text-main)' }}>How can I help you today?</h2>
-              <p style={{ color: 'var(--text-muted)' }}>Ask a question about your business data in plain English to generate SQL & view live results.</p>
+              <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>How can I help you today?</h2>
+              <p>Ask a question about your business data in plain English to generate SQL & view live results.</p>
 
-              <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left' }}>
+              <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left', opacity: 0.8 }}>
                 <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
                   <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
                 </div>
@@ -319,80 +306,109 @@ export const ChatInterface = () => {
                     )}
 
                     {!m.isError && (m.sql || m.content || m.answer) && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
+                        {/* 1. Executive Summary */}
                         {m.answer && (
-                          <div style={{ fontSize: '0.95rem', lineHeight: 1.6, fontWeight: 500, color: 'var(--text-main)' }}>
+                          <div style={{
+                            fontSize: '1rem',
+                            lineHeight: 1.6,
+                            fontWeight: 600,
+                            color: 'var(--text-main, #f8fafc)',
+                            background: 'rgba(255, 255, 255, 0.02)',
+                            padding: '1rem 1.25rem',
+                            borderRadius: '12px',
+                            border: '1px solid var(--border-color, #2b2b40)'
+                          }}>
                             {m.answer}
                           </div>
                         )}
 
+                        {/* 2. Primary Visualization */}
                         {m.result_data && m.result_data.length > 0 && (
-                          <div className="card" style={{ padding: '1.25rem', border: '1px solid var(--border-color)', background: 'var(--bg-dark)' }}>
-                            <div className="flex justify-between items-center mb-3">
+                          <div className="card" style={{ padding: '1.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-dark)' }}>
+                            <div className="flex justify-between items-center mb-4">
                               <div className="flex items-center gap-2">
-                                <Table size={16} className="text-muted" />
-                                <span className="text-sm font-semibold">Result Data ({m.row_count || m.result_data.length} rows)</span>
+                                <BarChart2 size={18} className="text-primary" style={{ color: '#6366F1' }} />
+                                <span className="text-base font-bold" style={{ color: 'var(--text-main)' }}>
+                                  {m.title || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || 'Analytics Insight'}
+                                </span>
                               </div>
-                              <button className="btn-secondary" onClick={() => handleSaveInsight(m)} style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>
-                                <Save size={14} /> Save Insight
-                              </button>
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button className="btn-secondary" onClick={() => handleDownloadCSV(m)} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }} title="Download CSV">
+                                  <Download size={14} style={{ marginRight: '0.25rem' }} /> Download CSV
+                                </button>
+                                <button className="btn-secondary" onClick={() => handleSaveInsight(m)} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }}>
+                                  <Save size={14} style={{ marginRight: '0.25rem' }} /> Save Insight
+                                </button>
+                              </div>
                             </div>
-                            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                              <ChartRenderer data={m.result_data} chartType="table" />
-                            </div>
+
+                            {(() => {
+                              const rows = m.result_data || m.rows || [];
+                              const cols = m.columns || (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
+                              
+                              let resolvedType = m.visualization || m.chart_recommendation;
+                              if (typeof m.recommended_visualization === 'object' && m.recommended_visualization !== null) {
+                                resolvedType = m.recommended_visualization.visualization || m.recommended_visualization.chart_type || resolvedType;
+                              } else if (typeof m.recommended_visualization === 'string') {
+                                resolvedType = m.recommended_visualization;
+                              }
+
+                              if (!resolvedType) {
+                                if (rows.length === 1 && cols.length === 1) resolvedType = 'kpi_card';
+                                else if (rows.length === 1 && cols.length > 1) resolvedType = 'detail_card';
+                                else if (rows.length > 20) resolvedType = 'table';
+                                else if (rows.length > 1 && cols.length >= 2) resolvedType = 'bar_chart';
+                                else resolvedType = 'table';
+                              }
+
+                              const cardTitle = m.title || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
+                              const containerHeight = resolvedType === 'kpi_card' ? '180px' : (resolvedType === 'detail_card' ? '220px' : (resolvedType === 'multi_kpi' ? '160px' : '360px'));
+
+                              return (
+                                <div style={{ height: containerHeight, width: '100%' }}>
+                                  <ChartRenderer data={rows} chartType={resolvedType} title={cardTitle} columns={cols} />
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
 
+                        {/* 3. Collapsible SQL Accordion */}
                         {m.sql && (
-                          <div className="my-1">
-                            <SqlBlock sql={m.sql} defaultOpen={false} />
-                          </div>
-                        )}
-
-                        {m.question && (
-                          <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: '1.25rem',
-                            fontSize: '0.75rem',
-                            color: 'var(--text-muted)',
-                            padding: '0.5rem 0.75rem',
-                            backgroundColor: 'var(--bg-input, #1e1e2d)',
-                            borderRadius: '6px',
+                          <details style={{
+                            backgroundColor: 'var(--bg-card, #1a1a24)',
                             border: '1px solid var(--border-color, #2b2b40)',
-                            marginTop: '0.25rem'
+                            borderRadius: '10px',
+                            padding: '0.6rem 1rem',
+                            fontSize: '0.85rem'
                           }}>
-                            <div><strong style={{ color: 'var(--text-main)' }}>Question:</strong> {m.question}</div>
-                            <div><strong style={{ color: 'var(--text-main)' }}>Database Name:</strong> {m.database || 'analytics_db'}</div>
-                            {m.execution_time_ms !== undefined && (
-                              <div><strong style={{ color: 'var(--text-main)' }}>Execution Time:</strong> {m.execution_time_ms}ms</div>
-                            )}
-                            <div><strong style={{ color: 'var(--text-main)' }}>Generation Time:</strong> {m.generated_at}</div>
-                          </div>
+                            <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted, #94a3b8)', userSelect: 'none', outline: 'none' }}>
+                               Show Generated SQL Query
+                            </summary>
+                            <div style={{ marginTop: '0.75rem' }}>
+                              <SqlBlock sql={m.sql} defaultOpen={true} />
+                            </div>
+                          </details>
                         )}
-                      </div>
-                    )}
 
-                    {m.status === 'processing' && (
-                      <div className="mt-4 p-4 border border-gray-100 rounded-lg bg-white shadow-sm">
-                        <PipelineProgress trace={m.trace} />
-                      </div>
-                    )}
-
-                    {m.result_data && (
-                      <div className="card mt-4" style={{ padding: '1.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-dark)' }}>
-                        <div className="flex justify-between items-center mb-4">
-                          <div className="flex items-center gap-2">
-                            <Table size={16} className="text-muted" />
-                            <span className="text-sm font-medium">Result Data</span>
-                          </div>
-                          <button className="btn-secondary" onClick={() => handleSaveInsight(m)} style={{ padding: '0.25rem 0.75rem', fontSize: '0.75rem' }}>
-                            <Save size={14} /> Save Insight
-                          </button>
-                        </div>
-                        <div style={{ height: m.chart_recommendation === 'kpi_card' ? '120px' : '350px' }}>
-                          <ChartRenderer data={m.result_data} chartType={m.chart_recommendation || 'table'} />
-                        </div>
+                        {/* 4. Collapsible Raw Data Accordion */}
+                        {m.result_data && m.result_data.length > 0 && (
+                          <details style={{
+                            backgroundColor: 'var(--bg-card, #1a1a24)',
+                            border: '1px solid var(--border-color, #2b2b40)',
+                            borderRadius: '10px',
+                            padding: '0.6rem 1rem',
+                            fontSize: '0.85rem'
+                          }}>
+                            <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted, #94a3b8)', userSelect: 'none', outline: 'none' }}>
+                               View Raw Data Grid ({m.row_count || m.result_data.length} rows)
+                            </summary>
+                            <div style={{ marginTop: '0.75rem', height: '320px', overflowY: 'auto' }}>
+                              <ChartRenderer data={m.result_data} chartType="table" columns={m.columns} />
+                            </div>
+                          </details>
+                        )}
                       </div>
                     )}
 
@@ -465,7 +481,7 @@ export const ChatInterface = () => {
           <div ref={messagesEndRef} style={{ height: '1px' }} />
         </div>
 
-        <div style={{ background: 'var(--bg-main)', flexShrink: 0, paddingTop: '0.75rem', paddingBottom: '0.5rem', width: '100%', zIndex: 20 }}>
+        <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: -46, borderTop: '1px solid var(--border-color)', zIndex: 20 }}>
           <form onSubmit={sendMessage} className="chat-input-wrapper" style={{ margin: '0 auto', maxWidth: '800px' }}>
             <input
               style={{ flex: 1, padding: '1rem', fontSize: '0.95rem' }}
@@ -492,45 +508,11 @@ export const ChatInterface = () => {
               <Send size={18} style={{ transform: 'translateX(-1px)' }} />
             </button>
           </form>
-        </div>
-      </div>
+          <div className="text-center text-muted mt-2" style={{ fontSize: '0.75rem' }}>
 
-      {/* Delete Confirmation Modal */}
-      {deleteTarget && (
-        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
-          <div className="modal-content" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                <AlertTriangle size={18} style={{ color: '#ef4444' }} /> Delete Chat
-              </div>
-              <button className="btn-ghost" onClick={() => setDeleteTarget(null)} disabled={isDeleting} style={{ padding: '4px' }}>
-                <X size={18} />
-              </button>
-            </div>
-            <div className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
-              <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
-                Are you sure you want to delete this chat?
-              </p>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem', background: 'var(--bg-main)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                "{deleteTarget.title || 'New Conversation'}"
-              </div>
-            </div>
-            <div className="modal-footer" style={{ padding: '0.75rem 1.25rem', gap: '0.5rem' }}>
-              <button className="btn-secondary" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
-                Cancel
-              </button>
-              <button
-                onClick={confirmDeleteChat}
-                disabled={isDeleting}
-                style={{ background: '#ef4444', borderColor: '#ef4444', color: 'white' }}
-              >
-                {isDeleting ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
-

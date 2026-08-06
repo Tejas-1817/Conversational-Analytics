@@ -9,7 +9,7 @@ sys.path.insert(0, r"c:\Users\Admin\Downloads\Analytics Tool\Analytics Tool\anal
 from app.schemas_semantic_ai import AITableEnrichmentSchema
 
 load_dotenv()
-model_name = os.getenv("OLLAMA_MODEL", "gemma4:12b ")
+model_name = os.getenv("OLLAMA_MODEL", "gemma3:4b")
 base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 print(f"Testing model: {model_name}")
@@ -19,7 +19,7 @@ payload = {
     "prompt": "Test prompt",
     "stream": False,
     "format": AITableEnrichmentSchema.model_json_schema(),
-    "options": {"temperature": 0.0}
+    "options": {"temperature": 0.2}
 }
 
 try:

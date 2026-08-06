@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fetchApi } from '../../services/api';
-import { Activity, Clock, PlayCircle, RefreshCw } from 'lucide-react';
+import { Activity, Clock, Download, PlayCircle, RefreshCw } from 'lucide-react';
 
 export const Jobs = () => {
   const [jobs, setJobs] = useState<any[]>([]);
@@ -20,6 +20,27 @@ export const Jobs = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const handleDownloadSchema = async (sourceId: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/sources/${sourceId}/schemas/active`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      if (!res.ok) throw new Error('Download request failed with status ' + res.status);
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `schema_${sourceId.slice(0, 8)}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message || 'Failed to download schema file.');
+    }
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -28,7 +49,7 @@ export const Jobs = () => {
             <Activity size={24} style={{ color: 'var(--primary)' }} /> Ingestion Jobs
           </h2>
           <p className="subtitle" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
-            Monitor automated schema introspection and data profiling tasks.
+            Monitor automated connection validation, schema extraction, and file registration jobs.
           </p>
         </div>
       </div>
@@ -42,19 +63,20 @@ export const Jobs = () => {
                 <th>Source ID</th>
                 <th>Pipeline Stage</th>
                 <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="text-center p-4">
+                  <td colSpan={5} className="text-center p-4">
                     <div className="skeleton" style={{ height: '40px', width: '100%', marginBottom: '10px' }} />
                     <div className="skeleton" style={{ height: '40px', width: '100%' }} />
                   </td>
                 </tr>
               ) : jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center p-4 text-muted">
+                  <td colSpan={5} className="text-center p-4 text-muted">
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '3rem' }}>
                       <Clock size={48} style={{ opacity: 0.2 }} />
                       <div>
@@ -75,8 +97,8 @@ export const Jobs = () => {
                     </td>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{j.source_id.slice(0, 8)}...</td>
                     <td>
-                      <span className="badge badge-default" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        {j.stage.replace(/_/g, ' ')}
+                      <span className="badge badge-default" style={{ textTransform: 'none', letterSpacing: '0.02em', fontWeight: 600 }}>
+                        {j.stage}
                       </span>
                     </td>
                     <td>
@@ -88,6 +110,17 @@ export const Jobs = () => {
                         )}
                         {j.status}
                       </span>
+                    </td>
+                    <td>
+                      {j.source_id && (
+                        <button
+                          onClick={() => handleDownloadSchema(j.source_id)}
+                          className="btn-secondary"
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                        >
+                          <Download size={13} /> Download Schema (.txt)
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))

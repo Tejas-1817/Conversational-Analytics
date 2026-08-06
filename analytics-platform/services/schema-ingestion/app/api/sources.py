@@ -58,6 +58,18 @@ def create_source(
 
     source.status = "connected"
 
+    # Trigger automated 5-stage schema extraction workflow immediately
+    from app.models import IngestionJob
+    from app.ingestion.pipeline import run_pipeline
+    job = IngestionJob(source_id=source.id, stage="Connection Validation", status="running")
+    session.add(job)
+    session.commit()
+
+    try:
+        run_pipeline(str(job.id), str(source.id))
+    except Exception as exc:
+        log.warning("automatic_pipeline_trigger_failed", error=str(exc))
+
     audit(
         session,
         tenant_id=current_user.tenant_id,
@@ -199,4 +211,59 @@ def delete_source(
     session.delete(source)
     session.commit()
     log.info("source_deleted", source_id=str(source_id), actor=current_user.email)
+
+
+from pathlib import Path
+from fastapi.responses import FileResponse, PlainTextResponse
+
+@router.get("/{source_id}/schemas/active")
+def get_active_schema_file(
+    source_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_permission(Permission.VIEW_SOURCES)),
+):
+    source = session.get(DataSource, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    verify_tenant_owns(source.tenant_id, current_user)
+    
+    from app.models import SchemaRegistry
+    registry = session.query(SchemaRegistry).filter_by(source_id=source.id, is_active=True).first()
+    if not registry or not Path(registry.file_path).exists():
+        from app.chat_sql.schema_provider import SchemaProvider
+        _, schema_text = SchemaProvider().get_connected_schema(db_session=session, user=current_user, source=source)
+        return PlainTextResponse(
+            content=schema_text,
+            headers={"Content-Disposition": f'attachment; filename="schema_{source_id}.txt"'}
+        )
+    
+    return FileResponse(
+        path=registry.file_path,
+        filename=Path(registry.file_path).name,
+        media_type="text/plain",
+        content_disposition_type="attachment"
+    )
+
+
+@router.get("/schemas/{schema_id}/download")
+def download_schema_registry_file(
+    schema_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_permission(Permission.VIEW_SOURCES)),
+):
+    from app.models import SchemaRegistry
+    registry = session.get(SchemaRegistry, schema_id)
+    if not registry:
+        raise HTTPException(status_code=404, detail="Schema file not found")
+    verify_tenant_owns(registry.tenant_id, current_user)
+    
+    if not Path(registry.file_path).exists():
+        raise HTTPException(status_code=404, detail="Physical schema file missing on disk")
+        
+    return FileResponse(
+        path=registry.file_path,
+        filename=Path(registry.file_path).name,
+        media_type="text/plain",
+        content_disposition_type="attachment"
+    )
 

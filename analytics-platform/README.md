@@ -12,38 +12,32 @@ Built with a **Local-First**, privacy-focused architecture powered by an AI Sema
 - **Deterministic 5-Stage Chat Pipeline**: `Parsing Question` ➔ `Entity Resolution` ➔ `Query Planning` ➔ `SQL Compilation & Execution` ➔ `Response Generation`.
 - **Intelligent Intent Router**: Seamlessly classifies chat messages to separate analytics queries, greetings, and help requests, preventing rigid NLU validation errors.
 - **Robust Entity Resolver**: Name-based candidate resolution that handles time units (`Month`, `Year`, `Day`) gracefully without LLM hallucination crashes.
-- **Chart Recommendation Engine**: Automatically selects the optimal visualization (Line Chart, Bar Chart, Pie Chart, Stat Card) based on query semantics.
+- **ThoughtSpot & Power BI Copilot Collapsible Chat UI**: Modern assistant message layout featuring an Executive Summary, Primary Visualization, Collapsible `▶ Show Generated SQL Query` accordion, and Collapsible `▶ View Raw Data Grid` accordion.
+- **Zero-State Leakage Architecture**: 100% component state isolation per chat message block, eliminating cross-message cache pollution.
 - **Full Trace Transparency**: Live step-by-step progress stepper and expandable execution trace detailing latency, schema matches, and generated SQL.
 
-### 🏗️ Automated Schema Ingestion & AI Semantic Layer
-- **Multi-Stage Ingestion Pipeline**:
-  1. **Introspection**: Reflects database tables, columns, data types, and primary/foreign keys.
-  2. **Data Profiling**: Computes column stats, null rates, and sample value distributions.
-  3. **Relationship Detection**: Discovers and maps physical foreign key relationships deterministically, bypassing slow LLM heuristics.
-  4. **Role Classification**: Automatically labels columns as dimensions, measures, keys, or attributes.
-  5. **Export Snapshot**: Exports PII-masked, versioned JSON schema snapshots under `SCHEMA_SNAPSHOT_DIR` for auditability and offline diffing.
-  6. **Semantic Generation**: Highly optimized, single-pass LLM enrichment combining metric, dimension, and glossary term generation with deterministic rule-based time dimensions and table caching.
-- **Semantic Layer Management**: Full CRUD interface for Metrics, Dimensions, Joins, and Business Glossary with automated formula parsing and validation.
+### 📊 Enterprise 5-Phase Visualization Recommendation Pipeline
+- **Phase 1 — Result Inspection (`ResultInspector`)**: Automatic dataset profiling and column type classification into `NUMERIC`, `CATEGORICAL`, `TIME_SERIES`, and `PERCENTAGE`, with query intent analysis for aggregate functions and Top-N rankings.
+- **Phase 2 — Visualization Recommendation (`ChartRecommender`)**: Deterministic rules engine with 100% confidence scoring (`1.0`) and title inference:
+  - 👥 **KPI Card** (`KPICard`): Single aggregate metric display.
+  - 🔢 **Multi KPI Cards** (`MultiKPICards`): Grid of individual metric cards for multi-scalar queries.
+  - 🏆 **Entity Detail Card** (`DetailCard`): Key-value attribute cards for single entity lookups.
+  - 🥇 **Horizontal Leaderboard** (`Leaderboard`): Horizontal ranked bar chart with rank badges (1, 2, 3...) for Top-N queries.
+  - 📊 **Bar Chart** (`BarChart`): Vertical bar chart for categorical aggregations.
+  - 📈 **Line Chart** (`LineChart`): Area/Line trend chart with date formatting.
+  - 🥧 **Pie Chart** (`PieChart`): Donut/Pie chart with custom slice labels.
+  - 📑 **Data Grid** (`DataGrid`): Interactive Table with search filter, column sorting, pagination, and CSV Export.
+  - ⚠️ **No Records Found** (`NoData`): Clean alert banner when 0 records match.
+- **Phase 3 — Unified Analytics Payload**: Appends `visualization`, `title`, `profile`, `statistics`, and `recommended_visualization` to API response DTOs.
+- **Phase 4 — Stateless Frontend Renderer**: Pure React renderers for all 8 visual types.
+- **Phase 5 — Validation Suite**: End-to-end verification across multi-schema test suites.
 
-### 📊 Dynamic Dashboards & Visualization
-- **Drag & Drop Layout**: Customizable, resizable widget grid.
-- **Data Exporting**: One-click data export to CSV and JSON formats.
-- **Global Filters**: Date ranges and dimension slicers that filter dashboard widgets dynamically.
-
-### 🧪 Testing & Validation Frameworks
-- **Performance & Scalability Suite** (`scripts/benchmark_suite.py`): Command-line suite to benchmark ingestion latency, memory consumption, SQL query counts, and LLM throughput with CSV and HTML reports.
-- **Customer Acceptance Testing (CAT) Framework** (`scripts/cat_framework.py`): End-to-end evaluation framework that validates retrieval precision, SQL accuracy, hallucination detection, and execution correctness against mock enterprise domains (HR, Sales, CRM, Finance, Inventory).
-
-
-### 🔒 Enterprise Governance & Security
-- **Strict Multi-Tenancy**: Built-in tenant isolation with tenant-scoped sessions and Row-Level Security (RLS) enforcement.
-- **Role-Based Access Control (RBAC)**: Fine-grained permissions for `ADMIN`, `ANALYST`, and `VIEWER` roles.
-- **Encrypted Credentials**: Target database credentials encrypted at rest using Fernet symmetric cryptography.
-- **OWASP Security Middleware**: HTTP security headers, payload size limits, and rate limiting.
-
-### 🔌 Pluggable LLM Provider Registry
-- **Local-First AI**: Native support for local LLM inference via **Ollama** (`mistral`, `llama3`, `qwen`).
-- **Cloud Provider Extensibility**: Easily switch or fallback to Google Gemini, HuggingFace Hub, or mock providers.
+### 🔬 Ollama Integration Telemetry & Audit Infrastructure
+- **Microsecond Latency Breakdown**: Measures timing for prompt prep, HTTP POST, JSON parsing, and regex SQL cleaning (`stage_http_ms`, `stage_clean_ms`, `total_latency_s`).
+- **Prompt & Token Statistics**: Logs character counts, schema size, question length, and estimated token usage (`len(prompt) // 4`).
+- **Failure Classification Taxonomy**: Maps errors to `LLM_TIMEOUT`, `LLM_CONNECTION_FAILED`, `LLM_EMPTY_RESPONSE`, `LLM_INVALID_RESPONSE`, or `LLM_INVALID_SQL`.
+- **Raw Response Audit Logging**: Captures full un-cleaned Ollama text outputs (including reasoning `<thought>` blocks) before cleaning.
+- **Feature Flag Control**: Guarded by `ENABLE_ENTERPRISE_VISUALIZATIONS = True` in settings for instant rollback capability.
 
 ---
 
