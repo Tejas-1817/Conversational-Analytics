@@ -28,7 +28,7 @@ class LLMProvider:
         t_start_total = time.time()
         req_timestamp = datetime.now(timezone.utc).isoformat()
         url = f"{self.base_url}/api/generate"
-        models_to_try = list(dict.fromkeys([self.model_name.strip(), "gemma4:12b"]))
+        models_to_try = list(dict.fromkeys([self.model_name.strip(), "gemma3:4b"]))
 
         prompt_chars = len(prompt)
         estimated_tokens = prompt_chars // 4
@@ -53,9 +53,9 @@ class LLMProvider:
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.0,
+                    "temperature": 0.2,
                     "top_p": 0.1,
-                    "num_predict": 512
+                    "num_predict": 2048
                 }
             }
 
@@ -73,7 +73,7 @@ class LLMProvider:
                     payload_options=payload["options"]
                 )
 
-                resp = requests.post(url, json=payload, timeout=120)
+                resp = requests.post(url, json=payload, timeout=600)
                 t_http_end = time.time()
                 stage_http_ms = (t_http_end - t_http_start) * 1000.0
                 http_status_code = resp.status_code
@@ -194,3 +194,32 @@ class LLMProvider:
             cleaned = cleaned.split(";")[0].strip() + ";"
 
         return cleaned
+
+    def generate_text(self, prompt: str, max_tokens: int = 256, timeout: int = 30) -> str:
+        """Generates arbitrary natural language text from Ollama WITHOUT any SQL validation."""
+        url = f"{self.base_url}/api/generate"
+        models_to_try = list(dict.fromkeys([self.model_name.strip(), "gemma4:12b"]))
+
+        for model in models_to_try:
+            payload = {
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.3,
+                    "num_predict": max_tokens
+                }
+            }
+            try:
+                resp = requests.post(url, json=payload, timeout=timeout)
+                resp.raise_for_status()
+                data = resp.json()
+                raw_text = data.get("response", "").strip()
+                if raw_text:
+                    cleaned = re.sub(r"<thought>.*?</thought>", "", raw_text, flags=re.DOTALL).strip()
+                    cleaned = cleaned.strip('"').strip("'")
+                    return cleaned
+            except Exception as e:
+                log.warning("llm_generate_text_attempt_failed", model=model, error=str(e))
+
+        raise RuntimeError("LLM text generation failed for all models.")

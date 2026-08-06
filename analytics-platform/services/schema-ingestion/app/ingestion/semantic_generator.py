@@ -36,8 +36,10 @@ def needs_full_regeneration(has_active_model: bool, ai_entity_count: int) -> boo
 
 def run_semantic_generation(session: Session, source: DataSource, metadata_version_id: uuid.UUID) -> dict:
     """Executes chunked/incremental semantic generation."""
-    log.info("semantic_generation_disabled_temporarily", source=source.name)
-    return {"status": "skipped", "reason": "disabled_temporarily"}
+    # log.info("semantic_generation_disabled_temporarily", source=source.name)
+    # return {"status": "skipped", "reason": "disabled_temporarily"}
+    active_model = session.query(SemanticModel).filter_by(source_id=source.id, is_active=True).first()
+
     ai_entity_count = 0
     if active_model:
         ai_entity_count = sum(

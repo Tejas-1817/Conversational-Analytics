@@ -11,7 +11,11 @@ from app.models import DataSource, SchemaRegistry
 
 log = structlog.get_logger(__name__)
 
-FALLBACK_SCHEMA_FILE = r"C:\Users\Admin\Downloads\Analytics_Database_Schema.txt"
+#  FALLBACK_SCHEMA_FILE = r"C:\Users\Admin\Downloads\Analytics_Database_Schema.txt"
+FALLBACK_SCHEMA_FILE = r"C:\Users\Admin\Downloads\Analytics Tool\Analytics Tool\analytics-platform\services\schema-ingestion\storage\schemas\00000000-0000-0000-0000-000000000001\8fb71966-dd9c-4c96-b5df-2db33a3a0185\database_schema.txt"
+
+ 
+
 
 
 class SchemaProvider:

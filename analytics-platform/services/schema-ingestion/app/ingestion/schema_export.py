@@ -124,7 +124,7 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
     target_dir.mkdir(parents=True, exist_ok=True)
     
     timestamp_str = start_time.strftime("%Y%m%d_%H%M%S")
-    txt_filename = f"schema_{timestamp_str}.txt"
+    txt_filename = f"database_schema_{timestamp_str}.sql"
     filepath = target_dir / txt_filename
     
     # 2. Extract DDL text for all non-system business tables
@@ -135,8 +135,11 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
         ~TableMeta.table_name.in_(_SYSTEM_TABLES)
     ).order_by(TableMeta.table_name).all()
     
-    lines = [f"Database Name: {source.database_name}\n"]
+    lines = [f"-- Database Name: {source.database_name}\n"]
     for t in tables:
+        lines.append(f"-- ==================================================")
+        lines.append(f"-- TABLE: {t.table_name}")
+        lines.append(f"-- ==================================================")
         lines.append(f"TABLE: {t.table_name}")
         cols = session.query(ColumnMeta).filter_by(table_id=t.id, is_active=True).order_by(ColumnMeta.ordinal_position).all()
         for c in cols:

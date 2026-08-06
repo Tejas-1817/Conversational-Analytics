@@ -255,7 +255,7 @@ class DeterministicSemanticGenerator:
 
                 # Populate production Approved Semantic Layer objects so Semantic Layer UI displays them
                 import uuid
-                from app.models import DataSource, SemanticModel, SemanticDimension, SemanticMetric, BusinessGlossary
+                from app.models import DataSource, MetadataVersion, SemanticModel, SemanticDimension, SemanticMetric, BusinessGlossary
                 tenant_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
                 source = session.query(DataSource).filter_by(tenant_id=tenant_id, status="connected").first()
                 model_id = None
