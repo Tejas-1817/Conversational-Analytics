@@ -70,9 +70,9 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
         </nav>
 
         <div style={{ padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
-          <button 
-            className="sidebar-link" 
-            onClick={handleLogout} 
+          <button
+            className="sidebar-link"
+            onClick={handleLogout}
             style={{ width: '100%', background: 'transparent', textAlign: 'left', border: 'none', cursor: 'pointer', justifyContent: isCollapsed ? 'center' : 'flex-start' }}
             title="Logout"
           >
@@ -92,24 +92,24 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
               <span className="badge badge-default" style={{ marginLeft: '8px' }}>Enterprise</span>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-4">
             <div className="relative">
               <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input 
-                type="text" 
-                placeholder="Search resources..." 
+              <input
+                type="text"
+                placeholder="Search resources..."
                 style={{ width: '250px', paddingLeft: '2rem', background: 'var(--bg-dark)', borderRadius: '9999px' }}
               />
             </div>
-            
+
             <button className="btn-ghost" style={{ padding: '0.5rem', borderRadius: '50%' }}>
               <Bell size={18} />
             </button>
             <button className="btn-ghost" style={{ padding: '0.5rem', borderRadius: '50%' }}>
               <Moon size={18} />
             </button>
-            
+
             <div className="flex items-center gap-2" style={{ paddingLeft: '1rem', borderLeft: '1px solid var(--border-color)' }}>
               <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column' }}>
                 <span className="text-sm" style={{ fontWeight: 500 }}>{user?.email}</span>
@@ -123,7 +123,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
         </header>
 
         {/* Content Area */}
-        <main className="main-content" style={location.pathname === '/chat' ? { height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', padding: '1.25rem 2rem', overflow: 'hidden' } : {}}>
+        <main className="main-content" style={location.pathname === '/chat' ? { height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', padding: '0.5', overflow: 'hidden' } : {}}>
           <div className="animate-fade-in" style={location.pathname === '/chat' ? { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 } : {}}>
             {children}
           </div>

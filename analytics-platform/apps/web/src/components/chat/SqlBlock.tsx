@@ -13,7 +13,8 @@ export function SqlBlock({ sql, className = "", defaultOpen = false }: SqlBlockP
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
     navigator.clipboard.writeText(sql);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -22,42 +23,58 @@ export function SqlBlock({ sql, className = "", defaultOpen = false }: SqlBlockP
   return (
     <div className={`border border-gray-200 rounded-lg overflow-hidden bg-gray-50 ${className}`}>
       {/* Header / Toggle bar */}
-      <button
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.4rem 1rem',
+          background: 'var(--primary, #6366F1)',
+          cursor: 'pointer',
+        }}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-2 bg-gray-100 hover:bg-gray-200 transition-colors focus:outline-none"
       >
-        <div className="flex items-center space-x-2 text-sm font-medium text-gray-700">
-          <Terminal className="w-4 h-4" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 500, color: 'white' }}>
+          <Terminal style={{ width: '14px', height: '14px' }} />
           <span>{isOpen ? "Hide SQL" : "Show SQL"}</span>
         </div>
-      </button>
+
+        <button
+          onClick={handleCopy}
+          title="Copy SQL"
+          style={{
+            padding: '0.2rem 0.4rem',
+            borderRadius: '4px',
+            background: 'rgba(255,255,255,0.15)',
+            border: 'none',
+            color: 'white',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            transition: 'background 0.15s ease',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.15)')}
+        >
+          {copied ? <Check style={{ width: '13px', height: '13px', color: '#86efac' }} /> : <Copy style={{ width: '13px', height: '13px' }} />}
+        </button>
+      </div>
 
       {/* Code Body */}
       {isOpen && (
-        <div className="relative group border-t border-gray-200">
-          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={handleCopy}
-              className="p-1.5 bg-gray-800 text-gray-300 rounded hover:text-white hover:bg-gray-700 transition-colors shadow-sm"
-              title="Copy SQL"
-            >
-              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
-          <SyntaxHighlighter
-            language="sql"
-            style={atomDark}
-            customStyle={{
-              margin: 0,
-              padding: "1rem",
-              background: "#1e1e1e", // Custom dark background
-              fontSize: "0.875rem",
-              borderRadius: "0",
-            }}
-          >
-            {sql}
-          </SyntaxHighlighter>
-        </div>
+        <SyntaxHighlighter
+          language="sql"
+          style={atomDark}
+          customStyle={{
+            margin: 0,
+            padding: "1rem",
+            background: "#1e1e1e",
+            fontSize: "0.875rem",
+            borderRadius: "0",
+          }}
+        >
+          {sql}
+        </SyntaxHighlighter>
       )}
     </div>
   );
