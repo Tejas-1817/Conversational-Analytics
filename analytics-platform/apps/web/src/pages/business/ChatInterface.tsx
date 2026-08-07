@@ -1,9 +1,75 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
-import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2 } from 'lucide-react';
+import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
-import { SqlBlock } from '../../components/chat/SqlBlock';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { prism as prismLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
+function SqlAccordion({ sql }: { sql: string }) {
+  const [isOpen, setIsOpen] = React.useState(true);
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(sql);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div style={{ border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden', fontSize: '0.85rem' }}>
+      {/* Single header bar */}
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.5rem 1rem',
+          cursor: 'pointer',
+          background: 'var(--bg-card)',
+          borderBottom: isOpen ? '1px solid var(--border-color)' : 'none',
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          {isOpen ? '▾ Hide Generated SQL Query' : '▸ Show Generated SQL Query'}
+        </span>
+        <button
+          onClick={handleCopy}
+          title="Copy SQL"
+          style={{
+            padding: '0.2rem 0.4rem',
+            borderRadius: '4px',
+            background: 'transparent',
+            border: '1px solid var(--border-color)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-main)'; e.currentTarget.style.borderColor = 'var(--text-muted)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
+        >
+          {copied ? <Check size={13} style={{ color: '#22c55e' }} /> : <Copy size={13} />}
+        </button>
+      </div>
+      {/* Code body */}
+      {isOpen && (
+        <SyntaxHighlighter
+          language="sql"
+          style={prismLight}
+          customStyle={{ margin: 0, padding: '1rem', background: '#ffffff', fontSize: '0.85rem', borderRadius: 0, color: '#1a1a1a' }}
+        >
+          {sql}
+        </SyntaxHighlighter>
+      )}
+    </div>
+  );
+}
 
 export const ChatInterface = () => {
   const [conversations, setConversations] = useState<any[]>([]);
@@ -12,8 +78,37 @@ export const ChatInterface = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleDeleteClick = (e: React.MouseEvent, conversation: any) => {
+    e.stopPropagation();
+    setDeleteTarget(conversation);
+  };
+
+  const confirmDeleteChat = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      await fetchApi(`/engine/conversations/${deleteTarget.id}`, { method: 'DELETE' });
+      const updated = await loadConversationsList();
+
+      if (convId === deleteTarget.id) {
+        if (updated.length > 0) {
+          await loadConversation(updated[0].id);
+        } else {
+          await handleNewChat();
+        }
+      }
+      setDeleteTarget(null);
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete chat');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const loadConversationsList = async () => {
     try {
@@ -251,13 +346,33 @@ export const ChatInterface = () => {
                 color: convId === c.id ? 'var(--primary)' : 'var(--text-main)',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'space-between',
                 gap: '0.5rem',
                 fontSize: '0.85rem'
               }}
-              className="hover-bg-light"
+              className="hover-bg-light group"
             >
-              <MessageSquare size={14} style={{ flexShrink: 0 }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{c.title || 'New Conversation'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', flex: 1 }}>
+                <MessageSquare size={14} style={{ flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || 'New Conversation'}</span>
+              </div>
+              <button
+                className="btn-ghost"
+                title="Delete Chat"
+                onClick={(e) => handleDeleteClick(e, c)}
+                style={{
+                  padding: '0.2rem 0.35rem',
+                  borderRadius: '4px',
+                  color: 'var(--text-muted)',
+                  opacity: convId === c.id ? 0.9 : 0.6,
+                  transition: 'all 0.15s ease',
+                  lineHeight: 1
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.opacity = convId === c.id ? '0.9' : '0.6'; }}
+              >
+                <Trash2 size={13} />
+              </button>
             </div>
           ))}
           {filteredConversations.length === 0 && (
@@ -376,20 +491,7 @@ export const ChatInterface = () => {
 
                         {/* 3. Collapsible SQL Accordion */}
                         {m.sql && (
-                          <details style={{
-                            backgroundColor: 'var(--bg-card, #1a1a24)',
-                            border: '1px solid var(--border-color, #2b2b40)',
-                            borderRadius: '10px',
-                            padding: '0.6rem 1rem',
-                            fontSize: '0.85rem'
-                          }}>
-                            <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted, #94a3b8)', userSelect: 'none', outline: 'none' }}>
-                               Show Generated SQL Query
-                            </summary>
-                            <div style={{ marginTop: '0.75rem' }}>
-                              <SqlBlock sql={m.sql} defaultOpen={true} />
-                            </div>
-                          </details>
+                          <SqlAccordion sql={m.sql} />
                         )}
 
                         {/* 4. Collapsible Raw Data Accordion */}
@@ -508,11 +610,44 @@ export const ChatInterface = () => {
               <Send size={18} style={{ transform: 'translateX(-1px)' }} />
             </button>
           </form>
-          <div className="text-center text-muted mt-2" style={{ fontSize: '0.75rem' }}>
-
-          </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+          <div className="modal-content" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                <AlertTriangle size={18} style={{ color: '#ef4444' }} /> Delete Chat
+              </div>
+              <button className="btn-ghost" onClick={() => setDeleteTarget(null)} disabled={isDeleting} style={{ padding: '4px' }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
+              <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
+                Are you sure you want to delete this chat?
+              </p>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem', background: 'var(--bg-main)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                "{deleteTarget.title || 'New Conversation'}"
+              </div>
+            </div>
+            <div className="modal-footer" style={{ padding: '0.75rem 1.25rem', gap: '0.5rem' }}>
+              <button className="btn-secondary" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteChat}
+                disabled={isDeleting}
+                style={{ background: '#ef4444', borderColor: '#ef4444', color: 'white' }}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
