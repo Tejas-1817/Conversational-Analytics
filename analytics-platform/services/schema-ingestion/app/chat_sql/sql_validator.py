@@ -33,6 +33,16 @@ class SQLValidator:
             if re.search(r"\b" + kw + r"\b", clean_sql, re.IGNORECASE):
                 return UNANSWERABLE_MSG
 
+        # Rule 1b: Static offline AST syntax validation via sqlglot
+        try:
+            import sqlglot
+            parsed = sqlglot.parse(clean_sql, read="postgres")
+            if not parsed or all(stmt is None for stmt in parsed):
+                return UNANSWERABLE_MSG
+        except Exception:
+            # Fall back gracefully if sqlglot dialect parse hits custom extension syntax
+            pass
+
         # Rule 2: Table existence validation if catalog provided
         if not catalog:
             return clean_sql

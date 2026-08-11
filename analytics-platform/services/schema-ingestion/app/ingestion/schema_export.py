@@ -155,6 +155,45 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
     schema_text = "\n".join(lines).strip()
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(schema_text)
+
+    # 2b. Write plain-text description snapshot file (schema_<timestamp>.txt)
+    txt_summary_filename = f"schema_{timestamp_str}.txt"
+    txt_summary_filepath = target_dir / txt_summary_filename
+    with open(txt_summary_filepath, "w", encoding="utf-8") as f:
+        f.write(schema_text)
+
+    # 2c. Automatically generate vector embeddings JSON (embeddings_<timestamp>.json)
+    try:
+        from embeddings import split_into_chunks, load_model, generate_embeddings, build_records
+        chunks = split_into_chunks(schema_text)
+        embed_model = load_model("all-MiniLM-L6-v2")
+        vectors = generate_embeddings(chunks, embed_model)
+        records = build_records(chunks, vectors)
+
+        json_summary_filename = f"embeddings_{timestamp_str}.json"
+        json_summary_filepath = target_dir / json_summary_filename
+        with open(json_summary_filepath, "w", encoding="utf-8") as f:
+            json.dump({"model": "all-MiniLM-L6-v2", "records": records}, f, indent=2)
+        log.info("automatic_embeddings_json_generated", path=str(json_summary_filepath), records=len(records))
+
+        # 2d. Automatically store vector records into persistent ChromaDB vector collection
+        try:
+            from app.embeddings.chroma_store import ChromaStore, EmbeddedObject
+            chroma_objects = [
+                EmbeddedObject(
+                    id=r["id"],
+                    text=r["text"],
+                    embedding=r["embedding"],
+                    metadata={"label": r.get("label", ""), "tenant_id": tenant_str, "source_id": source_str}
+                )
+                for r in records
+            ]
+            upserted_count = ChromaStore().upsert(source.tenant_id, chroma_objects)
+            log.info("automatic_chromadb_vectors_stored", tenant_id=tenant_str, upserted_count=upserted_count)
+        except Exception as chroma_exc:
+            log.warning("automatic_chromadb_store_warning", error=str(chroma_exc))
+    except Exception as exc:
+        log.warning("automatic_embeddings_json_failed", error=str(exc))
     
     # 3. Update Schema Registry (Deactivate previous, Activate newest)
     from app.models import SchemaRegistry, IngestionJob, Base

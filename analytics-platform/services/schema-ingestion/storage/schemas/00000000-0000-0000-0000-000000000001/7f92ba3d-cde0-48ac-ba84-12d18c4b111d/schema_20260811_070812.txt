@@ -1,9 +1,15 @@
-Database Name: analytics_db
+-- Database Name: analytics_db
 
+-- ==================================================
+-- TABLE: categories
+-- ==================================================
 TABLE: categories
 - category_id (INTEGER, PK, NOT NULL)
 - category_name (VARCHAR(100))
 
+-- ==================================================
+-- TABLE: customer_addresses
+-- ==================================================
 TABLE: customer_addresses
 - address_id (INTEGER, PK, NOT NULL)
 - customer_id (INTEGER)
@@ -13,6 +19,9 @@ TABLE: customer_addresses
 - country (VARCHAR(100))
 - postal_code (VARCHAR(20))
 
+-- ==================================================
+-- TABLE: customers
+-- ==================================================
 TABLE: customers
 - customer_id (INTEGER, PK, NOT NULL)
 - first_name (VARCHAR(100))
@@ -20,6 +29,9 @@ TABLE: customers
 - registration_date (DATE)
 - status (VARCHAR(30))
 
+-- ==================================================
+-- TABLE: employees
+-- ==================================================
 TABLE: employees
 - employee_id (INTEGER, PK, NOT NULL)
 - first_name (VARCHAR(100))
@@ -30,6 +42,9 @@ TABLE: employees
 - hire_date (DATE)
 - store_id (INTEGER)
 
+-- ==================================================
+-- TABLE: inventory
+-- ==================================================
 TABLE: inventory
 - inventory_id (INTEGER, PK, NOT NULL)
 - product_id (INTEGER)
@@ -38,6 +53,9 @@ TABLE: inventory
 - reorder_level (INTEGER)
 - last_updated (TIMESTAMP)
 
+-- ==================================================
+-- TABLE: order_items
+-- ==================================================
 TABLE: order_items
 - order_item_id (INTEGER, PK, NOT NULL)
 - order_id (INTEGER)
@@ -46,6 +64,9 @@ TABLE: order_items
 - unit_price (NUMERIC(12, 2))
 - total_price (NUMERIC(12, 2))
 
+-- ==================================================
+-- TABLE: orders
+-- ==================================================
 TABLE: orders
 - order_id (INTEGER, PK, NOT NULL)
 - customer_id (INTEGER)
@@ -53,6 +74,9 @@ TABLE: orders
 - order_status (VARCHAR(30))
 - total_amount (NUMERIC(12, 2))
 
+-- ==================================================
+-- TABLE: payments
+-- ==================================================
 TABLE: payments
 - payment_id (INTEGER, PK, NOT NULL)
 - order_id (INTEGER)
@@ -60,6 +84,9 @@ TABLE: payments
 - payment_date (DATE)
 - amount (NUMERIC(12, 2))
 
+-- ==================================================
+-- TABLE: product_reviews
+-- ==================================================
 TABLE: product_reviews
 - review_id (INTEGER, PK, NOT NULL)
 - product_id (INTEGER)
@@ -68,6 +95,9 @@ TABLE: product_reviews
 - review_text (TEXT)
 - review_date (DATE)
 
+-- ==================================================
+-- TABLE: products
+-- ==================================================
 TABLE: products
 - product_id (INTEGER, PK, NOT NULL)
 - product_name (VARCHAR(255))
@@ -75,6 +105,9 @@ TABLE: products
 - selling_price (NUMERIC(12, 2))
 - status (VARCHAR(30))
 
+-- ==================================================
+-- TABLE: promotions
+-- ==================================================
 TABLE: promotions
 - promotion_id (INTEGER, PK, NOT NULL)
 - promotion_name (VARCHAR(150))
@@ -83,6 +116,9 @@ TABLE: promotions
 - end_date (DATE)
 - promotion_type (VARCHAR(50))
 
+-- ==================================================
+-- TABLE: reviews
+-- ==================================================
 TABLE: reviews
 - review_id (INTEGER, PK, NOT NULL)
 - customer_id (INTEGER)
@@ -91,6 +127,9 @@ TABLE: reviews
 - review_text (TEXT)
 - review_date (DATE)
 
+-- ==================================================
+-- TABLE: shipments
+-- ==================================================
 TABLE: shipments
 - shipment_id (INTEGER, PK, NOT NULL)
 - order_id (INTEGER)
@@ -100,6 +139,9 @@ TABLE: shipments
 - delivered_date (DATE)
 - shipping_status (VARCHAR(50))
 
+-- ==================================================
+-- TABLE: stores
+-- ==================================================
 TABLE: stores
 - store_id (INTEGER, PK, NOT NULL)
 - store_name (VARCHAR(150))
@@ -107,6 +149,9 @@ TABLE: stores
 - state (VARCHAR(100))
 - manager_name (VARCHAR(100))
 
+-- ==================================================
+-- TABLE: suppliers
+-- ==================================================
 TABLE: suppliers
 - supplier_id (INTEGER, PK, NOT NULL)
 - supplier_name (VARCHAR(200))
