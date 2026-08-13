@@ -32,6 +32,17 @@ Built with a **Local-First**, privacy-focused architecture powered by an AI Sema
 - **Phase 4 — Stateless Frontend Renderer**: Pure React renderers for all 8 visual types.
 - **Phase 5 — Validation Suite**: End-to-end verification across multi-schema test suites.
 
+### 🧠 Local Vector Embedding & ChromaDB RAG Pipeline
+- **On-Device Embedding Engine**: High-performance local sentence-transformers model (`all-MiniLM-L6-v2`) running without external cloud API calls.
+- **Tenant-Isolated Vector Storage**: Persistent ChromaDB vector collections (`ChromaStore`) isolated strictly per `tenant_id` for security and multi-tenancy.
+- **Automated Schema Snapshot & Vector Sync**: Triggering schema ingestion exports versioned PII-masked DDL snapshots (`v1.json`, `.txt`), generates `embeddings_<timestamp>.json`, and automatically syncs vector records to persistent ChromaDB storage.
+- **Feedback Learning Loop**: Embeds approved chat feedback examples into vector memory to continuously improve semantic RAG precision.
+
+### 🛡️ SQL Safety & Offline AST Syntax Validation
+- **Offline AST Parsing (`sqlglot`)**: Pre-execution AST validation using `sqlglot` (PostgreSQL dialect) to catch invalid SQL syntax and dialect errors before DB execution.
+- **Strict Keyword Blacklisting**: Immediate rejection of destructive mutation statements (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE`, `TRUNCATE`).
+- **Catalog Existence Validation**: Case-insensitive table validation against the ingested data source catalog to prevent hallucinated table execution.
+
 ### 🔬 Ollama Integration Telemetry & Audit Infrastructure
 - **Microsecond Latency Breakdown**: Measures timing for prompt prep, HTTP POST, JSON parsing, and regex SQL cleaning (`stage_http_ms`, `stage_clean_ms`, `total_latency_s`).
 - **Prompt & Token Statistics**: Logs character counts, schema size, question length, and estimated token usage (`len(prompt) // 4`).

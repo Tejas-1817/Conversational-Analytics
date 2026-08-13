@@ -17,6 +17,19 @@ from app.models import ColumnMeta, DataSource, MetadataVersion, Relationship, Ta
 
 log = structlog.get_logger(__name__)
 
+TABLE_PROMPT_TEMPLATE = """You are a database documentation assistant.
+Convert the following SQL CREATE TABLE statement into a clear, plain-English
+description. Describe the table's purpose (infer it from the name/columns if
+not obvious), list each column with its type and any constraints (primary
+key, foreign key, not null, default), in plain sentences — not SQL syntax.
+Keep it concise. Do not include markdown code fences in your response.
+
+SQL:
+{sql}
+
+Plain-text description:
+"""
+
 
 def export_schema_snapshot(
     session: Session,
@@ -115,6 +128,7 @@ def export_schema_snapshot(
 def export_human_readable_schema(session: Session, source: DataSource) -> Dict[str, Any]:
     """Generates human-readable .txt schema file, updates SchemaRegistry, and tracks IngestionJob."""
     start_time = datetime.now(timezone.utc)
+    settings = get_settings()
     
     tenant_str = str(source.tenant_id)
     source_str = str(source.id)
@@ -157,23 +171,67 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
         f.write(schema_text)
 
     # 2b. Write plain-text description snapshot file (schema_<timestamp>.txt)
+    # Convert schema DDL into plain-English narrative text via LLM
+    plain_text_narrative = schema_text
+    try:
+        from app.llm.registry import get_llm_provider_from_config
+        llm_provider = get_llm_provider_from_config()
+        table_descriptions = []
+
+        for t in tables:
+            cols = session.query(ColumnMeta).filter_by(table_id=t.id, is_active=True).order_by(ColumnMeta.ordinal_position).all()
+            col_strs = []
+            for c in cols:
+                flags = []
+                if getattr(c, "is_primary_key", False):
+                    flags.append("PRIMARY KEY")
+                if not c.is_nullable:
+                    flags.append("NOT NULL")
+                flag_str = f" {' '.join(flags)}" if flags else ""
+                col_strs.append(f"  {c.column_name} {c.data_type}{flag_str}")
+            
+            ddl_chunk = f"CREATE TABLE {t.table_name} (\n" + ",\n".join(col_strs) + "\n);"
+            prompt = TABLE_PROMPT_TEMPLATE.format(sql=ddl_chunk)
+            desc = llm_provider.generate_chat_completion(prompt).strip()
+            if desc:
+                table_descriptions.append(desc)
+
+        if table_descriptions:
+            plain_text_narrative = "\n\n".join(table_descriptions)
+    except Exception as llm_exc:
+        log.warning("schema_export_llm_description_fallback", error=str(llm_exc))
+
     txt_summary_filename = f"schema_{timestamp_str}.txt"
     txt_summary_filepath = target_dir / txt_summary_filename
     with open(txt_summary_filepath, "w", encoding="utf-8") as f:
-        f.write(schema_text)
+        f.write(plain_text_narrative)
 
     # 2c. Automatically generate vector embeddings JSON (embeddings_<timestamp>.json)
     try:
-        from embeddings import split_into_chunks, load_model, generate_embeddings, build_records
-        chunks = split_into_chunks(schema_text)
-        embed_model = load_model("all-MiniLM-L6-v2")
-        vectors = generate_embeddings(chunks, embed_model)
-        records = build_records(chunks, vectors)
+        import re
+        from app.embeddings.registry import get_embedding_provider
+
+        raw_chunks = re.split(r"\n\s*\n", plain_text_narrative.strip())
+        chunks = [c.strip() for c in raw_chunks if c.strip()]
+        if not chunks and plain_text_narrative.strip():
+            chunks = [plain_text_narrative.strip()]
+
+        provider = get_embedding_provider()
+        vectors = provider.embed(chunks)
+        records = [
+            {
+                "id": f"chunk_{i}",
+                "label": text.splitlines()[0][:80] if text else "",
+                "text": text,
+                "embedding": vector,
+            }
+            for i, (text, vector) in enumerate(zip(chunks, vectors))
+        ]
 
         json_summary_filename = f"embeddings_{timestamp_str}.json"
         json_summary_filepath = target_dir / json_summary_filename
         with open(json_summary_filepath, "w", encoding="utf-8") as f:
-            json.dump({"model": "all-MiniLM-L6-v2", "records": records}, f, indent=2)
+            json.dump({"model": settings.embedding_model, "records": records}, f, indent=2)
         log.info("automatic_embeddings_json_generated", path=str(json_summary_filepath), records=len(records))
 
         # 2d. Automatically store vector records into persistent ChromaDB vector collection

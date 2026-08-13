@@ -16,9 +16,11 @@ It connects to customer databases, ingests and profiles schemas, detects relatio
 | **Stage 3: Relationship Detection** | ✅ Implemented | Declared FKs + Naming heuristics + Sampled value overlap + Structured LLM suggestions |
 | **Stage 4: Role Classification** | ✅ Implemented | Automated labeling of dimensions, measures, keys, and attributes |
 | **Stage 5: Semantic Generation** | ✅ Implemented | Copy-on-Write incremental versioning, AI metric/dimension enrichment, semantic graph validation, atomic promotion |
-| **Chat & NLU Pipeline** | ✅ Implemented | Router Intent Classification ➔ Hybrid Entity Retrieval ➔ Planner (LLM name-to-UUID resolution) ➔ SQL Compiler & Executor |
+| **Vector Embedding Pipeline (`app/embeddings/`)** | ✅ Implemented | On-device sentence-transformers (`all-MiniLM-L6-v2`), tenant-isolated persistent ChromaDB vector store, feedback learning loop |
+| **Schema Snapshot Exporter (`app/ingestion/`)** | ✅ Implemented | Automatic PII-masked DDL snapshotting (`v1.json`, `.txt`), vector embeddings export (`embeddings_<timestamp>.json`), persistent ChromaDB sync |
+| **Chat, NLU & SQL Validation (`app/chat_sql/`)** | ✅ Implemented | Router Intent Classification ➔ Hybrid Entity Retrieval ➔ Offline AST SQL Validation (`sqlglot` + catalog check) ➔ Planner ➔ SQL Compiler & Executor |
 | **Multi-Tenancy & RBAC** | ✅ Implemented | Tenant session scoping, Row-Level Security policies, `ADMIN`/`ANALYST`/`VIEWER` roles |
-| **Pluggable LLM Registry** | ✅ Implemented | Ollama (local local models), Gemini, HuggingFace, Mock providers |
+| **Pluggable LLM Registry** | ✅ Implemented | Ollama (local models), Gemini, HuggingFace, Mock providers |
 
 ---
 
@@ -62,12 +64,24 @@ app/config.py                 Settings & profiling guardrails
 app/models.py                 SQLAlchemy ORM models (DataSource, TableMeta, SemanticModel, etc.)
 app/security/crypto.py        Fernet credential encryption
 app/connectors/factory.py     Read-only database engine factory + session guards
+app/embeddings/               Vector embedding pipeline & persistent ChromaDB store
+  ├── chroma_store.py         Tenant-isolated ChromaDB collection manager & retrieval filter
+  ├── job.py                  Semantic object collector & batch embedding encoder
+  ├── feedback_job.py         User feedback learning loop embedding job
+  ├── provider.py             Abstract EmbeddingProvider interface
+  ├── registry.py             Pluggable embedding registry (SentenceTransformers, Mock)
+  └── providers/              Local sentence-transformers (`all-MiniLM-L6-v2`) implementation
+app/chat_sql/                 Natural language to SQL execution engine & safety
+  ├── schema_provider.py      Dynamic catalog builder for SQL generation
+  ├── sql_generator.py        LLM query generator
+  └── sql_validator.py        Offline AST parser (`sqlglot`), keyword filter, & catalog check
 app/ingestion/
   ├── introspector.py         Stage 1: Catalog walk (SQLAlchemy Inspector)
   ├── profiler.py             Stage 2: Column stats & PII-masked sampling
   ├── relationships.py        Stage 3: FK, naming, value overlap, & structured LLM relationship detection
   ├── classifier.py           Stage 4: Dimension/measure heuristic role classification
   ├── semantic_generator.py   Stage 5: Incremental versioning & AI semantic layer builder
+  ├── schema_export.py        Snapshot exporter (PII masking, JSON/TXT DDL, ChromaDB vector sync)
   └── pipeline.py             Orchestrates stages 1-5 as picklable RQ jobs
 app/engine/
   ├── router_service.py       Intent classification (analytics vs greeting vs help)
