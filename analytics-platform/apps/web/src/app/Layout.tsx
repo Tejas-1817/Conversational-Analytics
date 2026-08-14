@@ -123,7 +123,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
         </header>
 
         {/* Content Area */}
-        <main className="main-content" style={location.pathname === '/chat' ? { height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', padding: '0.5', overflow: 'hidden' } : {}}>
+        <main className="main-content" style={location.pathname === '/chat' ? { height: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' } : {}}>
           <div className="animate-fade-in" style={location.pathname === '/chat' ? { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 } : {}}>
             {children}
           </div>

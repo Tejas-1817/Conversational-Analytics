@@ -132,7 +132,7 @@ export function ChatInterface({ token }: { token: string }) {
           </div>
         ))}
       </div>
-      <form onSubmit={sendMessage} style={{ display: 'flex', gap: '0.5rem', padding: '1rem', borderTop: '1px solid #ddd' }}>
+      <form onSubmit={sendMessage} style={{ display: 'flex', gap: '0.5rem', padding: '1rem', borderTop: '1px solid #ddd', marginBottom: '1rem' }}>
         <input 
           style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid #ccc' }}
           placeholder="Ask a question about your data..."

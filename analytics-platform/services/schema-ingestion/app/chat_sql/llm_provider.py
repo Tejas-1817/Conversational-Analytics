@@ -198,7 +198,7 @@ class LLMProvider:
     def generate_text(self, prompt: str, max_tokens: int = 256, timeout: int = 30) -> str:
         """Generates arbitrary natural language text from Ollama WITHOUT any SQL validation."""
         url = f"{self.base_url}/api/generate"
-        models_to_try = list(dict.fromkeys([self.model_name.strip(), "gemma4:12b"]))
+        models_to_try = list(dict.fromkeys([self.model_name.strip(), "gemma3:4b"]))
 
         for model in models_to_try:
             payload = {

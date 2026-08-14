@@ -1,10 +1,22 @@
 import React, { useState, useMemo } from 'react';
-import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area
-} from 'recharts';
+import * as echarts from 'echarts/core';
+import ReactECharts from 'echarts-for-react';
 import {
   TrendingUp, Users, Award, Table as TableIcon, Download, Search, ArrowUpDown, ChevronLeft, ChevronRight, AlertCircle, Layers
 } from 'lucide-react';
+
+function useThemeTokens() {
+  return useMemo(() => {
+    const style = getComputedStyle(document.documentElement);
+    const read = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
+    return {
+      textMuted: read('--text-muted', '#94a3b8'),
+      textMain: read('--text-main', '#e2e8f0'),
+      border: read('--border-color', 'rgba(255,255,255,0.08)'),
+      cardBg: read('--bg-card', '#111827'),
+    };
+  }, []);
+}
 
 interface ChartProps {
   data: any;
@@ -13,9 +25,19 @@ interface ChartProps {
   columns?: string[];
 }
 
-const COLORS = ['#4F46E5', '#8B5CF6', '#22C55E', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#3B82F6'];
+export const vividSaasTheme = {
+  categorical: ['#7C3AED', '#EC4899', '#06B6D4', '#F59E0B', '#10B981', '#EF4444', '#3B82F6'],
+  sequential: ['#F3E8FF', '#C4B5FD', '#8B5CF6', '#6D28D9', '#4C1D95'],
+  semantic: { positive: '#10B981', negative: '#EF4444', neutral: '#9CA3AF' },
+  background: '#FAFAFA',
+  text: '#111827',
+  grid: '#F0F0F0',
+};
+
+const COLORS = vividSaasTheme.categorical;
 
 export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, columns: customColumns }) => {
+  const tokens = useThemeTokens();
   // Normalize input data into columns & rows format
   let rows: any[] = [];
   let columns: string[] = [];
@@ -447,7 +469,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
     );
   }
 
-  // Recharts Y-Axis keys (all numeric columns starting from index 1)
+  // ECharts Y-Axis keys (all numeric columns starting from index 1)
   const xAxisKey = firstCol;
   const yAxisKeys = columns.slice(1).filter(col =>
     rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))))
@@ -455,102 +477,87 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
 
   const activeYKeys = yAxisKeys.length > 0 ? yAxisKeys : [secondCol];
 
-  const renderTooltip = (props: any) => {
-    const { active, payload, label } = props;
-    if (active && payload && payload.length) {
-      return (
-        <div style={{
-          padding: '0.75rem 1rem',
-          borderRadius: '10px',
-          backgroundColor: '#1e1e2d',
-          border: '1px solid #2b2b40',
-          boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
-          zIndex: 100
-        }}>
-          <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, color: '#f8fafc', borderBottom: '1px solid #2b2b40', paddingBottom: '0.25rem' }}>
-            {label}
-          </p>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: entry.color }} />
-              <span style={{ color: '#94a3b8' }}>{entry.name}:</span>
-              <span style={{ color: '#f8fafc', fontWeight: 600, fontFamily: 'monospace' }}>
-                {typeof entry.value === 'number' ? entry.value.toLocaleString() : entry.value}
-              </span>
-            </div>
-          ))}
-        </div>
-      );
+  const commonTheme = {
+    color: COLORS,
+    textStyle: { fontFamily: 'Inter, system-ui, sans-serif', color: vividSaasTheme.text },
+    tooltip: { trigger: 'axis', backgroundColor: vividSaasTheme.background, borderColor: vividSaasTheme.grid, textStyle: { color: vividSaasTheme.text } },
+    legend: { textStyle: { color: vividSaasTheme.semantic.neutral, fontSize: 12 }, top: 0 },
+    grid: { left: 40, right: 16, top: 36, bottom: 24, containLabel: true },
+    toolbox: {
+      show: true,
+      right: 16,
+      top: 8,
+      feature: { saveAsImage: { title: 'Download', backgroundColor: vividSaasTheme.background, pixelRatio: 2 } },
+      iconStyle: { borderColor: vividSaasTheme.semantic.neutral, opacity: 0.4 },
     }
-    return null;
+  };
+
+  const commonXAxis = { type: 'category', data: rows.map(r => r[xAxisKey]), axisLine: { lineStyle: { color: vividSaasTheme.grid } }, axisLabel: { color: vividSaasTheme.semantic.neutral, fontSize: 12 } };
+  const commonYAxis = { type: 'value', splitLine: { lineStyle: { color: vividSaasTheme.grid } }, axisLabel: { color: vividSaasTheme.semantic.neutral, fontSize: 12 } };
+
+  const barOption = {
+    ...commonTheme,
+    xAxis: commonXAxis,
+    yAxis: commonYAxis,
+    series: activeYKeys.map((key, idx) => ({
+      name: key,
+      type: 'bar',
+      data: rows.map(r => r[key]),
+      colorBy: activeYKeys.length === 1 ? 'data' : 'series',
+      itemStyle: { 
+        ...(activeYKeys.length > 1 ? { color: COLORS[idx % COLORS.length] } : {}), 
+        borderRadius: [4, 4, 0, 0] 
+      },
+      barMaxWidth: 60,
+    })),
+  };
+
+  const lineOption = {
+    ...commonTheme,
+    xAxis: commonXAxis,
+    yAxis: commonYAxis,
+    series: activeYKeys.map((key, idx) => {
+      const color = COLORS[idx % COLORS.length];
+      return {
+        name: key,
+        type: 'line',
+        smooth: true,
+        data: rows.map(r => r[key]),
+        lineStyle: { width: 2, color },
+        itemStyle: { color },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: `${color}4D` },
+            { offset: 1, color: `${color}00` },
+          ]),
+        },
+      };
+    }),
+  };
+
+  const pieOption = {
+    ...commonTheme,
+    tooltip: { trigger: 'item', backgroundColor: vividSaasTheme.background, borderColor: vividSaasTheme.grid, textStyle: { color: vividSaasTheme.text } },
+    legend: { textStyle: { color: vividSaasTheme.semantic.neutral, fontSize: 12 }, bottom: 0 },
+    grid: undefined,
+    series: [{
+      type: 'pie',
+      radius: ['45%', '70%'],
+      itemStyle: { borderColor: vividSaasTheme.background, borderWidth: 2 },
+      label: { color: vividSaasTheme.semantic.neutral, fontSize: 12 },
+      data: rows.map(r => ({ name: r[xAxisKey], value: r[activeYKeys[0]] })),
+    }],
   };
 
   return (
     <div style={{ width: '100%', height: '100%', minHeight: '260px', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-      <ResponsiveContainer width="100%" height="100%">
-        {chartType === 'line_chart' ? (
-          <AreaChart data={rows} margin={{ top: 10, right: 20, left: 10, bottom: 20 }}>
-            <defs>
-              {activeYKeys.map((key: string, idx: number) => (
-                <linearGradient key={`color-${key}`} id={`color-${key}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={COLORS[idx % COLORS.length]} stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor={COLORS[idx % COLORS.length]} stopOpacity={0}/>
-                </linearGradient>
-              ))}
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-            <XAxis dataKey={xAxisKey} stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} dy={10} />
-            <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={v => typeof v === 'number' ? v.toLocaleString() : v} />
-            <Tooltip content={renderTooltip} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
-            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-            {activeYKeys.map((key: string, idx: number) => (
-              <Area
-                type="monotone"
-                key={key}
-                dataKey={key}
-                stroke={COLORS[idx % COLORS.length]}
-                fillOpacity={1}
-                fill={`url(#color-${key})`}
-                strokeWidth={3}
-                activeDot={{ r: 6, strokeWidth: 0 }}
-              />
-            ))}
-          </AreaChart>
-        ) : chartType === 'pie_chart' ? (
-          <PieChart margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
-            <Tooltip content={renderTooltip} />
-            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
-            <Pie
-              data={rows}
-              dataKey={activeYKeys[0]}
-              nameKey={xAxisKey}
-              cx="50%"
-              cy="50%"
-              innerRadius={50}
-              outerRadius={85}
-              paddingAngle={4}
-              stroke="#1a1a24"
-              strokeWidth={2}
-              label={({ name, percent }: any) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-            >
-              {rows.map((entry: any, index: number) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-          </PieChart>
-        ) : (
-          <BarChart data={rows} margin={{ top: 10, right: 20, left: 10, bottom: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-            <XAxis dataKey={xAxisKey} stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} dy={10} />
-            <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={v => typeof v === 'number' ? v.toLocaleString() : v} />
-            <Tooltip content={renderTooltip} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-            <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-            {activeYKeys.map((key: string, idx: number) => (
-              <Bar key={key} dataKey={key} fill={COLORS[idx % COLORS.length]} radius={[6, 6, 0, 0]} maxBarSize={55} />
-            ))}
-          </BarChart>
-        )}
-      </ResponsiveContainer>
+      <ReactECharts
+        option={chartType === 'line_chart' ? lineOption : chartType === 'pie_chart' ? pieOption : barOption}
+        style={{ width: '100%', height: '100%' }}
+        opts={{ renderer: 'svg' }}
+        notMerge={true}
+        lazyUpdate={true}
+      />
     </div>
   );
 };

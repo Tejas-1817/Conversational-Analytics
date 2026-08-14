@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
-import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X } from 'lucide-react';
+import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -82,6 +82,35 @@ export const ChatInterface = () => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(260);
+
+  const handleDragStart = (e: React.MouseEvent) => {
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = sidebarWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (ev: MouseEvent) => {
+      if (!isDragging.current) return;
+      const delta = ev.clientX - dragStartX.current;
+      const newWidth = Math.min(480, Math.max(180, dragStartWidth.current + delta));
+      setSidebarWidth(newWidth);
+    };
+    const onUp = () => {
+      isDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   const handleDeleteClick = (e: React.MouseEvent, conversation: any) => {
     e.stopPropagation();
@@ -148,7 +177,7 @@ export const ChatInterface = () => {
       const normalizedMessages = (data.messages || []).map((m: any) => {
         let parsedData = m.result_data;
         if (typeof parsedData === 'string') {
-          try { parsedData = JSON.parse(parsedData); } catch (e) {}
+          try { parsedData = JSON.parse(parsedData); } catch (e) { }
         }
         const rows = Array.isArray(parsedData) ? parsedData : (parsedData?.rows || parsedData?.data || []);
         const cols = Array.isArray(parsedData?.columns) ? parsedData.columns : (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
@@ -238,7 +267,7 @@ export const ChatInterface = () => {
 
       const recVis = data.recommended_visualization || data.chart_recommendation;
       const chartTypeRes = typeof recVis === 'object' && recVis !== null ? recVis.chart_type : (typeof recVis === 'string' ? recVis : undefined);
-      
+
       const botMsg = {
         id: Date.now() + 1,
         role: 'assistant',
@@ -310,76 +339,131 @@ export const ChatInterface = () => {
   );
 
   return (
-    <div style={{ display: 'flex', gap: '2rem', height: '100%' }}>
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* Sidebar */}
-      <div style={{ width: '280px', display: 'flex', flexDirection: 'column', gap: '1.5rem', flexShrink: 0, borderRight: '1px solid var(--border-color)', paddingRight: '1rem' }}>
-        <div>
-          <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleNewChat}>
-            <Plus size={16} style={{ marginRight: '0.5rem' }} /> New Chat
+      <div style={{
+        width: sidebarCollapsed ? '48px' : `${sidebarWidth}px`,
+        minWidth: sidebarCollapsed ? '48px' : '180px',
+        display: 'flex',
+        flexDirection: 'column',
+        flexShrink: 0,
+        borderRight: '1px solid var(--border-color)',
+        transition: sidebarCollapsed ? 'width 0.2s ease' : undefined,
+        overflow: 'hidden',
+        background: 'var(--bg-sidebar)',
+      }}>
+        {/* Collapse toggle row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: '0.75rem 0.75rem 0.5rem' }}>
+          {!sidebarCollapsed && (
+            <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Conversations</span>
+          )}
+          <button
+            className="btn-ghost"
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={() => setSidebarCollapsed(c => !c)}
+            style={{ padding: '0.25rem', borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
+          >
+            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
 
-        <div style={{ position: 'relative' }}>
-          <Search size={14} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
-            type="text"
-            placeholder="Search history..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: '100%', padding: '0.5rem 0.5rem 0.5rem 2.25rem', fontSize: '0.85rem' }}
-          />
-        </div>
+        {!sidebarCollapsed && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0 0.75rem 1rem', flex: 1, overflow: 'hidden' }}>
+            <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleNewChat}>
+              <Plus size={16} style={{ marginRight: '0.5rem' }} /> New Chat
+            </button>
 
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-          <h3 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            Recent Chats
-          </h3>
-          {filteredConversations.map(c => (
-            <div
-              key={c.id}
-              onClick={() => loadConversation(c.id)}
-              style={{
-                padding: '0.5rem 0.75rem',
-                borderRadius: 'var(--radius-sm)',
-                cursor: 'pointer',
-                background: convId === c.id ? 'rgba(79, 70, 229, 0.1)' : 'transparent',
-                color: convId === c.id ? 'var(--primary)' : 'var(--text-main)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '0.5rem',
-                fontSize: '0.85rem'
-              }}
-              className="hover-bg-light group"
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', flex: 1 }}>
-                <MessageSquare size={14} style={{ flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || 'New Conversation'}</span>
-              </div>
-              <button
-                className="btn-ghost"
-                title="Delete Chat"
-                onClick={(e) => handleDeleteClick(e, c)}
-                style={{
-                  padding: '0.2rem 0.35rem',
-                  borderRadius: '4px',
-                  color: 'var(--text-muted)',
-                  opacity: convId === c.id ? 0.9 : 0.6,
-                  transition: 'all 0.15s ease',
-                  lineHeight: 1
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.opacity = convId === c.id ? '0.9' : '0.6'; }}
-              >
-                <Trash2 size={13} />
-              </button>
+            <div style={{ position: 'relative' }}>
+              <Search size={14} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Search history..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem 0.5rem 0.5rem 2.25rem', fontSize: '0.85rem' }}
+              />
             </div>
-          ))}
-          {filteredConversations.length === 0 && (
-            <div className="text-muted text-sm text-center py-4">No conversations found.</div>
-          )}
-        </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <h3 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                Recent Chats
+              </h3>
+              {filteredConversations.map(c => (
+                <div
+                  key={c.id}
+                  onClick={() => loadConversation(c.id)}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer',
+                    background: convId === c.id ? 'rgba(79, 70, 229, 0.1)' : 'transparent',
+                    color: convId === c.id ? 'var(--primary)' : 'var(--text-main)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.5rem',
+                    fontSize: '0.85rem'
+                  }}
+                  className="hover-bg-light group"
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', flex: 1 }}>
+                    <MessageSquare size={14} style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || 'New Conversation'}</span>
+                  </div>
+                  <button
+                    className="btn-ghost"
+                    title="Delete Chat"
+                    onClick={(e) => handleDeleteClick(e, c)}
+                    style={{
+                      padding: '0.2rem 0.35rem',
+                      borderRadius: '4px',
+                      color: 'var(--text-muted)',
+                      opacity: convId === c.id ? 0.9 : 0.6,
+                      transition: 'all 0.15s ease',
+                      lineHeight: 1
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.opacity = convId === c.id ? '0.9' : '0.6'; }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+              {filteredConversations.length === 0 && (
+                <div className="text-muted text-sm text-center py-4">No conversations found.</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {sidebarCollapsed && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0' }}>
+            <button className="btn-ghost" title="New Chat" onClick={handleNewChat} style={{ padding: '0.4rem' }}>
+              <Plus size={16} />
+            </button>
+            <button className="btn-ghost" title="Search" style={{ padding: '0.4rem' }}>
+              <Search size={16} />
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Drag-to-resize handle */}
+      {!sidebarCollapsed && (
+        <div
+          onMouseDown={handleDragStart}
+          style={{
+            width: '5px',
+            cursor: 'col-resize',
+            flexShrink: 0,
+            background: 'transparent',
+            transition: 'background 0.15s',
+            zIndex: 10,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.opacity = '0.3'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        />
+      )}
 
       {/* Main Chat Area */}
       <div className="chat-container" style={{ flex: 1, height: '100%' }}>
@@ -461,7 +545,7 @@ export const ChatInterface = () => {
                             {(() => {
                               const rows = m.result_data || m.rows || [];
                               const cols = m.columns || (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
-                              
+
                               let resolvedType = m.visualization || m.chart_recommendation;
                               if (typeof m.recommended_visualization === 'object' && m.recommended_visualization !== null) {
                                 resolvedType = m.recommended_visualization.visualization || m.recommended_visualization.chart_type || resolvedType;
@@ -504,7 +588,7 @@ export const ChatInterface = () => {
                             fontSize: '0.85rem'
                           }}>
                             <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted, #94a3b8)', userSelect: 'none', outline: 'none' }}>
-                               View Raw Data Grid ({m.row_count || m.result_data.length} rows)
+                              View Raw Data Grid ({m.row_count || m.result_data.length} rows)
                             </summary>
                             <div style={{ marginTop: '0.75rem', height: '320px', overflowY: 'auto' }}>
                               <ChartRenderer data={m.result_data} chartType="table" columns={m.columns} />
@@ -575,7 +659,7 @@ export const ChatInterface = () => {
                     <span className="skeleton" style={{ width: 8, height: 8, borderRadius: '50%', animationDelay: '150ms' }} />
                     <span className="skeleton" style={{ width: 8, height: 8, borderRadius: '50%', animationDelay: '300ms' }} />
                   </div>
-                  <span className="text-sm">Connecting...</span>
+                  <span className="text-sm">Generating...</span>
                 </div>
               </div>
             </div>
@@ -583,7 +667,7 @@ export const ChatInterface = () => {
           <div ref={messagesEndRef} style={{ height: '1px' }} />
         </div>
 
-        <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: -46, borderTop: '1px solid var(--border-color)', zIndex: 20 }}>
+        <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: 0, borderTop: '1px solid var(--border-color)', zIndex: 20, paddingBottom: '1.5rem', paddingTop: '1rem' }}>
           <form onSubmit={sendMessage} className="chat-input-wrapper" style={{ margin: '0 auto', maxWidth: '800px' }}>
             <input
               style={{ flex: 1, padding: '1rem', fontSize: '0.95rem' }}
