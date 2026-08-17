@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./chroma_store"   # local Chroma storage path
     embedding_provider: str = "sentence_transformers"  # options: sentence_transformers | mock
 
+    # Chroma Cloud Settings (trychroma.com)
+    chroma_mode: Literal["local", "cloud", "ephemeral"] ="cloud"
+    chroma_api_key: str = "ck-J1xXNonq3s5zY7FNnnmF1kEwZBQA3YvgfZUrhASz9vQk"
+    chroma_tenant: str = "3bff9cee-0bfa-44fe-a3f2-35585e2ba3cb"
+    chroma_database: str = "Analytics"
+    chroma_host: str = "api.trychroma.com"
+
+
     # Phase 3 — RAG retrieval
     # Cosine distance threshold: hits with distance > threshold are discarded.
     # Empirically calibrated: true positives top out at ~0.54, nearest noise starts at ~0.70.
