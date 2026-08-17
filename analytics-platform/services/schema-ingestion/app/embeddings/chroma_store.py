@@ -22,8 +22,10 @@ from dataclasses import dataclass, field
 
 import chromadb
 from chromadb import Collection
-
+import structlog
 from app.config import get_settings
+
+log = structlog.get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -66,11 +68,24 @@ class ChromaStore:
     """Thread-safe wrapper around a Chroma client with per-tenant collections."""
 
     def __init__(self, ephemeral: bool = False) -> None:
-        if ephemeral:
+        settings = get_settings()
+
+        if ephemeral or settings.chroma_mode == "ephemeral":
             self._client = chromadb.EphemeralClient()
+        elif settings.chroma_mode == "cloud":
+            try:
+                self._client = chromadb.CloudClient(
+                    tenant=settings.chroma_tenant,
+                    database=settings.chroma_database,
+                    api_key=settings.chroma_api_key,
+                )
+                log.info("chroma_store_cloud_client_initialized", tenant=settings.chroma_tenant)
+            except Exception as exc:
+                log.warning("chroma_cloud_connection_failed_fallback_local", error=str(exc))
+                self._client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
         else:
-            persist_dir = get_settings().chroma_persist_dir
-            self._client = chromadb.PersistentClient(path=persist_dir)
+            self._client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
+
 
     # ------------------------------------------------------------------
     # Internal helpers

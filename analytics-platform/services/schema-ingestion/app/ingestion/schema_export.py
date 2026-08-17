@@ -4,7 +4,11 @@ Serializes schema metadata (tables, columns, types, PK/FK, roles, relationships)
 to versioned JSON files under SCHEMA_SNAPSHOT_DIR for auditability and diffing.
 Ensures sample values pass through PII masking before writing to disk.
 """
+import hashlib
 import json
+import os
+import re
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
@@ -31,13 +35,45 @@ Plain-text description:
 """
 
 
+def _sanitize_slug(value: Any, fallback: str) -> str:
+    """Sanitizes username or database_name strings for filesystem safety."""
+    if not isinstance(value, str) or not value.strip():
+        val_str = fallback
+    else:
+        val_str = value.strip()
+    return re.sub(r'[<>:"/\\|?*]', '_', val_str)
+
+
+def _secure_atomic_write(target_path: Path, content: str | bytes) -> str:
+    """Writes content to a temporary file and atomically replaces target_path.
+    
+    Returns the SHA-256 hash digest of the content.
+    """
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = target_path.with_suffix(f"{target_path.suffix}.tmp.{uuid.uuid4().hex[:8]}")
+    
+    mode = "w" if isinstance(content, str) else "wb"
+    encoding = "utf-8" if isinstance(content, str) else None
+    with open(tmp_path, mode, encoding=encoding) as f:
+        f.write(content)
+        f.flush()
+        os.fsync(f.fileno())
+        
+    data_bytes = content.encode("utf-8") if isinstance(content, str) else content
+    sha256_hash = hashlib.sha256(data_bytes).hexdigest()
+    
+    os.replace(tmp_path, target_path)
+    return sha256_hash
+
+
 def export_schema_snapshot(
     session: Session,
     source: DataSource,
     version: MetadataVersion,
-    stage_name: str = "export_snapshot"
+    stage_name: str = "export_snapshot",
+    username: str | None = None,
 ) -> Dict[str, Any]:
-    """Serializes schema snapshot to a versioned JSON file."""
+    """Serializes schema snapshot to a versioned JSON file with atomic write and SHA-256 integrity digest."""
     settings = get_settings()
     snapshot_base_dir = Path(settings.schema_snapshot_dir)
     
@@ -45,11 +81,16 @@ def export_schema_snapshot(
     source_str = str(source.id)
     version_num = version.version_number
     
+    user_slug = _sanitize_slug(username or getattr(source, "username", None), "admin")
+    db_name = _sanitize_slug(getattr(source, "database_name", None) or getattr(source, "name", None), "analytics_db")
+    base_name = f"{user_slug}_{db_name}_v{version_num}"
+    
     target_dir = snapshot_base_dir / tenant_str / source_str
     target_dir.mkdir(parents=True, exist_ok=True)
     
-    snapshot_filename = f"v{version_num}.json"
+    snapshot_filename = f"snapshot_{base_name}.json"
     filepath = target_dir / snapshot_filename
+    legacy_filepath = target_dir / f"v{version_num}.json"
 
     # Fetch tables for this source
     tables = session.query(TableMeta).filter_by(source_id=source.id, is_active=True).all()
@@ -112,21 +153,27 @@ def export_schema_snapshot(
         "relationships": relationships_data
     }
 
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(snapshot_payload, f, indent=2)
+    json_content = json.dumps(snapshot_payload, indent=2)
+    file_sha256 = _secure_atomic_write(filepath, json_content)
+    _secure_atomic_write(legacy_filepath, json_content)
 
-    log.info("schema_snapshot_exported", path=str(filepath), tables=len(tables_data), version=version_num)
+    log.info("schema_snapshot_exported", path=str(filepath), tables=len(tables_data), version=version_num, sha256=file_sha256)
 
     return {
         "status": "succeeded",
         "snapshot_path": str(filepath),
+        "sha256": file_sha256,
         "tables_exported": len(tables_data),
         "relationships_exported": len(relationships_data)
     }
 
 
-def export_human_readable_schema(session: Session, source: DataSource) -> Dict[str, Any]:
-    """Generates human-readable .txt schema file, updates SchemaRegistry, and tracks IngestionJob."""
+def export_human_readable_schema(
+    session: Session,
+    source: DataSource,
+    username: str | None = None,
+) -> Dict[str, Any]:
+    """Generates enriched .sql schema file (with PK, FK, Metrics, Dimensions, Relationships & Glossary), updates SchemaRegistry, and tracks IngestionJob using versioned asset naming."""
     start_time = datetime.now(timezone.utc)
     settings = get_settings()
     
@@ -136,12 +183,29 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
     # 1. Target directory under storage/schemas/{tenant_id}/{source_id}/
     target_dir = Path("storage") / "schemas" / tenant_str / source_str
     target_dir.mkdir(parents=True, exist_ok=True)
-    
-    timestamp_str = start_time.strftime("%Y%m%d_%H%M%S")
-    txt_filename = f"database_schema_{timestamp_str}.sql"
-    filepath = target_dir / txt_filename
-    
-    # 2. Extract DDL text for all non-system business tables
+
+    # 2. Determine Schema Version
+    from app.models import SchemaRegistry, IngestionJob, Base
+    from app.db import get_engine
+    try:
+        Base.metadata.create_all(bind=get_engine(), tables=[SchemaRegistry.__table__])
+    except Exception as exc:
+        log.warning("schema_registries_table_creation_warning", error=str(exc))
+
+    latest_reg = session.query(SchemaRegistry).filter_by(source_id=source.id).order_by(SchemaRegistry.schema_version.desc()).first()
+    next_version = (latest_reg.schema_version + 1) if latest_reg else 1
+
+    user_slug = _sanitize_slug(username or getattr(source, "username", None), "admin")
+    db_name = _sanitize_slug(getattr(source, "database_name", None) or getattr(source, "name", None), "analytics_db")
+    base_name = f"{user_slug}_{db_name}_v{next_version}"
+
+    sql_filename = f"{base_name}.sql"
+    json_summary_filename = f"embeddings_{base_name}.json"
+
+    filepath = target_dir / sql_filename
+    json_summary_filepath = target_dir / json_summary_filename
+
+    # 3. Extract DDL text for all non-system business tables & relationships
     from app.services.dynamic_schema_service import _SYSTEM_TABLES
     tables = session.query(TableMeta).filter(
         TableMeta.source_id == source.id,
@@ -149,72 +213,106 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
         ~TableMeta.table_name.in_(_SYSTEM_TABLES)
     ).order_by(TableMeta.table_name).all()
     
+    table_ids = [t.id for t in tables]
+
+    # Fetch relationships & map column metadata
+    rels = []
+    if table_ids:
+        rels = session.query(Relationship).join(
+            ColumnMeta, Relationship.from_column_id == ColumnMeta.id
+        ).filter(ColumnMeta.table_id.in_(table_ids)).all()
+
+    col_id_to_meta: Dict[uuid.UUID, tuple[str, str]] = {}
+    for t in tables:
+        cols = session.query(ColumnMeta).filter_by(table_id=t.id, is_active=True).all()
+        for c in cols:
+            col_id_to_meta[c.id] = (t.table_name, c.column_name)
+
+    fk_map: Dict[uuid.UUID, tuple[str, str, str]] = {}
+    for r in rels:
+        if r.from_column_id in col_id_to_meta and r.to_column_id in col_id_to_meta:
+            to_tbl, to_col = col_id_to_meta[r.to_column_id]
+            fk_map[r.from_column_id] = (to_tbl, to_col, str(r.cardinality))
+
     lines = [f"-- Database Name: {source.database_name}\n"]
+    glossary_lines = []
+
     for t in tables:
         lines.append(f"-- ==================================================")
-        lines.append(f"-- TABLE: {t.table_name}")
+        header_title = f"-- TABLE: {t.table_name}"
+        if getattr(t, "business_name", None):
+            header_title += f" (Business Name: {t.business_name})"
+        lines.append(header_title)
+        if getattr(t, "description", None):
+            lines.append(f"-- Description: {t.description}")
         lines.append(f"-- ==================================================")
         lines.append(f"TABLE: {t.table_name}")
+
         cols = session.query(ColumnMeta).filter_by(table_id=t.id, is_active=True).order_by(ColumnMeta.ordinal_position).all()
         for c in cols:
             flags = []
             if getattr(c, "is_primary_key", False):
                 flags.append("PK")
+            if c.id in fk_map:
+                to_tbl, to_col, _ = fk_map[c.id]
+                flags.append(f"FK -> {to_tbl}.{to_col}")
             if not c.is_nullable:
                 flags.append("NOT NULL")
+
             flag_str = f", {', '.join(flags)}" if flags else ""
-            lines.append(f"- {c.column_name} ({c.data_type}{flag_str})")
-        lines.append("")  # Empty spacer line
-    
+
+            # Annotate Role (Metric/Dimension) & Aggregation
+            role_str = str(c.role) if c.role else "unknown"
+            comment_parts = [f"Role: {role_str}"]
+            if getattr(c, "aggregation", None):
+                comment_parts.append(f"Aggregation: {c.aggregation}")
+            if getattr(c, "description", None):
+                comment_parts.append(f"Desc: {c.description}")
+
+            lines.append(f"- {c.column_name} ({c.data_type}{flag_str}) -- {' | '.join(comment_parts)}")
+
+            # Collect Business Glossary metadata
+            b_name = getattr(c, "business_name", None)
+            syns = getattr(c, "synonyms", None) or []
+            if b_name or syns:
+                syn_str = f" | Synonyms: {', '.join(syns)}" if syns else ""
+                term_name = b_name or c.column_name
+                glossary_lines.append(f"- Term: {t.table_name}.{c.column_name} | Business Name: {term_name}{syn_str}")
+
+        lines.append("")  # Spacer line
+
+    # Append explicit Relationships Section
+    if rels:
+        lines.append("-- ==================================================")
+        lines.append("-- TABLE RELATIONSHIPS & FOREIGN KEYS")
+        lines.append("-- ==================================================")
+        for r in rels:
+            if r.from_column_id in col_id_to_meta and r.to_column_id in col_id_to_meta:
+                f_tbl, f_col = col_id_to_meta[r.from_column_id]
+                t_tbl, t_col = col_id_to_meta[r.to_column_id]
+                lines.append(f"- FK: {f_tbl}.{f_col} -> {t_tbl}.{t_col} (Cardinality: {r.cardinality})")
+        lines.append("")
+
+    # Append Business Glossary Section
+    if glossary_lines:
+        lines.append("-- ==================================================")
+        lines.append("-- BUSINESS GLOSSARY & SEMANTIC CONTEXT")
+        lines.append("-- ==================================================")
+        lines.extend(glossary_lines)
+        lines.append("")
+
     schema_text = "\n".join(lines).strip()
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(schema_text)
+    sql_sha256 = _secure_atomic_write(filepath, schema_text)
 
-    # 2b. Write plain-text description snapshot file (schema_<timestamp>.txt)
-    # Convert schema DDL into plain-English narrative text via LLM
-    plain_text_narrative = schema_text
-    try:
-        from app.llm.registry import get_llm_provider_from_config
-        llm_provider = get_llm_provider_from_config()
-        table_descriptions = []
-
-        for t in tables:
-            cols = session.query(ColumnMeta).filter_by(table_id=t.id, is_active=True).order_by(ColumnMeta.ordinal_position).all()
-            col_strs = []
-            for c in cols:
-                flags = []
-                if getattr(c, "is_primary_key", False):
-                    flags.append("PRIMARY KEY")
-                if not c.is_nullable:
-                    flags.append("NOT NULL")
-                flag_str = f" {' '.join(flags)}" if flags else ""
-                col_strs.append(f"  {c.column_name} {c.data_type}{flag_str}")
-            
-            ddl_chunk = f"CREATE TABLE {t.table_name} (\n" + ",\n".join(col_strs) + "\n);"
-            prompt = TABLE_PROMPT_TEMPLATE.format(sql=ddl_chunk)
-            desc = llm_provider.generate_chat_completion(prompt).strip()
-            if desc:
-                table_descriptions.append(desc)
-
-        if table_descriptions:
-            plain_text_narrative = "\n\n".join(table_descriptions)
-    except Exception as llm_exc:
-        log.warning("schema_export_llm_description_fallback", error=str(llm_exc))
-
-    txt_summary_filename = f"schema_{timestamp_str}.txt"
-    txt_summary_filepath = target_dir / txt_summary_filename
-    with open(txt_summary_filepath, "w", encoding="utf-8") as f:
-        f.write(plain_text_narrative)
-
-    # 2c. Automatically generate vector embeddings JSON (embeddings_<timestamp>.json)
+    # 3c. Automatically generate vector embeddings JSON from .sql schema text
     try:
         import re
         from app.embeddings.registry import get_embedding_provider
 
-        raw_chunks = re.split(r"\n\s*\n", plain_text_narrative.strip())
+        raw_chunks = re.split(r"\n\s*\n", schema_text.strip())
         chunks = [c.strip() for c in raw_chunks if c.strip()]
-        if not chunks and plain_text_narrative.strip():
-            chunks = [plain_text_narrative.strip()]
+        if not chunks and schema_text.strip():
+            chunks = [schema_text.strip()]
 
         provider = get_embedding_provider()
         vectors = provider.embed(chunks)
@@ -228,13 +326,11 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
             for i, (text, vector) in enumerate(zip(chunks, vectors))
         ]
 
-        json_summary_filename = f"embeddings_{timestamp_str}.json"
-        json_summary_filepath = target_dir / json_summary_filename
-        with open(json_summary_filepath, "w", encoding="utf-8") as f:
-            json.dump({"model": settings.embedding_model, "records": records}, f, indent=2)
-        log.info("automatic_embeddings_json_generated", path=str(json_summary_filepath), records=len(records))
+        embed_payload_str = json.dumps({"model": settings.embedding_model, "records": records}, indent=2)
+        embed_sha256 = _secure_atomic_write(json_summary_filepath, embed_payload_str)
+        log.info("automatic_embeddings_json_generated", path=str(json_summary_filepath), records=len(records), sha256=embed_sha256)
 
-        # 2d. Automatically store vector records into persistent ChromaDB vector collection
+        # 3d. Automatically store vector records into persistent ChromaDB vector collection
         try:
             from app.embeddings.chroma_store import ChromaStore, EmbeddedObject
             chroma_objects = [
@@ -253,20 +349,10 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
     except Exception as exc:
         log.warning("automatic_embeddings_json_failed", error=str(exc))
     
-    # 3. Update Schema Registry (Deactivate previous, Activate newest)
-    from app.models import SchemaRegistry, IngestionJob, Base
-    from app.db import get_engine
-    try:
-        Base.metadata.create_all(bind=get_engine(), tables=[SchemaRegistry.__table__])
-    except Exception as exc:
-        log.warning("schema_registries_table_creation_warning", error=str(exc))
-
+    # 4. Update Schema Registry (Deactivate previous, Activate newest)
     previous_entries = session.query(SchemaRegistry).filter_by(source_id=source.id, is_active=True).all()
     for prev in previous_entries:
         prev.is_active = False
-    
-    latest_reg = session.query(SchemaRegistry).filter_by(source_id=source.id).order_by(SchemaRegistry.schema_version.desc()).first()
-    next_version = (latest_reg.schema_version + 1) if latest_reg else 1
     
     new_registry = SchemaRegistry(
         tenant_id=source.tenant_id,
@@ -282,7 +368,7 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
     finish_time = datetime.now(timezone.utc)
     duration_sec = round((finish_time - start_time).total_seconds(), 2)
     
-    # 4. Record Ingestion Job
+    # 5. Record Ingestion Job
     job = IngestionJob(
         source_id=source.id,
         stage="Schema Extraction",
@@ -292,6 +378,7 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
         stats={
             "schema_version": next_version,
             "file_path": str(filepath),
+            "sql_sha256": sql_sha256,
             "table_count": len(tables),
             "duration_sec": duration_sec,
             "download_url": f"/api/v1/schemas/{new_registry.id}/download"
@@ -305,6 +392,7 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
         source=source.name,
         version=next_version,
         path=str(filepath),
+        # txt_path=str(txt_summary_filepath),
         tables=len(tables)
     )
     
@@ -313,6 +401,6 @@ def export_human_readable_schema(session: Session, source: DataSource) -> Dict[s
         "schema_id": str(new_registry.id),
         "version": next_version,
         "file_path": str(filepath),
+        "sql_sha256": sql_sha256,
         "table_count": len(tables)
     }
-
