@@ -22,6 +22,7 @@ chat_service = ChatService()
 class SQLQueryRequest(BaseModel):
     question: str = Field(..., example="How many customers currently have ACTIVE status?")
     conversation_id: Optional[str] = None
+    domain_id: Optional[str] = None
 
 
 class SQLQueryResponse(BaseModel):
@@ -63,6 +64,7 @@ def generate_sql_from_question(
         return chat_service.process_text_to_sql(
             question=req.question.strip(),
             conversation_id=req.conversation_id,
+            domain_id=req.domain_id,
             db_session=db,
             user=user,
         )

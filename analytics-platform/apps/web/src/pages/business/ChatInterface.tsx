@@ -241,6 +241,15 @@ export const ChatInterface = () => {
     }, 2000);
   };
 
+  const [domains, setDomains] = useState<any[]>([]);
+  const [selectedDomainId, setSelectedDomainId] = useState<string>('');
+
+  useEffect(() => {
+    fetchApi('/domains')
+      .then((data: any) => setDomains(Array.isArray(data) ? data : []))
+      .catch(() => setDomains([]));
+  }, []);
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -256,7 +265,8 @@ export const ChatInterface = () => {
         method: 'POST',
         body: JSON.stringify({
           question: questionText,
-          conversation_id: convId
+          conversation_id: convId,
+          domain_id: selectedDomainId || null
         })
       });
 
@@ -466,8 +476,41 @@ export const ChatInterface = () => {
       )}
 
       {/* Main Chat Area */}
-      <div className="chat-container" style={{ flex: 1, height: '100%' }}>
-        <div className="chat-messages" style={{ padding: '0 1rem' }}>
+      <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {/* Domain Context Selection Header Bar */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 1.25rem', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-card)', zIndex: 5 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Domain Context:</span>
+            <select
+              value={selectedDomainId}
+              onChange={(e) => setSelectedDomainId(e.target.value)}
+              style={{
+                padding: '0.3rem 0.6rem',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--bg-dark)',
+                border: '1px solid var(--border-color)',
+                color: 'var(--text-main)',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              <option value="">🌐 All Database Tables (Default)</option>
+              {domains.map((d: any) => (
+                <option key={d.id} value={d.id}>
+                  🎯 {d.name} {d.source_name ? `(${d.source_name})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          {selectedDomainId && (
+            <span className="text-muted text-sm" style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>
+              ✓ LLM will refer strictly to selected domain context & documents
+            </span>
+          )}
+        </div>
+
+        <div className="chat-messages" style={{ padding: '0 1rem', flex: 1 }}>
           {messages.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.6, maxWidth: '500px' }}>
               <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>

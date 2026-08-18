@@ -37,6 +37,7 @@ class ChatService:
         self,
         question: str,
         conversation_id: str | None = None,
+        domain_id: str | None = None,
         db_session: Any | None = None,
         user: Any | None = None,
     ) -> Dict[str, Any]:
@@ -61,11 +62,36 @@ class ChatService:
         if active_source and active_source.database_name:
             db_name = active_source.database_name
 
-        # 3. Build system prompt using loaded active schema text
+        # 3. Domain context & table scoping
+        domain_context_str = ""
+        if domain_id and db_session:
+            try:
+                from app.models import Domain, DomainTable, DomainTerm, TableMeta
+                dom_uuid = uuid.UUID(str(domain_id))
+                domain = db_session.query(Domain).filter(Domain.id == dom_uuid).first()
+                if domain:
+                    # Fetch domain terms
+                    terms = db_session.query(DomainTerm).filter(DomainTerm.domain_id == dom_uuid).limit(10).all()
+                    terms_str = "\n".join(f"- {t.term}: {t.definition}" for t in terms)
+
+                    # Fetch domain selected tables
+                    dom_tables = db_session.query(DomainTable).filter(DomainTable.domain_id == dom_uuid).all()
+                    table_names = []
+                    for dt in dom_tables:
+                        tm = db_session.query(TableMeta).filter(TableMeta.id == dt.table_id).first()
+                        if tm:
+                            table_names.append(tm.table_name)
+
+                    domain_context_str = f"Domain Name: {domain.name}\nDescription: {domain.description or 'None'}\nScoped Domain Tables: {', '.join(table_names) if table_names else 'All'}\nBusiness Terms & Definitions:\n{terms_str if terms_str else 'None'}"
+            except Exception as exc:
+                log.warning("failed_to_load_domain_context", error=str(exc))
+
+        # 4. Build system prompt using loaded active schema text and optional domain context
         prompt = self.prompt_builder.build_prompt(
             question=question,
             schema_text=schema_text,
-            database_name=db_name
+            database_name=db_name,
+            domain_context=domain_context_str
         )
 
         # 4. Call LLM for raw PostgreSQL SQL generation

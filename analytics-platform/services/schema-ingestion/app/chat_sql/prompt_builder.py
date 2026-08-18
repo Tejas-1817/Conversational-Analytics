@@ -7,8 +7,22 @@ class PromptBuilder:
     """Constructs Text-to-SQL system prompts with generic database-agnostic semantic mapping rules."""
 
     @classmethod
-    def build_prompt(cls, question: str, schema_text: str, database_name: str = "analytics_db", schema_version: int = 1) -> str:
+    def build_prompt(
+        cls,
+        question: str,
+        schema_text: str,
+        database_name: str = "analytics_db",
+        schema_version: int = 1,
+        domain_context: str | None = None,
+    ) -> str:
         """Constructs database-agnostic Text-to-SQL prompt with generic semantic schema mapping directives."""
+        domain_block = ""
+        if domain_context and domain_context.strip():
+            domain_block = f"""\n==================================================
+SELECTED BUSINESS DOMAIN CONTEXT & KNOWLEDGE BASE:
+{domain_context.strip()}
+==================================================\n"""
+
         prompt_str = f"""You are an expert PostgreSQL query generator.
 
 Below is the database schema.
@@ -18,7 +32,7 @@ Database Name: {database_name}
 
 {schema_text}
 ==================================================
-
+{domain_block}
 GENERIC SCHEMA MAPPING DIRECTIVES:
 1. SEMANTIC MATCHING:
    - Interpret natural-language business terms using semantic meaning rather than literal string matching.

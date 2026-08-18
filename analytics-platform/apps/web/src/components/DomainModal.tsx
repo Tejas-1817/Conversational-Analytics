@@ -98,6 +98,52 @@ export const DomainModal: React.FC<DomainModalProps> = ({
     }
   };
 
+  const [sources, setSources] = useState<any[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState<string>('');
+  const [availableTables, setAvailableTables] = useState<any[]>([]);
+  const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
+  const [isLoadingTables, setIsLoadingTables] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchApi('/sources')
+        .then((data: any) => setSources(Array.isArray(data) ? data : []))
+        .catch(() => setSources([]));
+    }
+  }, [isOpen]);
+
+  const handleSourceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const srcId = e.target.value;
+    setSelectedSourceId(srcId);
+    setSelectedTableIds([]);
+    setAvailableTables([]);
+    if (!srcId) return;
+
+    setIsLoadingTables(true);
+    try {
+      const data = await fetchApi(`/metadata/sources/${srcId}/tables`);
+      setAvailableTables(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('Failed to fetch tables for source', err);
+    } finally {
+      setIsLoadingTables(false);
+    }
+  };
+
+  const toggleTableSelect = (tId: string) => {
+    setSelectedTableIds(prev =>
+      prev.includes(tId) ? prev.filter(id => id !== tId) : [...prev, tId]
+    );
+  };
+
+  const selectAllTables = () => {
+    setSelectedTableIds(availableTables.map(t => t.id));
+  };
+
+  const deselectAllTables = () => {
+    setSelectedTableIds([]);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setBackendError(null);
@@ -117,7 +163,12 @@ export const DomainModal: React.FC<DomainModalProps> = ({
     try {
       const domain = await fetchApi('/domains', {
         method: 'POST',
-        body: JSON.stringify({ name: formData.name, description: formData.description || '' }),
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description || '',
+          source_id: selectedSourceId || null,
+          table_ids: selectedTableIds,
+        }),
       });
       setDomainId(domain.id);
       setDomainName(domain.name);
@@ -137,7 +188,6 @@ export const DomainModal: React.FC<DomainModalProps> = ({
       setDomainId(mockId);
       setDomainName(formData.name);
       setStep(2);
-      // We do not setBackendError if we are successfully mocking.
     } finally {
       setIsSaving(false);
     }
@@ -290,7 +340,7 @@ export const DomainModal: React.FC<DomainModalProps> = ({
                   onChange={handleChange}
                   placeholder="Describe this domain's purpose, key metrics, or relevant terminology…"
                   disabled={isSaving}
-                  rows={5}
+                  rows={3}
                   style={{
                     width: '100%',
                     resize: 'vertical',
@@ -306,6 +356,88 @@ export const DomainModal: React.FC<DomainModalProps> = ({
                 />
                 {errors.description && <div className="form-error">{errors.description}</div>}
               </div>
+
+              {/* Connected Database Source Selector */}
+              <div className="form-group" style={{ marginTop: '1rem' }}>
+                <label htmlFor="domain-source">Connect Database Source</label>
+                <select
+                  id="domain-source"
+                  value={selectedSourceId}
+                  onChange={handleSourceChange}
+                  disabled={isSaving}
+                  style={{
+                    width: '100%',
+                    padding: '0.6rem 0.75rem',
+                    background: 'var(--bg-dark)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-main)',
+                  }}
+                >
+                  <option value="">-- Select Connected Database --</option>
+                  {sources.map(src => (
+                    <option key={src.id} value={src.id}>
+                      {src.name} ({src.type} - {src.database_name || src.host})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Table Selection List */}
+              {selectedSourceId && (
+                <div className="form-group" style={{ marginTop: '1rem' }}>
+                  <div className="flex justify-between items-center mb-2">
+                    <label style={{ margin: 0 }}>Select Domain Tables ({selectedTableIds.length} selected)</label>
+                    <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.8rem' }}>
+                      <button type="button" className="btn-ghost" onClick={selectAllTables} style={{ padding: '2px 6px' }}>Select All</button>
+                      <button type="button" className="btn-ghost" onClick={deselectAllTables} style={{ padding: '2px 6px' }}>Clear</button>
+                    </div>
+                  </div>
+
+                  {isLoadingTables ? (
+                    <div className="text-muted text-sm" style={{ padding: '0.5rem' }}>Loading tables…</div>
+                  ) : availableTables.length === 0 ? (
+                    <div className="text-muted text-sm" style={{ padding: '0.5rem' }}>No tables extracted yet for this database.</div>
+                  ) : (
+                    <div
+                      style={{
+                        maxHeight: '160px',
+                        overflowY: 'auto',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '0.5rem',
+                        background: 'var(--bg-dark)',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                        gap: '0.4rem',
+                      }}
+                    >
+                      {availableTables.map(tbl => (
+                        <label
+                          key={tbl.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            fontSize: '0.85rem',
+                            cursor: 'pointer',
+                            padding: '0.2rem 0.4rem',
+                            borderRadius: '4px',
+                            background: selectedTableIds.includes(tbl.id) ? 'rgba(79, 70, 229, 0.15)' : 'transparent',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedTableIds.includes(tbl.id)}
+                            onChange={() => toggleTableSelect(tbl.id)}
+                          />
+                          <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{tbl.table_name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="modal-footer" style={{ justifyContent: 'flex-end', display: 'flex', gap: '0.5rem' }}>

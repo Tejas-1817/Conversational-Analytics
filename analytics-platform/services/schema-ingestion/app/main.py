@@ -162,9 +162,19 @@ _setup_rate_limiter(app)
 #     )
 
 
-# ---------------------------------------------------------------------------
-# Routers
-# ---------------------------------------------------------------------------
+from app.api import (
+    api_keys,
+    auth,
+    dashboards,
+    domains_router,
+    engine,
+    jobs,
+    metadata,
+    semantic,
+    sources,
+    tenants,
+    users,
+)
 
 app.include_router(auth.router)
 app.include_router(sources.router)
@@ -178,6 +188,7 @@ app.include_router(users.router)
 # Phase 6 — new routers
 app.include_router(tenants.router)
 app.include_router(api_keys.router)
+app.include_router(domains_router.router)
 app.include_router(oidc.router)
 app.include_router(eval.router)
 app.include_router(schema.router)
