@@ -156,9 +156,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     }
   };
 
+  if (!isOpen) return null;
+
   return (
     <div className="modal-overlay">
-      <div className="modal-content" role="dialog" aria-modal="true">
+      <div className="modal-content" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Connect Data Source</h2>
           <button className="btn-ghost" onClick={onClose} disabled={isTesting || isSaving} style={{ padding: '4px' }}>

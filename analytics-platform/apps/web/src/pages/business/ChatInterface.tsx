@@ -8,7 +8,7 @@ import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { prism as prismLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 function SqlAccordion({ sql }: { sql: string }) {
-  const [isOpen, setIsOpen] = React.useState(true);
+  const [isOpen, setIsOpen] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -506,17 +506,12 @@ export const ChatInterface = () => {
 
                     {!m.isError && (m.sql || m.content || m.answer) && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
-                        {/* 1. Executive Summary */}
-                        {m.answer && (
+                        {/* 1. Executive Summary — suppress for pure single-metric KPI cards */}
+                        {m.answer && !(m.result_data && m.result_data.length === 1 && m.columns && m.columns.length === 1) && (
                           <div style={{
-                            fontSize: '1rem',
-                            lineHeight: 1.6,
-                            fontWeight: 600,
+                            fontSize: '0.975rem',
+                            lineHeight: 1.65,
                             color: 'var(--text-main, #f8fafc)',
-                            background: 'rgba(255, 255, 255, 0.02)',
-                            padding: '1rem 1.25rem',
-                            borderRadius: '12px',
-                            border: '1px solid var(--border-color, #2b2b40)'
                           }}>
                             {m.answer}
                           </div>
@@ -529,7 +524,7 @@ export const ChatInterface = () => {
                               <div className="flex items-center gap-2">
                                 <BarChart2 size={18} className="text-primary" style={{ color: '#6366F1' }} />
                                 <span className="text-base font-bold" style={{ color: 'var(--text-main)' }}>
-                                  {m.title || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || 'Analytics Insight'}
+                                  {m.title || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : null) || m.question || 'Query Result'}
                                 </span>
                               </div>
                               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -561,7 +556,7 @@ export const ChatInterface = () => {
                                 else resolvedType = 'table';
                               }
 
-                              const cardTitle = m.title || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
+                              const cardTitle = m.title || (m.result_data && m.result_data.title) || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
                               const containerHeight = resolvedType === 'kpi_card' ? '180px' : (resolvedType === 'detail_card' ? '220px' : (resolvedType === 'multi_kpi' ? '160px' : '360px'));
 
                               return (
@@ -578,23 +573,55 @@ export const ChatInterface = () => {
                           <SqlAccordion sql={m.sql} />
                         )}
 
-                        {/* 4. Collapsible Raw Data Accordion */}
-                        {m.result_data && m.result_data.length > 0 && (
-                          <details style={{
-                            backgroundColor: 'var(--bg-card, #1a1a24)',
-                            border: '1px solid var(--border-color, #2b2b40)',
-                            borderRadius: '10px',
-                            padding: '0.6rem 1rem',
-                            fontSize: '0.85rem'
-                          }}>
-                            <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted, #94a3b8)', userSelect: 'none', outline: 'none' }}>
-                              View Raw Data Grid ({m.row_count || m.result_data.length} rows)
-                            </summary>
-                            <div style={{ marginTop: '0.75rem', height: '320px', overflowY: 'auto' }}>
-                              <ChartRenderer data={m.result_data} chartType="table" columns={m.columns} />
-                            </div>
-                          </details>
-                        )}
+                        {/* 4. Collapsible Raw Data Accordion — renders a proper HTML table, never ChartRenderer */}
+                        {m.result_data && m.result_data.length > 0 && (() => {
+                          const rawRows: any[] = m.result_data || [];
+                          const rawCols: string[] = m.columns || (rawRows.length > 0 ? Object.keys(rawRows[0]) : []);
+                          return (
+                            <details className="raw-data-accordion" style={{
+                              backgroundColor: 'var(--bg-card, #1a1a24)',
+                              border: '1px solid var(--border-color, #2b2b40)',
+                              borderRadius: '10px',
+                              padding: '0.6rem 1rem',
+                              fontSize: '0.85rem'
+                            }}>
+                              <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.85rem', userSelect: 'none', outline: 'none' }}>
+                                View Raw Data Grid ({m.row_count || rawRows.length} rows)
+                              </summary>
+                              <div style={{ marginTop: '0.75rem', maxHeight: '320px', overflowY: 'auto', overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                  <thead>
+                                    <tr>
+                                      {rawCols.map(col => (
+                                        <th key={col} style={{
+                                          padding: '0.4rem 0.75rem',
+                                          textAlign: 'left',
+                                          borderBottom: '2px solid var(--border-color)',
+                                          color: 'var(--text-muted)',
+                                          fontWeight: 700,
+                                          textTransform: 'uppercase',
+                                          letterSpacing: '0.05em',
+                                          whiteSpace: 'nowrap'
+                                        }}>{col.replace(/_/g, ' ')}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {rawRows.map((row, ri) => (
+                                      <tr key={ri} style={{ borderBottom: '1px solid var(--border-color)', background: ri % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.02)' }}>
+                                        {rawCols.map(col => (
+                                          <td key={col} style={{ padding: '0.4rem 0.75rem', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>
+                                            {row[col] === null || row[col] === undefined ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>null</span> : String(row[col])}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </details>
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -667,7 +694,7 @@ export const ChatInterface = () => {
           <div ref={messagesEndRef} style={{ height: '1px' }} />
         </div>
 
-        <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: 0, borderTop: '1px solid var(--border-color)', zIndex: 20, paddingBottom: '1.5rem', paddingTop: '1rem' }}>
+        <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: 0, zIndex: 20, paddingBottom: '1.5rem', paddingTop: '1rem' }}>
           <form onSubmit={sendMessage} className="chat-input-wrapper" style={{ margin: '0 auto', maxWidth: '800px' }}>
             <input
               style={{ flex: 1, padding: '1rem', fontSize: '0.95rem' }}

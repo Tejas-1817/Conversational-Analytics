@@ -15,6 +15,7 @@ import { Benchmarks } from './pages/admin/Benchmarks';
 import { EvaluationRunDetails } from './pages/admin/EvaluationRunDetails';
 import { ChatInterface } from './pages/business/ChatInterface';
 import { Dashboards } from './pages/business/Dashboards';
+import { Domains } from './pages/business/Domains';
 
 const ProtectedRoute = ({ children, requireAdmin = false }: { children: React.ReactNode, requireAdmin?: boolean }) => {
   const { user, loading } = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
         {/* Business Routes */}
         <Route path="/chat" element={<ProtectedRoute><ChatInterface /></ProtectedRoute>} />
         <Route path="/dashboards" element={<ProtectedRoute><Dashboards /></ProtectedRoute>} />
+        <Route path="/domains" element={<ProtectedRoute><Domains /></ProtectedRoute>} />
         
         {/* Admin Routes */}
         <Route path="/sources" element={<ProtectedRoute requireAdmin><DataSources /></ProtectedRoute>} />

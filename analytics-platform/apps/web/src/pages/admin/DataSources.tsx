@@ -124,37 +124,17 @@ export const DataSources = () => {
                         <button className="btn-ghost" title="Run Ingestion" onClick={() => triggerIngest(s.id)} style={{ padding: '0.5rem' }}>
                           <Play size={16} />
                         </button>
-                        <div className="relative">
-                          <button
-                            className="btn-ghost"
-                            title="More Options"
-                            style={{ padding: '0.5rem' }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenMenuId(openMenuId === s.id ? null : s.id);
-                            }}
-                          >
-                            <MoreVertical size={16} />
-                          </button>
-                          {openMenuId === s.id && (
-                            <div className="absolute right-0 mt-1 w-32 rounded-md shadow-lg bg-gray-800 ring-1 ring-black ring-opacity-5 z-10" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-                              <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
-                                <button
-                                  className="block w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700 flex items-center gap-2"
-                                  style={{ color: '#ef4444' }}
-                                  role="menuitem"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteSource(s.id);
-                                    setOpenMenuId(null);
-                                  }}
-                                >
-                                  <Trash2 size={14} /> Delete
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <button
+                          className="btn-ghost"
+                          title="Delete Source"
+                          style={{ padding: '0.5rem', color: '#ef4444' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSource(s.id);
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </td>
                   </tr>

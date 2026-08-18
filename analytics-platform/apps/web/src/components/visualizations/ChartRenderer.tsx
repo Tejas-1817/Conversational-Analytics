@@ -26,7 +26,7 @@ interface ChartProps {
 }
 
 export const vividSaasTheme = {
-  categorical: ['#7C3AED', '#EC4899', '#06B6D4', '#F59E0B', '#10B981', '#EF4444', '#3B82F6'],
+  categorical: ['#4ea8f2', '#e46a6f', '#f2ab65', '#eb5f89', '#859297', '#3d3d3d'],
   sequential: ['#F3E8FF', '#C4B5FD', '#8B5CF6', '#6D28D9', '#4C1D95'],
   semantic: { positive: '#10B981', negative: '#EF4444', neutral: '#9CA3AF' },
   background: '#FAFAFA',
@@ -108,63 +108,77 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
   if (chartType === 'kpi_card' || (rows.length === 1 && columns.length === 1)) {
     const rawVal = rows[0][firstCol];
     const displayVal = formatVal(rawVal);
+    // Derive a short punchy label from column name
+    const shortLabel = firstCol
+      .replace(/_/g, ' ')
+      .replace(/\b(count|total|number|num|sum)\b/gi, '')
+      .trim()
+      .replace(/\b\w/g, l => l.toUpperCase()) || 'Total';
 
     return (
       <div style={{
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
-        padding: '1.75rem 1.5rem',
+        padding: '1.25rem 1.5rem',
         borderRadius: '16px',
-        background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(139, 92, 246, 0.03) 100%)',
-        border: '1px solid rgba(79, 70, 229, 0.2)',
-        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2)',
-        textAlign: 'center',
+        background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.07) 0%, rgba(139, 92, 246, 0.02) 100%)',
+        border: '1px solid rgba(79, 70, 229, 0.18)',
+        boxShadow: '0 8px 24px -4px rgba(0, 0, 0, 0.12)',
         position: 'relative',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        width: '100%',
+        height: '100%',
+        boxSizing: 'border-box'
       }}>
+        {/* Decorative glow */}
         <div style={{
-          width: '48px',
-          height: '48px',
-          borderRadius: '12px',
-          background: 'rgba(79, 70, 229, 0.15)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#6366F1',
-          marginBottom: '0.75rem'
-        }}>
-          <Users size={24} />
-        </div>
+          position: 'absolute', top: '-30px', right: '-30px',
+          width: '100px', height: '100px',
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)',
+          pointerEvents: 'none'
+        }} />
+
+        {/* Label */}
         <div style={{
-          fontSize: '0.85rem',
-          fontWeight: 600,
-          color: 'var(--text-muted, #94a3b8)',
+          fontSize: '0.75rem',
+          fontWeight: 700,
+          color: 'var(--text-muted, #9CA3AF)',
           textTransform: 'uppercase',
-          letterSpacing: '0.08em',
+          letterSpacing: '0.1em',
           marginBottom: '0.5rem'
         }}>
-          {cardTitle}
+          {shortLabel}
         </div>
+
+        {/* Main Metric */}
         <div style={{
-          fontSize: '3.25rem',
-          fontWeight: 800,
-          color: 'var(--text-main, #f8fafc)',
-          letterSpacing: '-0.03em',
-          lineHeight: 1
+          fontSize: '3.5rem',
+          fontWeight: 900,
+          color: 'var(--text-main, #111827)',
+          letterSpacing: '-0.04em',
+          lineHeight: 1,
+          marginBottom: '0.75rem'
         }}>
           {displayVal}
         </div>
+
+        {/* Trend chip */}
         <div style={{
-          marginTop: '0.75rem',
-          fontSize: '0.75rem',
-          color: '#22C55E',
-          fontWeight: 500,
-          display: 'flex',
+          display: 'inline-flex',
           alignItems: 'center',
-          gap: '0.25rem'
+          gap: '0.3rem',
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          color: '#059669',
+          background: 'rgba(16, 185, 129, 0.1)',
+          border: '1px solid rgba(16, 185, 129, 0.2)',
+          borderRadius: '99px',
+          padding: '0.2rem 0.6rem',
         }}>
+          <TrendingUp size={11} /> Live data
         </div>
       </div>
     );
@@ -173,30 +187,68 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
   // Multi KPI Cards (rows == 1 AND multiple numeric columns)
   if (chartType === 'multi_kpi' || (rows.length === 1 && columns.every(col => typeof rows[0][col] === 'number'))) {
     const mainRecord = rows[0];
+    const numericCols = columns.filter(col => typeof mainRecord[col] === 'number' || !isNaN(Number(mainRecord[col])));
+    const primaryCols = numericCols.slice(0, 3);
+    const secondaryCols = numericCols.slice(3);
+
     return (
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: '1rem',
-        width: '100%'
-      }}>
-        {columns.map((col, idx) => (
-          <div key={col} style={{
-            padding: '1.25rem 1rem',
-            borderRadius: '14px',
-            background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.06) 0%, rgba(139, 92, 246, 0.02) 100%)',
-            border: '1px solid rgba(79, 70, 229, 0.15)',
-            boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
-            textAlign: 'center'
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+        {/* Primary metrics row */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${Math.min(primaryCols.length, 3)}, 1fr)`,
+          gap: '0.75rem',
+          width: '100%'
+        }}>
+          {primaryCols.map((col, idx) => {
+            const shortLabel = col.replace(/_/g, ' ').replace(/\b(count|total|number|num|sum)\b/gi, '').trim().replace(/\b\w/g, l => l.toUpperCase()) || col;
+            return (
+              <div key={col} style={{
+                padding: '1rem 1.25rem',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, rgba(79, 70, 229, 0.06) 0%, rgba(139, 92, 246, 0.02) 100%)',
+                border: `1px solid ${COLORS[idx % COLORS.length]}30`,
+                boxShadow: '0 4px 15px rgba(0,0,0,0.06)',
+                position: 'relative',
+                overflow: 'hidden'
+              }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted, #9CA3AF)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>
+                  {shortLabel}
+                </div>
+                <div style={{ fontSize: '2.5rem', fontWeight: 900, color: COLORS[idx % COLORS.length], letterSpacing: '-0.03em', lineHeight: 1 }}>
+                  {formatVal(mainRecord[col])}
+                </div>
+                <div style={{
+                  position: 'absolute', bottom: 0, right: 0,
+                  width: '60px', height: '60px', borderRadius: '50%',
+                  background: `radial-gradient(circle, ${COLORS[idx % COLORS.length]}18 0%, transparent 70%)`,
+                  transform: 'translate(20px, 20px)'
+                }} />
+              </div>
+            );
+          })}
+        </div>
+        {/* Secondary metrics as a compact horizontal strip */}
+        {secondaryCols.length > 0 && (
+          <div style={{
+            display: 'flex', gap: '1.5rem', flexWrap: 'wrap',
+            padding: '0.75rem 1rem',
+            background: 'rgba(0,0,0,0.02)',
+            borderRadius: '10px',
+            border: '1px solid var(--border-color, rgba(0,0,0,0.06))'
           }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted, #94a3b8)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              {col.replace(/_/g, ' ')}
-            </div>
-            <div style={{ fontSize: '2.25rem', fontWeight: 800, color: COLORS[idx % COLORS.length], marginTop: '0.35rem', letterSpacing: '-0.02em' }}>
-              {formatVal(mainRecord[col])}
-            </div>
+            {secondaryCols.map((col, idx) => (
+              <div key={col} style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted, #9CA3AF)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  {col.replace(/_/g, ' ')}
+                </span>
+                <span style={{ fontSize: '1.1rem', fontWeight: 700, color: COLORS[(idx + 3) % COLORS.length] }}>
+                  {formatVal(mainRecord[col])}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
     );
   }
@@ -477,12 +529,28 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
 
   const activeYKeys = yAxisKeys.length > 0 ? yAxisKeys : [secondCol];
 
+  const formatTitle = (str: string) => str.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
   const commonTheme = {
     color: COLORS,
+    ...(title ? { title: { text: title, left: 'center', top: 0, textStyle: { fontSize: 16, fontWeight: 600, color: vividSaasTheme.text } } } : {}),
     textStyle: { fontFamily: 'Inter, system-ui, sans-serif', color: vividSaasTheme.text },
-    tooltip: { trigger: 'axis', backgroundColor: vividSaasTheme.background, borderColor: vividSaasTheme.grid, textStyle: { color: vividSaasTheme.text } },
-    legend: { textStyle: { color: vividSaasTheme.semantic.neutral, fontSize: 12 }, top: 0 },
-    grid: { left: 40, right: 16, top: 36, bottom: 24, containLabel: true },
+    tooltip: { 
+      trigger: 'axis', 
+      backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+      borderColor: 'rgba(255, 255, 255, 0.95)', 
+      textStyle: { color: vividSaasTheme.text, fontSize: 13 },
+      padding: [12, 16],
+      extraCssText: 'box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); border-radius: 8px; backdrop-filter: blur(4px);',
+      axisPointer: { type: 'line', lineStyle: { color: vividSaasTheme.grid, type: 'dashed' } }
+    },
+    legend: { 
+      show: activeYKeys.length > 1,
+      textStyle: { color: vividSaasTheme.semantic.neutral, fontSize: 13, fontWeight: 500 }, 
+      top: title ? 32 : 0,
+      icon: 'circle'
+    },
+    grid: { left: 96, right: 32, top: title ? 64 : 40, bottom: 48, containLabel: true },
     toolbox: {
       show: true,
       right: 16,
@@ -492,13 +560,39 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
     }
   };
 
-  const commonXAxis = { type: 'category', data: rows.map(r => r[xAxisKey]), axisLine: { lineStyle: { color: vividSaasTheme.grid } }, axisLabel: { color: vividSaasTheme.semantic.neutral, fontSize: 12 } };
-  const commonYAxis = { type: 'value', splitLine: { lineStyle: { color: vividSaasTheme.grid } }, axisLabel: { color: vividSaasTheme.semantic.neutral, fontSize: 12 } };
+  const commonXAxis = { 
+    type: 'category', 
+    name: formatTitle(xAxisKey),
+    nameLocation: 'middle',
+    nameGap: 36,
+    nameTextStyle: { color: vividSaasTheme.text, fontWeight: 500, fontSize: 13 },
+    data: rows.map(r => r[xAxisKey]), 
+    axisLine: { lineStyle: { color: vividSaasTheme.grid } }, 
+    axisLabel: { 
+      color: vividSaasTheme.semantic.neutral, 
+      fontSize: 12,
+      interval: 0,
+      hideOverlap: false,
+      align: 'center',
+      width: 90,
+      overflow: 'truncate'
+    } 
+  };
+  const commonYAxis = { 
+    type: 'value', 
+    min: 0,
+    name: activeYKeys.map(k => formatTitle(k)).join(', '),
+    nameLocation: 'middle',
+    nameGap: 85,
+    nameTextStyle: { color: vividSaasTheme.text, fontWeight: 500, fontSize: 13 },
+    splitLine: { lineStyle: { color: vividSaasTheme.grid } }, 
+    axisLabel: { color: vividSaasTheme.semantic.neutral, fontSize: 12 } 
+  };
 
   const barOption = {
     ...commonTheme,
-    xAxis: commonXAxis,
-    yAxis: commonYAxis,
+    xAxis: { ...commonXAxis, axisTick: { show: false } },
+    yAxis: { ...commonYAxis, splitLine: { lineStyle: { color: '#D1D5DB', type: 'solid', width: 1 } } },
     series: activeYKeys.map((key, idx) => ({
       name: key,
       type: 'bar',
@@ -506,29 +600,45 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
       colorBy: activeYKeys.length === 1 ? 'data' : 'series',
       itemStyle: { 
         ...(activeYKeys.length > 1 ? { color: COLORS[idx % COLORS.length] } : {}), 
-        borderRadius: [4, 4, 0, 0] 
+        borderRadius: [6, 6, 0, 0] 
       },
-      barMaxWidth: 60,
+      label: {
+        show: true,
+        position: 'top',
+        color: vividSaasTheme.semantic.neutral,
+        fontSize: 11,
+        formatter: (params: any) => typeof params.value === 'number' ? params.value.toLocaleString() : params.value
+      },
+      barMaxWidth: 48,
     })),
   };
 
   const lineOption = {
     ...commonTheme,
-    xAxis: commonXAxis,
-    yAxis: commonYAxis,
+    xAxis: { ...commonXAxis, boundaryGap: false, axisTick: { show: false } },
+    yAxis: { ...commonYAxis, splitLine: { lineStyle: { color: vividSaasTheme.grid, type: 'dashed' } } },
     series: activeYKeys.map((key, idx) => {
       const color = COLORS[idx % COLORS.length];
       return {
         name: key,
         type: 'line',
-        smooth: true,
+        smooth: 0.4,
+        symbol: 'circle',
+        symbolSize: 8,
+        showSymbol: false,
         data: rows.map(r => r[key]),
-        lineStyle: { width: 2, color },
-        itemStyle: { color },
+        lineStyle: { 
+          width: 3, 
+          color,
+          shadowColor: 'rgba(0, 0, 0, 0.15)',
+          shadowBlur: 10,
+          shadowOffsetY: 5
+        },
+        itemStyle: { color, borderColor: '#fff', borderWidth: 2 },
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: `${color}4D` },
-            { offset: 1, color: `${color}00` },
+            { offset: 0, color: `${color}4D` }, // 30% opacity
+            { offset: 1, color: `${color}00` }, // 0% opacity
           ]),
         },
       };
@@ -537,14 +647,22 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
 
   const pieOption = {
     ...commonTheme,
-    tooltip: { trigger: 'item', backgroundColor: vividSaasTheme.background, borderColor: vividSaasTheme.grid, textStyle: { color: vividSaasTheme.text } },
-    legend: { textStyle: { color: vividSaasTheme.semantic.neutral, fontSize: 12 }, bottom: 0 },
+    tooltip: { ...commonTheme.tooltip, trigger: 'item' },
+    legend: { ...commonTheme.legend, bottom: 0, top: 'auto' },
     grid: undefined,
     series: [{
       type: 'pie',
       radius: ['45%', '70%'],
-      itemStyle: { borderColor: vividSaasTheme.background, borderWidth: 2 },
-      label: { color: vividSaasTheme.semantic.neutral, fontSize: 12 },
+      itemStyle: { 
+        borderColor: vividSaasTheme.background, 
+        borderWidth: 3,
+        borderRadius: 8
+      },
+      label: { 
+        color: vividSaasTheme.semantic.neutral, 
+        fontSize: 13,
+        formatter: '{b}\n{d}%'
+      },
       data: rows.map(r => ({ name: r[xAxisKey], value: r[activeYKeys[0]] })),
     }],
   };

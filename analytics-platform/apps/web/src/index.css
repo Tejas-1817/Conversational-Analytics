@@ -735,15 +735,27 @@ tr:last-child td {
 
 .message-bubble {
   display: flex;
-  gap: var(--space-2);
+  gap: var(--space-3);
   max-width: 100%;
   min-width: 0;
+  margin-bottom: 1.5rem;
+}
+
+.message-bubble.user {
+  flex-direction: row-reverse;
+  margin-left: auto;
+  max-width: 80%;
+}
+
+.message-bubble.assistant {
+  margin-right: auto;
+  max-width: 95%;
 }
 
 .message-avatar {
   width: 34px;
   height: 34px;
-  border-radius: var(--radius-sm);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -755,11 +767,13 @@ tr:last-child td {
 .message-avatar.assistant {
   background: var(--primary);
   color: white;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
 }
 
 .message-avatar.user {
-  background: #E5E7EE;
-  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
 }
 
 .message-content {
@@ -773,6 +787,16 @@ tr:last-child td {
 .message-bubble.user .message-content {
   font-size: 1rem;
   font-weight: 500;
+  text-align: right;
+  background: var(--primary);
+  color: white;
+  padding: 1rem 1.25rem;
+  border-radius: 18px 4px 18px 18px;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+}
+
+.message-bubble.assistant .message-content {
+  text-align: left;
 }
 
 /* ==========================================================================
@@ -971,4 +995,12 @@ hr {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #B0B5C4;
+}
+
+/* Raw Data Grid accordion — smaller disclosure arrow */
+.raw-data-accordion > summary::marker {
+  font-size: 0.6em;
+}
+.raw-data-accordion > summary::-webkit-details-marker {
+  font-size: 0.6em;
 }
