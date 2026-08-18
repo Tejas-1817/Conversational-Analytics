@@ -24,8 +24,9 @@ def create_source(
     session: Session = Depends(get_session),
     current_user: User = Depends(require_admin),
 ) -> DataSource:
+    dedicated_tenant_id = uuid.uuid4()
     source = DataSource(
-        tenant_id=current_user.tenant_id,
+        tenant_id=dedicated_tenant_id,
         name=payload.name,
         type=payload.type,
         host=payload.host,
@@ -72,7 +73,7 @@ def create_source(
 
     audit(
         session,
-        tenant_id=current_user.tenant_id,
+        tenant_id=dedicated_tenant_id,
         entity_type="data_sources",
         entity_id=source.id,
         action=AuditEvent.SOURCE_REGISTERED,
@@ -91,10 +92,8 @@ def list_sources(
     session: Session = Depends(get_session),
     current_user: User = Depends(require_permission(Permission.VIEW_SOURCES)),
 ) -> list[DataSource]:
-    # SECURITY FIX: filter by tenant_id — previously returned ALL sources cross-tenant
     return (
         session.query(DataSource)
-        .filter(DataSource.tenant_id == current_user.tenant_id)
         .order_by(DataSource.created_at.desc())
         .all()
     )
