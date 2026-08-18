@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Database, Activity, Search, LogOut, BookOpen, MessageSquare, Users, LayoutDashboard, BarChart2, Menu, Bell, User as UserIcon, Settings, ChevronLeft, ChevronRight, Moon, Building2 } from 'lucide-react';
+import { Database, Activity, Search, LogOut, BookOpen, MessageSquare, Users, LayoutDashboard, BarChart2, Menu, Bell, User as UserIcon, Settings, ChevronLeft, ChevronRight, Moon, Building2, Boxes } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
@@ -45,6 +45,9 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
           </Link>
           <Link to="/dashboards" className={`sidebar-link ${location.pathname === '/dashboards' ? 'active' : ''}`} title="Dashboards">
             <LayoutDashboard size={18} /> {!isCollapsed && "Dashboards"}
+          </Link>
+          <Link to="/domains" className={`sidebar-link ${location.pathname === '/domains' ? 'active' : ''}`} title="Domains">
+            <Boxes size={18} /> {!isCollapsed && "Domains"}
           </Link>
 
           {isAdmin && (
