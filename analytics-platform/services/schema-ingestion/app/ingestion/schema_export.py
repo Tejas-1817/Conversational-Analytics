@@ -342,7 +342,7 @@ def export_human_readable_schema(
                 )
                 for r in records
             ]
-            upserted_count = ChromaStore().upsert(source.tenant_id, chroma_objects)
+            upserted_count = ChromaStore().upsert(source.tenant_id, chroma_objects, source_id=source.id)
             log.info("automatic_chromadb_vectors_stored", tenant_id=tenant_str, upserted_count=upserted_count)
         except Exception as chroma_exc:
             log.warning("automatic_chromadb_store_warning", error=str(chroma_exc))
