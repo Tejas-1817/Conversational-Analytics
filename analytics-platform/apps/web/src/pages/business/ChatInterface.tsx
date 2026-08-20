@@ -243,6 +243,7 @@ export const ChatInterface = () => {
 
   const [domains, setDomains] = useState<any[]>([]);
   const [selectedDomainId, setSelectedDomainId] = useState<string>('');
+  const [showDomainPicker, setShowDomainPicker] = useState(false);
 
   useEffect(() => {
     fetchApi('/domains')
@@ -477,38 +478,7 @@ export const ChatInterface = () => {
 
       {/* Main Chat Area */}
       <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
-        {/* Domain Context Selection Header Bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 1.25rem', borderBottom: '1px solid var(--border-color)', background: 'var(--bg-card)', zIndex: 5 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Domain Context:</span>
-            <select
-              value={selectedDomainId}
-              onChange={(e) => setSelectedDomainId(e.target.value)}
-              style={{
-                padding: '0.3rem 0.6rem',
-                borderRadius: 'var(--radius-sm)',
-                background: 'var(--bg-dark)',
-                border: '1px solid var(--border-color)',
-                color: 'var(--text-main)',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                fontWeight: 500,
-              }}
-            >
-              <option value="">🌐 All Database Tables (Default)</option>
-              {domains.map((d: any) => (
-                <option key={d.id} value={d.id}>
-                  🎯 {d.name} {d.source_name ? `(${d.source_name})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          {selectedDomainId && (
-            <span className="text-muted text-sm" style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>
-              ✓ LLM will refer strictly to selected domain context & documents
-            </span>
-          )}
-        </div>
+
 
         <div className="chat-messages" style={{ padding: '0 1rem', flex: 1 }}>
           {messages.length === 0 && (
@@ -562,7 +532,7 @@ export const ChatInterface = () => {
 
                         {/* 2. Primary Visualization */}
                         {m.result_data && m.result_data.length > 0 && (
-                          <div className="card" style={{ padding: '1.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-dark)' }}>
+                          <div style={{ marginTop: '0.5rem', width: '100%' }}>
                             <div className="flex justify-between items-center mb-4">
                               <div className="flex items-center gap-2">
                                 <BarChart2 size={18} className="text-primary" style={{ color: '#6366F1' }} />
@@ -724,12 +694,12 @@ export const ChatInterface = () => {
               </div>
               <div className="message-content">
                 <div className="flex items-center gap-2 text-muted mt-2">
-                  <div style={{ display: 'flex', gap: '4px' }}>
+                  <div style={{ display: 'flex', gap: '4px', color: 'var(--primary)' }}>
                     <span className="skeleton" style={{ width: 8, height: 8, borderRadius: '50%', animationDelay: '0ms' }} />
                     <span className="skeleton" style={{ width: 8, height: 8, borderRadius: '50%', animationDelay: '150ms' }} />
                     <span className="skeleton" style={{ width: 8, height: 8, borderRadius: '50%', animationDelay: '300ms' }} />
                   </div>
-                  <span className="text-sm">Generating...</span>
+                  <span className="text-sm"></span>
                 </div>
               </div>
             </div>
@@ -738,32 +708,176 @@ export const ChatInterface = () => {
         </div>
 
         <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: 0, zIndex: 20, paddingBottom: '1.5rem', paddingTop: '1rem' }}>
-          <form onSubmit={sendMessage} className="chat-input-wrapper" style={{ margin: '0 auto', maxWidth: '800px' }}>
-            <input
-              style={{ flex: 1, padding: '1rem', fontSize: '0.95rem' }}
-              placeholder="Ask a question about your data..."
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              disabled={loading}
-              autoFocus
-            />
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              style={{
-                borderRadius: '50%',
-                width: '40px',
-                height: '40px',
-                padding: 0,
-                background: input.trim() ? 'var(--primary)' : 'var(--bg-hover)',
-                color: input.trim() ? 'white' : 'var(--text-muted)',
-                marginRight: '0.5rem',
-                transition: 'all 0.2s'
-              }}
-            >
-              <Send size={18} style={{ transform: 'translateX(-1px)' }} />
-            </button>
-          </form>
+          <div style={{ margin: '0 auto', maxWidth: '800px' }}>
+            {/* Selected domain chip */}
+            {selectedDomainId && (() => {
+              const dom = domains.find((d: any) => d.id === selectedDomainId);
+              return dom ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', paddingLeft: '0.25rem' }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.2rem 0.6rem 0.2rem 0.5rem',
+                    background: 'rgba(99,102,241,0.12)',
+                    border: '1px solid rgba(99,102,241,0.3)',
+                    borderRadius: '99px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    color: 'var(--primary)',
+                  }}>
+                    🎯 {dom.name}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDomainId('')}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'var(--primary)', opacity: 0.7, marginLeft: '2px' }}
+                      title="Remove domain context"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>LLM will use this domain context</span>
+                </div>
+              ) : null;
+            })()}
+
+            <form onSubmit={sendMessage} className="chat-input-wrapper" style={{ position: 'relative' }}>
+              {/* Domain picker + button */}
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginLeft: '0.5rem', marginRight: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowDomainPicker(prev => !prev)}
+                  title="Choose domain context"
+                  style={{
+                    width: '30px', height: '30px', borderRadius: '50%', padding: 0,
+                    background: selectedDomainId ? 'rgba(99,102,241,0.1)' : 'transparent',
+                    border: 'none',
+                    color: selectedDomainId ? 'var(--primary)' : 'var(--text-main)',
+                    cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <Plus size={20} />
+                </button>
+
+                {/* Domain Picker Popover */}
+                {showDomainPicker && (
+                  <div
+                    style={{
+                      position: 'absolute', bottom: 'calc(100% + 15px)', left: '-20px',
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '12px',
+                      // boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+                      padding: '0.5rem',
+                      minWidth: '260px',
+                      zIndex: 100,
+                    }}
+                  >
+                    <div style={{ padding: '0.4rem 0.6rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Domain Context
+                    </div>
+                    {/* Default / clear option */}
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedDomainId(''); setShowDomainPicker(false); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        width: '100%', padding: '0.5rem 0.75rem',
+                        background: !selectedDomainId ? 'rgba(99,102,241,0.1)' : 'transparent',
+                        border: 'none', borderRadius: '8px',
+                        cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
+                        color: !selectedDomainId ? 'var(--primary)' : 'var(--text-main)',
+                        textAlign: 'left',
+                      }}
+                    >
+                      All Database Tables
+                      {!selectedDomainId && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', opacity: 0.7 }}>✓</span>}
+                    </button>
+                    {domains.length > 0 && <div style={{ height: '1px', background: 'var(--border-color)', margin: '0.3rem 0.25rem' }} />}
+                    {domains.map((d: any) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => { setSelectedDomainId(d.id); setShowDomainPicker(false); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '0.5rem',
+                          width: '100%', padding: '0.5rem 0.75rem',
+                          background: selectedDomainId === d.id ? 'rgba(99,102,241,0.1)' : 'transparent',
+                          border: 'none', borderRadius: '8px',
+                          cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
+                          color: selectedDomainId === d.id ? 'var(--primary)' : 'var(--text-main)',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {d.name}
+                        {d.source_name && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>({d.source_name})</span>}
+                        {selectedDomainId === d.id && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', opacity: 0.7 }}>✓</span>}
+                      </button>
+                    ))}
+                    {domains.length === 0 && (
+                      <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No domains created yet.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <textarea
+                style={{
+                  flex: 1,
+                  padding: '0.65rem 0',
+                  fontSize: '0.95rem',
+                  resize: 'none',
+                  minHeight: '40px',
+                  maxHeight: '120px',
+                  overflowY: 'auto',
+                  lineHeight: '1.4',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'inherit',
+                  outline: 'none',
+                  boxShadow: 'none',
+                  fontFamily: 'inherit',
+                }}
+                rows={1}
+                placeholder="Ask a question about your data..."
+                value={input}
+                onChange={e => {
+                  setInput(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = `${e.target.scrollHeight}px`;
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!loading && input.trim()) {
+                      sendMessage(e as any);
+                    }
+                  }
+                }}
+                disabled={loading}
+                autoFocus
+                onFocus={() => setShowDomainPicker(false)}
+              />
+              <button
+                type="submit"
+                disabled={loading || !input.trim()}
+                style={{
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  padding: 0,
+                  background: input.trim() ? 'var(--primary)' : 'var(--bg-hover)',
+                  color: input.trim() ? 'white' : 'var(--text-muted)',
+                  marginRight: '0.5rem',
+                  transition: 'all 0.2s',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}
+              >
+                <Send size={15} style={{ transform: 'translateX(-1px)' }} />
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
