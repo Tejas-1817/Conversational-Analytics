@@ -55,18 +55,21 @@ class RetrievalResult:
 # Store
 # ---------------------------------------------------------------------------
 
-def _collection_name(tenant_id: str | uuid.UUID) -> str:
-    """Stable, Chroma-safe collection name for a tenant.
+def _collection_name(tenant_id: str | uuid.UUID, source_id: str | uuid.UUID | None = None) -> str:
+    """Stable, Chroma-safe collection name for a tenant and optional data source.
 
     Chroma collection names must match ^[a-zA-Z0-9_-]{3,63}$.
-    We use 'tenant_' + the UUID in lowercase hex (no hyphens).
+    We format as 'tenant_' + tenant_hex + optional '_src_' + source_hex.
     """
-    hex_id = str(tenant_id).replace("-", "").lower()
-    return f"tenant_{hex_id}"
+    hex_tenant = str(tenant_id).replace("-", "").lower()
+    if source_id:
+        hex_source = str(source_id).replace("-", "").lower()
+        return f"tenant_{hex_tenant[:16]}_src_{hex_source[:16]}"
+    return f"tenant_{hex_tenant}"
 
 
 class ChromaStore:
-    """Thread-safe wrapper around a Chroma client with per-tenant collections."""
+    """Thread-safe wrapper around a Chroma client with per-tenant and per-source collections."""
 
     def __init__(self, ephemeral: bool = False) -> None:
         settings = get_settings()
@@ -87,13 +90,16 @@ class ChromaStore:
         else:
             self._client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
 
-
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _get_or_create_collection(self, tenant_id: str | uuid.UUID) -> Collection:
-        name = _collection_name(tenant_id)
+    def _get_or_create_collection(
+        self,
+        tenant_id: str | uuid.UUID,
+        source_id: str | uuid.UUID | None = None
+    ) -> Collection:
+        name = _collection_name(tenant_id, source_id=source_id)
         return self._client.get_or_create_collection(
             name=name,
             metadata={"hnsw:space": "cosine"},
@@ -103,17 +109,17 @@ class ChromaStore:
     # Public API
     # ------------------------------------------------------------------
 
-    def upsert(self, tenant_id: str | uuid.UUID, objects: list[EmbeddedObject]) -> int:
-        """Upsert a batch of embedded objects into the tenant's collection.
-
-        Returns the number of objects upserted.
-        The metadata dict on each object MUST contain 'tenant_id' — this is
-        enforced here so that the query-side where-filter always has a value.
-        """
+    def upsert(
+        self,
+        tenant_id: str | uuid.UUID,
+        objects: list[EmbeddedObject],
+        source_id: str | uuid.UUID | None = None
+    ) -> int:
+        """Upsert a batch of embedded objects into the tenant's/source's collection."""
         if not objects:
             return 0
 
-        collection = self._get_or_create_collection(tenant_id)
+        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
         tenant_str = str(tenant_id)
 
         ids: list[str] = []
@@ -122,9 +128,10 @@ class ChromaStore:
         metadatas: list[dict] = []
 
         for obj in objects:
-            # Enforce tenant_id presence in metadata — invariant
             meta = dict(obj.metadata)
-            meta["tenant_id"] = tenant_str  # always overwrite to be safe
+            meta["tenant_id"] = tenant_str  # invariant
+            if source_id:
+                meta["source_id"] = str(source_id)
             ids.append(obj.id)
             embeddings.append(obj.embedding)
             documents.append(obj.text)
@@ -143,45 +150,54 @@ class ChromaStore:
         tenant_id: str | uuid.UUID,
         query_embedding: list[float],
         n_results: int = 5,
+        source_id: str | uuid.UUID | None = None,
     ) -> list[RetrievalResult]:
-        """Query the tenant's collection.
-
-        The where filter on tenant_id is NON-NEGOTIABLE — it is always applied
-        regardless of which collection is opened, so a misconfigured collection
-        name cannot leak cross-tenant data.
-        """
-        collection = self._get_or_create_collection(tenant_id)
+        """Query the tenant's/source's collection."""
+        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
         tenant_str = str(tenant_id)
 
-        # Guard: if collection is empty Chroma raises
         count = collection.count()
         if count == 0:
             return []
 
         actual_n = min(n_results, count)
+        where_filter: dict = {"tenant_id": tenant_str}
+        if source_id:
+            where_filter = {"$and": [{"tenant_id": tenant_str}, {"source_id": str(source_id)}]}
+
         results = collection.query(
             query_embeddings=[query_embedding],
             n_results=actual_n,
-            where={"tenant_id": tenant_str},   # INVARIANT: always filter by tenant
+            where=where_filter,
             include=["documents", "metadatas", "distances"],
         )
 
         hits: list[RetrievalResult] = []
-        for i, doc_id in enumerate(results["ids"][0]):
-            hits.append(RetrievalResult(
-                id=doc_id,
-                text=results["documents"][0][i],
-                metadata=results["metadatas"][0][i],
-                distance=results["distances"][0][i],
-            ))
+        if results.get("ids") and len(results["ids"]) > 0:
+            for i, doc_id in enumerate(results["ids"][0]):
+                hits.append(RetrievalResult(
+                    id=doc_id,
+                    text=results["documents"][0][i],
+                    metadata=results["metadatas"][0][i],
+                    distance=results["distances"][0][i],
+                ))
         return hits
 
-    def delete(self, tenant_id: str | uuid.UUID, object_id: str) -> None:
+    def delete(
+        self,
+        tenant_id: str | uuid.UUID,
+        object_id: str,
+        source_id: str | uuid.UUID | None = None
+    ) -> None:
         """Remove a single vector by its object ID."""
-        collection = self._get_or_create_collection(tenant_id)
+        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
         collection.delete(ids=[object_id])
 
-    def count(self, tenant_id: str | uuid.UUID) -> int:
-        """Return the number of vectors in the tenant's collection."""
-        collection = self._get_or_create_collection(tenant_id)
+    def count(
+        self,
+        tenant_id: str | uuid.UUID,
+        source_id: str | uuid.UUID | None = None
+    ) -> int:
+        """Return the number of vectors in the collection."""
+        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
         return collection.count()
