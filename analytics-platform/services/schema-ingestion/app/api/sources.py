@@ -2,7 +2,7 @@
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.api.deps import Permission, require_admin, require_permission, verify_tenant_owns
@@ -21,10 +21,13 @@ router = APIRouter(prefix="/sources", tags=["sources"])
 def create_source(
     payload: DataSourceCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     current_user: User = Depends(require_admin),
 ) -> DataSource:
+
     # dedicated_tenant_id = uuid.uuid4()
+
     source = DataSource(
         tenant_id=current_user.tenant_id,
         name=payload.name,
@@ -66,10 +69,7 @@ def create_source(
     session.add(job)
     session.commit()
 
-    try:
-        run_pipeline(str(job.id), str(source.id))
-    except Exception as exc:
-        log.warning("automatic_pipeline_trigger_failed", error=str(exc))
+    background_tasks.add_task(run_pipeline, str(job.id), str(source.id))
 
     audit(
         session,

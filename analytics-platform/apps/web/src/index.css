@@ -18,7 +18,7 @@
    ========================================================================== */
 :root {
   /* Surfaces */
-  --bg-page: #F3F4F6;
+  --bg-page: #ffffff;
   --bg-dark: #F3F4F6;
   /* alias — used throughout legacy code */
   --bg-sidebar: #FFFFFF;
@@ -714,8 +714,7 @@ tr:last-child td {
 }
 
 .chat-input-wrapper:focus-within {
-  border-color: var(--border-focus);
-  box-shadow: var(--shadow-md), 0 0 0 3px rgba(91, 82, 232, 0.10);
+  box-shadow: var(--shadow-md);
 }
 
 .chat-input-wrapper input {
@@ -765,8 +764,8 @@ tr:last-child td {
 }
 
 .message-avatar.assistant {
-  background: var(--primary);
-  color: white;
+  background: #eff6ff;
+  color: black;
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
 }
 
@@ -788,8 +787,8 @@ tr:last-child td {
   font-size: 1rem;
   font-weight: 500;
   text-align: right;
-  background: var(--primary);
-  color: white;
+  background: #eff6ff;
+  color: black;
   padding: 1rem 1.25rem;
   border-radius: 18px 4px 18px 18px;
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
@@ -998,9 +997,10 @@ hr {
 }
 
 /* Raw Data Grid accordion — smaller disclosure arrow */
-.raw-data-accordion > summary::marker {
+.raw-data-accordion>summary::marker {
   font-size: 0.6em;
 }
-.raw-data-accordion > summary::-webkit-details-marker {
+
+.raw-data-accordion>summary::-webkit-details-marker {
   font-size: 0.6em;
 }
