@@ -53,14 +53,46 @@ class ChatService:
             except Exception as exc:
                 log.warning("failed_to_resolve_active_datasource", error=str(exc))
 
-        # 2. Dynamically load active schema from SchemaRegistry or active DataSource
-        db_name, schema_text = self.schema_provider.get_connected_schema(
+        # 2. Stage 1: Vector DB Semantic Routing (Retrieve Top Relevant Table Schemas)
+        db_name, full_schema_text = self.schema_provider.get_connected_schema(
             db_session=db_session,
             user=user,
             source=active_source
         )
         if active_source and active_source.database_name:
             db_name = active_source.database_name
+
+        relevant_schema_text = ""
+        if user and hasattr(user, "tenant_id"):
+            try:
+                from app.embeddings.chroma_store import ChromaStore
+                from app.embeddings.registry import get_embedding_provider
+
+                query_vector = get_embedding_provider().embed([question])[0]
+                hits = ChromaStore().query(
+                    tenant_id=user.tenant_id,
+                    query_embedding=query_vector,
+                    n_results=3,
+                    source_id=active_source.id if active_source else None
+                )
+                if hits:
+                    relevant_schema_text = "\n\n".join(hit.text for hit in hits)
+                    table_labels = [
+                        hit.metadata.get("label", "").replace("TABLE: ", "").strip()
+                        for hit in hits
+                        if hit.metadata.get("label")
+                    ]
+                    log.info(
+                        "stage_1_vector_db_relevant_tables_found",
+                        chunks=len(hits),
+                        relevant_tables=table_labels,
+                        schema_chars=len(relevant_schema_text)
+                    )
+            except Exception as exc:
+                log.warning("stage_1_vector_search_fallback", error=str(exc))
+
+        # Fallback: if vector search returned empty or was unavailable, use full schema text
+        schema_text = relevant_schema_text if relevant_schema_text else full_schema_text
 
         # 3. Domain context & table scoping
         domain_context_str = ""
@@ -86,7 +118,7 @@ class ChatService:
             except Exception as exc:
                 log.warning("failed_to_load_domain_context", error=str(exc))
 
-        # 4. Build system prompt using loaded active schema text and optional domain context
+        # 4. Stage 2: Grounded system prompt using retrieved relevant schema text
         prompt = self.prompt_builder.build_prompt(
             question=question,
             schema_text=schema_text,
