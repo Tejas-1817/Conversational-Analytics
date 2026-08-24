@@ -75,7 +75,12 @@ export const Dashboards = () => {
       const updatedWidgets = [...activeDashboard.widgets, newWidget];
       await fetchApi(`/dashboards/${activeDashboard.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ widgets: updatedWidgets })
+        body: JSON.stringify({ 
+          widgets: updatedWidgets.map((w: any) => ({
+            insight_id: w.insight_id || (w.insight && w.insight.id),
+            x: w.x, y: w.y, w: w.w, h: w.h
+          })) 
+        })
       });
       await loadData();
     } catch (e: any) {
@@ -89,7 +94,12 @@ export const Dashboards = () => {
       const updatedWidgets = activeDashboard.widgets.filter((w: any) => w.id !== widgetId && w.insight_id !== widgetId);
       await fetchApi(`/dashboards/${activeDashboard.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ widgets: updatedWidgets })
+        body: JSON.stringify({ 
+          widgets: updatedWidgets.map((w: any) => ({
+            insight_id: w.insight_id || (w.insight && w.insight.id),
+            x: w.x, y: w.y, w: w.w, h: w.h
+          })) 
+        })
       });
       await loadData();
     } catch (e: any) {
@@ -128,7 +138,12 @@ export const Dashboards = () => {
       });
       await fetchApi(`/dashboards/${activeDashboard.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ widgets: updatedWidgets })
+        body: JSON.stringify({ 
+          widgets: updatedWidgets.map((w: any) => ({
+            insight_id: w.insight_id || (w.insight && w.insight.id),
+            x: w.x, y: w.y, w: w.w, h: w.h
+          })) 
+        })
       });
       // Updating local state to avoid flicker before API fetch completes
       setDashboards(d => d.map(dash => dash.id === activeDashboard.id ? { ...dash, widgets: updatedWidgets } : dash));
@@ -205,16 +220,28 @@ export const Dashboards = () => {
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {insights.map(i => (
-                <div key={i.id} style={{ padding: '0.75rem', background: 'var(--bg-card)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', position: 'relative' }} className="group">
+                <div 
+                  key={i.id} 
+                  onClick={() => handleAddInsightToDashboard(i.id)}
+                  style={{ 
+                    padding: '0.75rem', 
+                    background: 'var(--bg-card)', 
+                    borderRadius: 'var(--radius-sm)', 
+                    border: '1px solid var(--border-color)', 
+                    position: 'relative',
+                    cursor: activeDashboard ? 'pointer' : 'default',
+                    transition: 'all 0.2s'
+                  }} 
+                  className="group hover-bg-light"
+                >
                   <div style={{ fontWeight: 500, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <Bookmark size={14} className="text-secondary" /> {i.name}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {i.query}
                   </div>
-                  {activeDashboard && isEditMode && (
+                  {activeDashboard && (
                     <button 
-                      onClick={() => handleAddInsightToDashboard(i.id)}
                       className="btn-ghost" 
                       style={{ position: 'absolute', right: '0.25rem', top: '0.25rem', padding: '0.25rem', opacity: 0.5 }}
                       title="Add to active dashboard"
@@ -350,7 +377,12 @@ export const Dashboards = () => {
                         </div>
                         <div style={{ flex: 1, padding: '1rem', overflow: 'hidden', minHeight: 0 }}>
                           {ins.chart_config ? (
-                            <ChartRenderer data={ins.chart_config.data} chartType={ins.chart_config.chartType} />
+                            <ChartRenderer 
+                              data={ins.chart_config.data} 
+                              chartType={ins.chart_config.chartType} 
+                              columns={ins.chart_config.columns}
+                              columnTypes={ins.chart_config.columnTypes}
+                            />
                           ) : (
                             <div className="flex items-center justify-center h-full text-muted">No visualization data</div>
                           )}

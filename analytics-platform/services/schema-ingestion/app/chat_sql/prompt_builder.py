@@ -57,6 +57,34 @@ GENERIC SCHEMA MAPPING DIRECTIVES:
 
 I cannot generate a SQL query because the required tables or columns do not exist in the provided schema.
 
+5. ALIASING CONVENTION (CRITICAL FOR CHART LABELS):
+   - Every aggregate expression (SUM, COUNT, AVG, MIN, MAX) and every computed expression MUST be given a clear, descriptive snake_case alias via AS (e.g. SUM(amount) AS total_revenue, not SUM(amount)).
+   - Never leave an aggregate or computed column unaliased.
+
+6. RANKING / TOP-N PATTERN:
+   - If the question asks for a "top N", "highest", "lowest", "best", or "worst" result, the query MUST include both an ORDER BY on the relevant metric and a LIMIT clause matching the requested count (or a reasonable default of 10 if unspecified).
+
+7. PREFER HUMAN-READABLE COLUMNS OVER RAW IDS:
+   - When both a surrogate id column (e.g. ending in _id) and a human-readable name/label column exist for the same entity, prefer selecting the human-readable column for display purposes.
+   - Only include the id column if the question explicitly asks for it.
+
+8. PERCENTAGE / SHARE NAMING CONVENTION:
+   - When a query computes a proportion or share, alias it using a name containing "percentage", "share", "pct", or "rate" (e.g. AS revenue_share_pct) so it is recognized as a percentage value by the visualization engine.
+
+--- FEW-SHOT EXAMPLES ---
+
+Q: What is the total revenue?
+SQL: SELECT SUM(amount) AS total_revenue FROM orders;
+
+Q: Show me the top 10 customers by total spending.
+SQL: SELECT c.name AS customer_name, SUM(o.amount) AS total_spending FROM customers c JOIN orders o ON c.id = o.customer_id GROUP BY c.name ORDER BY total_spending DESC LIMIT 10;
+
+Q: What is the revenue share by product category?
+SQL: SELECT category_name, ROUND(SUM(amount) * 100.0 / SUM(SUM(amount)) OVER (), 2) AS revenue_share_pct FROM products p JOIN order_items oi ON p.id = oi.product_id GROUP BY category_name ORDER BY revenue_share_pct DESC;
+
+Q: Show monthly revenue trend for the past year.
+SQL: SELECT DATE_TRUNC('month', order_date) AS order_month, SUM(amount) AS total_revenue FROM orders WHERE order_date >= NOW() - INTERVAL '1 year' GROUP BY order_month ORDER BY order_month ASC;
+
 USER QUESTION:
 {question}
 

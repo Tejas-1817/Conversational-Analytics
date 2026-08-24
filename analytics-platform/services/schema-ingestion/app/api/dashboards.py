@@ -64,6 +64,9 @@ class DashboardOut(BaseModel):
     class Config:
         from_attributes = True
 
+class DashboardUpdate(BaseModel):
+    widgets: list[WidgetCreate]
+
 # --- Endpoints ---
 
 @router.post("/insights", response_model=InsightOut)
@@ -115,4 +118,24 @@ def get_dashboard(dash_id: uuid.UUID, db: Session = Depends(get_session), user: 
     dash = db.scalar(select(Dashboard).where(Dashboard.id == dash_id, Dashboard.tenant_id == user.tenant_id))
     if not dash:
         raise HTTPException(status_code=404, detail="Dashboard not found")
+    return dash
+
+@router.patch("/{dash_id}", response_model=DashboardOut)
+def update_dashboard(dash_id: uuid.UUID, dash_update: DashboardUpdate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    dash = db.scalar(select(Dashboard).where(Dashboard.id == dash_id, Dashboard.tenant_id == user.tenant_id))
+    if not dash:
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+        
+    # Delete old widgets
+    db.query(DashboardWidget).filter(DashboardWidget.dashboard_id == dash.id).delete()
+    
+    # Add new widgets
+    for w in dash_update.widgets:
+        db.add(DashboardWidget(
+            dashboard_id=dash.id,
+            insight_id=w.insight_id,
+            x=w.x, y=w.y, w=w.w, h=w.h
+        ))
+    db.commit()
+    db.refresh(dash)
     return dash

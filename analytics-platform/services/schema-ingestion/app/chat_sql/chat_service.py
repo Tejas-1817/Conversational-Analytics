@@ -181,7 +181,7 @@ class ChatService:
                     role="assistant",
                     content=answer,
                     generated_sql=validated_sql,
-                    result_data={"rows": result_data, "columns": columns, "row_count": row_count, "visualization": vis_type, "title": title},
+                    result_data={"rows": result_data, "columns": columns, "row_count": row_count, "visualization": vis_type, "title": title, "column_types": vis_payload.get("profile", {}).get("column_types", {})},
                     chart_recommendation=vis_type,
                     execution_time_ms=int(execution_time_ms),
                     status="complete"
@@ -214,5 +214,6 @@ class ChatService:
             "recommended_visualization": vis_payload,
             "execution_time_ms": execution_time_ms,
             "generated_at": generated_at,
-            "database": db_name
+            "database": db_name,
+            "column_types": vis_payload.get("profile", {}).get("column_types", {}),
         }

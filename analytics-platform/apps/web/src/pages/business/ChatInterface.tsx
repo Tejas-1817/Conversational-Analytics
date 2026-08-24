@@ -314,7 +314,12 @@ export const ChatInterface = () => {
         body: JSON.stringify({
           name,
           query: msg.question || msg.intent?.original_query || 'Saved Insight',
-          chart_config: { chartType: 'table', data: msg.result_data || [] }
+          chart_config: { 
+            chartType: msg.chart_recommendation || (msg.recommended_visualization && msg.recommended_visualization.chart_type) || 'table', 
+            data: msg.result_data || [],
+            columns: msg.columns,
+            columnTypes: msg.column_types || (msg.result_data && typeof msg.result_data === 'object' && !Array.isArray(msg.result_data) ? msg.result_data.column_types : undefined) || (msg.recommended_visualization && msg.recommended_visualization.profile?.column_types)
+          }
         })
       });
       alert('Insight saved successfully! You can add it to a Dashboard.');
@@ -572,9 +577,16 @@ export const ChatInterface = () => {
                               const cardTitle = m.title || (m.result_data && m.result_data.title) || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
                               const containerHeight = resolvedType === 'kpi_card' ? '180px' : (resolvedType === 'detail_card' ? '220px' : (resolvedType === 'multi_kpi' ? '160px' : '360px'));
 
+                              // Resolve column_types from API response or persisted result_data
+                              const columnTypes: Record<string, string> =
+                                m.column_types ||
+                                (m.result_data && typeof m.result_data === 'object' && !Array.isArray(m.result_data) ? m.result_data.column_types : undefined) ||
+                                (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.profile?.column_types : undefined) ||
+                                {};
+
                               return (
                                 <div style={{ height: containerHeight, width: '100%' }}>
-                                  <ChartRenderer data={rows} chartType={resolvedType} title={cardTitle} columns={cols} />
+                                  <ChartRenderer data={rows} chartType={resolvedType} title={cardTitle} columns={cols} columnTypes={columnTypes} />
                                 </div>
                               );
                             })()}

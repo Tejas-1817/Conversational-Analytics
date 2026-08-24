@@ -23,6 +23,7 @@ interface ChartProps {
   chartType: string;
   title?: string;
   columns?: string[];
+  columnTypes?: Record<string, string>; // e.g. { revenue: 'NUMERIC', month: 'TIME_SERIES' }
 }
 
 export const vividSaasTheme = {
@@ -36,7 +37,7 @@ export const vividSaasTheme = {
 
 const COLORS = vividSaasTheme.categorical;
 
-export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, columns: customColumns }) => {
+export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, columns: customColumns, columnTypes = {} }) => {
   const tokens = useThemeTokens();
   // Normalize input data into columns & rows format
   let rows: any[] = [];
@@ -187,7 +188,11 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
   // Multi KPI Cards (rows == 1 AND multiple numeric columns)
   if (chartType === 'multi_kpi' || (rows.length === 1 && columns.every(col => typeof rows[0][col] === 'number'))) {
     const mainRecord = rows[0];
-    const numericCols = columns.filter(col => typeof mainRecord[col] === 'number' || !isNaN(Number(mainRecord[col])));
+    const numericCols = columns.filter(col => {
+      // Prefer columnTypes if available, fall back to typeof check
+      if (columnTypes[col]) return columnTypes[col] === 'NUMERIC' || columnTypes[col] === 'PERCENTAGE';
+      return typeof mainRecord[col] === 'number' || !isNaN(Number(mainRecord[col]));
+    });
     const primaryCols = numericCols.slice(0, 3);
     const secondaryCols = numericCols.slice(3);
 
@@ -255,7 +260,13 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
 
   // Horizontal Leaderboard Bar Chart (top-N queries or horizontal_bar)
   if (chartType === 'horizontal_bar' || chartType === 'leaderboard') {
-    const valCol = secondCol;
+    // Phase 1 fix + Phase 2 columnTypes: detect the actual numeric value column
+    const numericCols = columns.slice(1).filter(col => {
+      // Prefer columnTypes if available, fall back to typeof check
+      if (columnTypes[col]) return columnTypes[col] === 'NUMERIC' || columnTypes[col] === 'PERCENTAGE';
+      return rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))));
+    });
+    const valCol = numericCols[numericCols.length - 1] || secondCol;
     const nameCol = firstCol;
     const maxVal = Math.max(...rows.map(r => Number(r[valCol]) || 1));
 
@@ -521,11 +532,20 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
     );
   }
 
-  // ECharts Y-Axis keys (all numeric columns starting from index 1)
-  const xAxisKey = firstCol;
-  const yAxisKeys = columns.slice(1).filter(col =>
-    rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))))
-  );
+  // ECharts axis key resolution — prefer columnTypes when available, fall back to position/typeof
+  const hasColumnTypes = Object.keys(columnTypes).length > 0;
+
+  // xAxisKey: prefer first CATEGORICAL or TIME_SERIES column; fall back to columns[0]
+  const xAxisKey = hasColumnTypes
+    ? (columns.find(col => columnTypes[col] === 'CATEGORICAL' || columnTypes[col] === 'TIME_SERIES') || firstCol)
+    : firstCol;
+
+  // yAxisKeys: prefer NUMERIC/PERCENTAGE columns; fall back to typeof-based detection
+  const yAxisKeys = hasColumnTypes
+    ? columns.filter(col => col !== xAxisKey && (columnTypes[col] === 'NUMERIC' || columnTypes[col] === 'PERCENTAGE'))
+    : columns.slice(1).filter(col =>
+        rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))))
+      );
 
   const activeYKeys = yAxisKeys.length > 0 ? yAxisKeys : [secondCol];
 
@@ -553,8 +573,8 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
     grid: { left: 96, right: 32, top: title ? 64 : 40, bottom: 48, containLabel: true },
     toolbox: {
       show: true,
-      right: 16,
-      top: 8,
+      right: 0,
+      top: 0,
       feature: { saveAsImage: { title: 'Download', backgroundColor: vividSaasTheme.background, pixelRatio: 2 } },
       iconStyle: { borderColor: vividSaasTheme.semantic.neutral, opacity: 0.4 },
     }
@@ -571,8 +591,8 @@ export const ChartRenderer: React.FC<ChartProps> = ({ data, chartType, title, co
     axisLabel: { 
       color: vividSaasTheme.semantic.neutral, 
       fontSize: 12,
-      interval: 0,
-      hideOverlap: false,
+      interval: 'auto',
+      hideOverlap: true,
       align: 'center',
       width: 90,
       overflow: 'truncate'

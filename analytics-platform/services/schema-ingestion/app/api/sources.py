@@ -4,6 +4,7 @@ import uuid
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import Permission, require_admin, require_permission, verify_tenant_owns
 from app.audit import AuditEvent, audit
@@ -42,7 +43,14 @@ def create_source(
         updated_by=current_user.email,
     )
     session.add(source)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=409, 
+            detail=f"A data source named '{payload.name}' already exists in your workspace."
+        )
 
     # Fail registration early if unreachable or writable
     try:
