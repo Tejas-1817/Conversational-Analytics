@@ -238,14 +238,12 @@ def export_human_readable_schema(
     glossary_lines = []
 
     for t in tables:
-        lines.append(f"-- ==================================================")
         header_title = f"-- TABLE: {t.table_name}"
         if getattr(t, "business_name", None):
             header_title += f" (Business Name: {t.business_name})"
         lines.append(header_title)
         if getattr(t, "description", None):
             lines.append(f"-- Description: {t.description}")
-        lines.append(f"-- ==================================================")
         lines.append(f"TABLE: {t.table_name}")
 
         cols = session.query(ColumnMeta).filter_by(table_id=t.id, is_active=True).order_by(ColumnMeta.ordinal_position).all()
@@ -283,9 +281,7 @@ def export_human_readable_schema(
 
     # Append explicit Relationships Section
     if rels:
-        lines.append("-- ==================================================")
         lines.append("-- TABLE RELATIONSHIPS & FOREIGN KEYS")
-        lines.append("-- ==================================================")
         for r in rels:
             if r.from_column_id in col_id_to_meta and r.to_column_id in col_id_to_meta:
                 f_tbl, f_col = col_id_to_meta[r.from_column_id]
@@ -295,9 +291,7 @@ def export_human_readable_schema(
 
     # Append Business Glossary Section
     if glossary_lines:
-        lines.append("-- ==================================================")
         lines.append("-- BUSINESS GLOSSARY & SEMANTIC CONTEXT")
-        lines.append("-- ==================================================")
         lines.extend(glossary_lines)
         lines.append("")
 
@@ -310,9 +304,22 @@ def export_human_readable_schema(
         from app.embeddings.registry import get_embedding_provider
 
         raw_chunks = re.split(r"\n\s*\n", schema_text.strip())
-        chunks = [c.strip() for c in raw_chunks if c.strip()]
-        if not chunks and schema_text.strip():
-            chunks = [schema_text.strip()]
+        initial_chunks = [c.strip() for c in raw_chunks if c.strip()]
+        if not initial_chunks and schema_text.strip():
+            initial_chunks = [schema_text.strip()]
+
+        # Truncate/split any chunk text that exceeds Chroma Cloud's 16KB limit (e.g., max 4000 chars)
+        MAX_CHUNK_BYTES = 4000
+        chunks = []
+        for c in initial_chunks:
+            if len(c) > MAX_CHUNK_BYTES:
+                for i in range(0, len(c), MAX_CHUNK_BYTES):
+                    chunks.append(c[i : i + MAX_CHUNK_BYTES])
+            else:
+                chunks.append(c)
+
+        provider = get_embedding_provider()
+
 
         provider = get_embedding_provider()
         vectors = provider.embed(chunks)

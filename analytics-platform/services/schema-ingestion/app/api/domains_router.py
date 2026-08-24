@@ -352,7 +352,7 @@ async def upload_domain_document(
 
         try:
             store = ChromaStore()
-            store.upsert(current_user.tenant_id, chroma_objects)
+            store.upsert(current_user.tenant_id, chroma_objects, source_id=domain.source_id)
         except Exception as exc:
             log.warning("chroma_upsert_domain_document_failed", error=str(exc))
 

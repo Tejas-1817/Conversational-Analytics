@@ -137,12 +137,14 @@ class ChromaStore:
             documents.append(obj.text)
             metadatas.append(meta)
 
-        collection.upsert(
-            ids=ids,
-            embeddings=embeddings,
-            documents=documents,
-            metadatas=metadatas,
-        )
+        BATCH_SIZE = 100
+        for i in range(0, len(ids), BATCH_SIZE):
+            collection.upsert(
+                ids=ids[i : i + BATCH_SIZE],
+                embeddings=embeddings[i : i + BATCH_SIZE],
+                documents=documents[i : i + BATCH_SIZE],
+                metadatas=metadatas[i : i + BATCH_SIZE],
+            )
         return len(ids)
 
     def query(
