@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, AlertTriangle, CheckCircle2, Upload, FileText, Loader2 } from 'lucide-react';
+import { X, AlertTriangle, CheckCircle2, Upload, FileText, Loader2, Download } from 'lucide-react';
 import { z } from 'zod';
 import { fetchApi } from '../services/api';
 import { addMockDomain, updateMockDomainDocs, mockDomains } from '../pages/business/Domains';
@@ -25,7 +25,7 @@ interface FileEntry {
 interface ViewDomainDetails {
   name: string;
   description: string;
-  documents: { name: string; sizeBytes: number }[];
+  documents: { id: string; name: string; sizeBytes: number }[];
   tables: {
     name: string;
     relationships: string[];
@@ -86,45 +86,25 @@ export const DomainModal: React.FC<DomainModalProps> = ({
               name: data.name,
               description: data.description || 'No description provided.',
               documents: data.documents.map((d: any) => ({
+                id: d.id,
                 name: d.file_name,
                 sizeBytes: d.file_size
               })),
               tables: data.tables.map((t: any) => ({
                 name: t.table_name,
-                // The backend doesn't return these yet, so we'll mock them temporarily
-                // so the UI remains consistent while backend is catching up.
-                relationships: ['mock_relationship (id)'],
-                metrics: ['mock_metric'],
-                dimensions: ['mock_dimension'],
+                relationships: t.relationships || [],
+                metrics: t.metrics || [],
+                dimensions: t.dimensions || [],
               }))
             });
           })
           .catch(err => {
-            console.error('Failed to fetch domain details, using mock fallback', err);
-            const domain = mockDomains.find(d => d.id === existingDomainId);
-
-            // Mock data for domain view mode
+            console.error('Failed to fetch domain details', err);
             setViewData({
-              name: domain?.name || existingDomainName || 'Domain Details',
-              description: domain?.description || 'This is a mocked description for the domain. It provides business context for the AI and helps structure query generation.',
-              documents: [
-                { name: 'sales_q3_report.pdf', sizeBytes: 2500000 },
-                { name: 'revenue_definitions.docx', sizeBytes: 120000 },
-              ],
-              tables: [
-                {
-                  name: 'customers',
-                  relationships: ['orders (customer_id)', 'support_tickets (customer_id)'],
-                  metrics: ['total_customers', 'active_customers'],
-                  dimensions: ['region', 'signup_date', 'plan_type'],
-                },
-                {
-                  name: 'orders',
-                  relationships: ['customers (customer_id)', 'order_items (order_id)'],
-                  metrics: ['total_revenue', 'average_order_value'],
-                  dimensions: ['order_date', 'status'],
-                }
-              ]
+              name: existingDomainName || 'Domain Details',
+              description: 'No description provided.',
+              documents: [],
+              tables: []
             });
           });
       } else {
@@ -226,35 +206,18 @@ export const DomainModal: React.FC<DomainModalProps> = ({
       let activeDomainId = domainId;
 
       if (!activeDomainId) {
-        try {
-          const domain = await fetchApi('/domains', {
-            method: 'POST',
-            body: JSON.stringify({
-              name: formData.name,
-              description: formData.description || '',
-              source_id: selectedSourceId || null,
-              table_ids: selectedTableIds,
-            }),
-          });
-          activeDomainId = domain.id;
-          setDomainId(domain.id);
-          setDomainName(domain.name);
-        } catch (err: any) {
-          console.warn('Backend unavailable, using mock for domain creation.');
-          const mockId = `domain_mock_${Date.now()}`;
-          addMockDomain({
-            id: mockId,
+        const domain = await fetchApi('/domains', {
+          method: 'POST',
+          body: JSON.stringify({
             name: formData.name,
             description: formData.description || '',
-            status: 'active',
-            document_count: 0,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-          activeDomainId = mockId;
-          setDomainId(mockId);
-          setDomainName(formData.name);
-        }
+            source_id: selectedSourceId || null,
+            table_ids: selectedTableIds,
+          }),
+        });
+        activeDomainId = domain.id;
+        setDomainId(domain.id);
+        setDomainName(domain.name);
       }
 
       const pendingEntries = fileEntries.filter(f => f.status === 'pending' && f.file);
@@ -268,10 +231,8 @@ export const DomainModal: React.FC<DomainModalProps> = ({
             await fetchApi(`/domains/${activeDomainId}/documents`, { method: 'POST', body: form });
             setFileEntries(prev => prev.map(f => f.clientId === entry.clientId ? { ...f, status: 'done' } : f));
           } catch (err) {
-            console.warn('Backend unavailable, mocking successful file upload.');
-            await new Promise(r => setTimeout(r, 600));
-            setFileEntries(prev => prev.map(f => f.clientId === entry.clientId ? { ...f, status: 'done' } : f));
-            updateMockDomainDocs(activeDomainId!, 1);
+            console.error('File upload failed', err);
+            setFileEntries(prev => prev.map(f => f.clientId === entry.clientId ? { ...f, status: 'failed' } : f));
           }
         }));
       }
@@ -407,10 +368,48 @@ export const DomainModal: React.FC<DomainModalProps> = ({
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                   {viewData.documents.map((d, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.6rem 0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.85rem' }}>
+                    <div 
+                      key={i} 
+                      onClick={async () => {
+                        try {
+                          const token = localStorage.getItem('token');
+                          const headers: Record<string, string> = {};
+                          if (token) headers['Authorization'] = `Bearer ${token}`;
+                          
+                          const res = await fetch(`/domains/${activeDomainId}/documents/${d.id}/download`, { headers });
+                          if (!res.ok) throw new Error("Failed to download");
+                          
+                          const blob = await res.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          
+                          // Open in a new tab to view
+                          const newTab = window.open(url, '_blank');
+                          
+                          // Fallback if popup blocker blocked it
+                          if (!newTab) {
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.target = '_blank';
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                          }
+                          
+                          // We shouldn't revoke immediately if we opened it in a new tab,
+                          // but the browser will clean it up on page unload.
+                          setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+                        } catch (e) {
+                          alert("Failed to open document.");
+                        }
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.6rem 0.75rem', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.85rem', cursor: 'pointer', transition: 'background-color 0.2s' }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-secondary)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-card)'}
+                    >
                       <FileText size={16} style={{ color: 'var(--text-muted)' }} />
                       <span style={{ flex: 1, color: 'var(--text-main)' }}>{d.name}</span>
-                      <span className="text-muted" style={{ fontSize: '0.75rem' }}>{formatBytes(d.sizeBytes)}</span>
+                      <span className="text-muted" style={{ fontSize: '0.75rem', marginRight: '0.5rem' }}>{formatBytes(d.sizeBytes)}</span>
+                      <Download size={14} style={{ color: 'var(--text-muted)' }} />
                     </div>
                   ))}
                 </div>

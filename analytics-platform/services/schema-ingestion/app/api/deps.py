@@ -92,6 +92,7 @@ _ROLE_PERMISSIONS: dict[str, set[str]] = {
     },
     "ANALYST": {
         Permission.VIEW_SOURCES,
+        Permission.MANAGE_SEMANTIC,
         Permission.VIEW_SEMANTIC,
         Permission.VIEW_JOBS,
         Permission.MANAGE_DASHBOARDS,

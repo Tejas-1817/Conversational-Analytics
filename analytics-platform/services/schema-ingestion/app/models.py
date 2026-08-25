@@ -219,6 +219,7 @@ class DomainDocument(Base):
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     sha256: Mapped[str | None] = mapped_column(Text)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    processing_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
 
 
