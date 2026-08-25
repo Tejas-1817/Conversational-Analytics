@@ -16,12 +16,12 @@ const getRefreshToken = async (): Promise<string | null> => {
   if (refreshPromise) {
     return refreshPromise;
   }
-  
+
   const refreshToken = localStorage.getItem('refresh_token');
   if (!refreshToken) {
     return null;
   }
-  
+
   refreshPromise = (async () => {
     try {
       const res = await fetch('/auth/refresh', {
@@ -29,11 +29,11 @@ const getRefreshToken = async (): Promise<string | null> => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken })
       });
-      
+
       if (!res.ok) {
         throw new Error('Refresh failed');
       }
-      
+
       const data = await res.json();
       localStorage.setItem('token', data.access_token);
       localStorage.setItem('refresh_token', data.refresh_token);
@@ -46,7 +46,7 @@ const getRefreshToken = async (): Promise<string | null> => {
       refreshPromise = null;
     }
   })();
-  
+
   return refreshPromise;
 };
 
@@ -55,21 +55,21 @@ export const fetchApi = async (endpoint: string, options: CustomRequestInit = {}
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> || {}),
   };
-  
+
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  
+
   // Only set Content-Type if it's not FormData (fetch sets it automatically for FormData)
-  if (options.body && typeof options.body === 'string') {
+  if (options.body && typeof options.body === 'string' && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
 
   let res = await fetch(endpoint, { ...options, headers });
-  
+
   if (res.status === 401 || res.status === 403) {
     const refreshToken = localStorage.getItem('refresh_token');
-    
+
     if (refreshToken && !options._isRetry) {
       const newAccessToken = await getRefreshToken();
       if (newAccessToken) {
@@ -77,7 +77,7 @@ export const fetchApi = async (endpoint: string, options: CustomRequestInit = {}
         res = await fetch(endpoint, { ...options, headers, _isRetry: true } as any);
       }
     }
-    
+
     if (res.status === 401 || res.status === 403) {
       localStorage.removeItem('token');
       localStorage.removeItem('refresh_token');
@@ -85,7 +85,7 @@ export const fetchApi = async (endpoint: string, options: CustomRequestInit = {}
       throw new APIError(res.status, 'Unauthorized');
     }
   }
-  
+
   if (!res.ok) {
     let msg = 'An error occurred';
     try {
@@ -96,10 +96,10 @@ export const fetchApi = async (endpoint: string, options: CustomRequestInit = {}
     }
     throw new APIError(res.status, msg);
   }
-  
+
   if (res.status === 204) {
     return null;
   }
-  
+
   return res.json();
 };

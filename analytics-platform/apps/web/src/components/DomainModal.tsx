@@ -78,7 +78,7 @@ export const DomainModal: React.FC<DomainModalProps> = ({
       if (existingDomainId) {
         setDomainId(existingDomainId);
         setDomainName(existingDomainName ?? '');
-        
+
         // Fetch domain details from backend
         fetchApi(`/domains/${existingDomainId}`)
           .then(data => {
@@ -260,20 +260,23 @@ export const DomainModal: React.FC<DomainModalProps> = ({
       const pendingEntries = fileEntries.filter(f => f.status === 'pending' && f.file);
       if (pendingEntries.length > 0 && activeDomainId) {
         setFileEntries(prev => prev.map(f => f.status === 'pending' ? { ...f, status: 'uploading' } : f));
-        
+
         await Promise.all(pendingEntries.map(async (entry) => {
           const form = new FormData();
           form.append('file', entry.file!);
           try {
-            await fetchApi(`/domains/${activeDomainId}/documents`, { method: 'POST', body: form });
+            await fetchApi(`/domains/${activeDomainId}/documents`, {
+              method: 'POST',
+              body: form
+            });
             setFileEntries(prev => prev.map(f => f.clientId === entry.clientId ? { ...f, status: 'done' } : f));
-          } catch (err) {
-            console.warn('Backend unavailable, mocking successful file upload.');
-            await new Promise(r => setTimeout(r, 600));
-            setFileEntries(prev => prev.map(f => f.clientId === entry.clientId ? { ...f, status: 'done' } : f));
-            updateMockDomainDocs(activeDomainId!, 1);
+          } catch (err: any) {
+            console.error('File upload failed:', err);
+            setFileEntries(prev => prev.map(f => f.clientId === entry.clientId ? { ...f, status: 'failed' } : f));
+            setBackendError(`Failed to upload ${entry.name}: ${err.message || 'Server error'}`);
           }
         }));
+
       }
 
       onSuccess();
@@ -362,7 +365,7 @@ export const DomainModal: React.FC<DomainModalProps> = ({
             <button className="btn-ghost" onClick={onClose} style={{ padding: '4px' }} aria-label="Close"><X size={20} /></button>
           </div>
           <div className="modal-body custom-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1.5rem' }}>
-            
+
             <div>
               <h3 style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</h3>
               <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: 1.5, color: 'var(--text-main)' }}>{viewData.description}</p>
@@ -374,7 +377,7 @@ export const DomainModal: React.FC<DomainModalProps> = ({
                 {viewData.tables.map((t, i) => (
                   <div key={i} style={{ padding: '1rem', background: 'var(--bg-dark)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
                     <div style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--primary)', marginBottom: '0.75rem' }}>{t.name}</div>
-                    
+
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
                       <div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.4rem', fontWeight: 600 }}>Relationships</div>
@@ -416,7 +419,7 @@ export const DomainModal: React.FC<DomainModalProps> = ({
                 </div>
               )}
             </div>
-            
+
           </div>
           <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', padding: '1rem 1.5rem', borderTop: '1px solid var(--border-color)' }}>
             <button className="btn-secondary" onClick={onClose}>Close</button>

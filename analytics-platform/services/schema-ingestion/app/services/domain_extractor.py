@@ -42,12 +42,12 @@ Return a strict JSON array of objects with keys:
 Return ONLY valid JSON array. No markdown, no explanations outside JSON."""
 
     try:
-        provider = LLMProvider()
-        response = provider.generate_chat_completion(
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1
-        )
-        content = response.content.strip()
+        # provider = LLMProvider().generate_sql(prompt)
+        # response = provider.generate_chat_completion(
+        #     messages=[{"role": "user", "content": prompt}],
+        #     temperature=0.1
+        # )
+        content = LLMProvider().generate_sql(prompt).strip()
         
         # Strip markdown code blocks if wrapped
         if content.startswith("```"):

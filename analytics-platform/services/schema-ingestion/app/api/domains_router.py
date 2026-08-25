@@ -183,7 +183,7 @@ def create_domain(
         tenant_id=current_user.tenant_id,
         entity_type="domains",
         entity_id=domain.id,
-        action=AuditEvent.SEMANTIC_MODEL_CREATED,
+        action="DOMAIN CREATED",
         actor=current_user.email,
         after={"name": domain.name, "source_id": str(domain.source_id)},
         request=request,
@@ -339,7 +339,7 @@ async def upload_domain_document(
         embed_provider = get_embedding_provider()
         chroma_objects = []
         for idx, chunk in enumerate(chunks):
-            embedding = embed_provider.embed_query(chunk)
+            embedding = embed_provider.embed([chunk])[0]
             vec_id = f"domain_{domain.id}_doc_{file_id}_chunk_{idx}"
             meta = {
                 "tenant_id": str(current_user.tenant_id),
