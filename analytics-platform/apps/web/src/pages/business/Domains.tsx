@@ -14,26 +14,7 @@ interface Domain {
 }
 
 // In-memory mock fallback branch
-export let mockDomains: Domain[] = [
-  {
-    id: 'domain_1',
-    name: 'Sales',
-    description: 'All sales-related metrics, KPIs, pipelines, and forecasting documentation.',
-    status: 'active',
-    document_count: 2,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'domain_2',
-    name: 'Marketing',
-    description: 'Marketing campaigns, ad spend, and conversion tracking definitions.',
-    status: 'active',
-    document_count: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
+export let mockDomains: Domain[] = [];
 
 export const addMockDomain = (domain: Domain) => {
   mockDomains = [domain, ...mockDomains];
@@ -55,19 +36,18 @@ export const Domains: React.FC = () => {
   const [selectedDomainId, setSelectedDomainId] = useState<string | undefined>(undefined);
   const [selectedDomainName, setSelectedDomainName] = useState<string | undefined>(undefined);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const loadDomains = async () => {
     setIsLoading(true);
+    setLoadError(null);
     try {
-      if (useMock) {
-        setDomains([...mockDomains]);
-      } else {
-        const data = await fetchApi('/domains');
-        setDomains(data);
-      }
-    } catch (err) {
-      console.warn('Backend for /domains unreachable, falling back to mock state.');
-      setUseMock(true);
-      setDomains([...mockDomains]);
+      const data = await fetchApi('/domains');
+      setDomains(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.error('Failed to load domains:', err);
+      setLoadError(err?.message || 'Failed to load domains. Check the browser console for details.');
+      setDomains([]);
     } finally {
       setIsLoading(false);
     }
@@ -75,22 +55,14 @@ export const Domains: React.FC = () => {
 
   useEffect(() => {
     loadDomains();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useMock]);
+  }, []);
 
   const deleteDomain = async (id: string) => {
-    if (useMock) {
-      mockDomains = mockDomains.filter(d => d.id !== id);
-      setDomains([...mockDomains]);
-      return;
-    }
-
     try {
       await fetchApi(`/domains/${id}`, { method: 'DELETE' });
       loadDomains();
     } catch (err) {
       console.error('Failed to delete domain', err);
-      // Even if network fails, if we were somehow not in mock mode yet, we might switch
     }
   };
 
@@ -132,6 +104,13 @@ export const Domains: React.FC = () => {
           <Plus size={18} /> New Domain
         </button>
       </div>
+
+      {loadError && (
+        <div className="card" style={{ padding: '1rem', marginBottom: '1.5rem', backgroundColor: 'var(--bg-card)', border: '1px solid var(--danger-color)' }}>
+          <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--danger-color)' }}>Error Loading Domains</h3>
+          <p>{loadError}</p>
+        </div>
+      )}
 
       {isLoading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1rem' }}>
