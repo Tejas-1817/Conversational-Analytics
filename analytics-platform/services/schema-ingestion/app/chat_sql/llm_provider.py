@@ -180,22 +180,32 @@ class LLMProvider:
         # Remove thinking blocks if present <thought>...</thought>
         cleaned = re.sub(r"<thought>.*?</thought>", "", cleaned, flags=re.DOTALL).strip()
 
-        if "```sql" in cleaned:
-            match = re.search(r"```sql\s*(.*?)\s*```", cleaned, re.DOTALL | re.IGNORECASE)
-            if match:
-                cleaned = match.group(1).strip()
-        elif "```" in cleaned:
-            match = re.search(r"```\s*(.*?)\s*```", cleaned, re.DOTALL)
-            if match:
-                cleaned = match.group(1).strip()
+        # Strip leading ```sql or ``` even if closing backticks are missing due to LLM truncation
+        cleaned = re.sub(r"^```(?:sql|SQL)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+
+        # Fallback: Extract SELECT or WITH statement
+        match = re.search(r"\b(SELECT|WITH)\b.*", cleaned, re.DOTALL | re.IGNORECASE)
+        if match:
+            cleaned = match.group(0).strip()
 
         # Remove trailing explanations if LLM appended text after semicolon
         if ";" in cleaned:
             cleaned = cleaned.split(";")[0].strip() + ";"
 
+        # Automatic SQL Transpilation to PostgreSQL via sqlglot
+        try:
+            import sqlglot
+            transpiled = sqlglot.transpile(cleaned, write="postgres")[0]
+            if transpiled:
+                cleaned = transpiled.strip()
+        except Exception:
+            pass
+
         return cleaned
 
-    def generate_text(self, prompt: str, max_tokens: int = 256, timeout: int = 30) -> str:
+
+    def generate_text(self, prompt: str, max_tokens: int = 256, timeout: int = 300) -> str:
         """Generates arbitrary natural language text from Ollama WITHOUT any SQL validation."""
         url = f"{self.base_url}/api/generate"
         models_to_try = list(dict.fromkeys([self.model_name.strip(), "gemma3:4b"]))

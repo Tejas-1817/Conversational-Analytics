@@ -43,12 +43,17 @@ class ResultInspector:
                 time_cols.append(col)
                 continue
 
-            # Check for numeric
-            all_numeric = sample_vals and all(isinstance(v, (int, float)) or (isinstance(v, str) and v.replace(".", "", 1).isdigit()) for v in sample_vals)
+            # Check for numeric (Treat None & Decimal values as valid numbers)
+            from decimal import Decimal
+            all_numeric = sample_vals and all(
+                v is None or isinstance(v, (int, float, Decimal)) or (isinstance(v, str) and v.replace(".", "", 1).replace("-", "", 1).isdigit()) 
+                for v in sample_vals
+            )
             if all_numeric:
                 column_types[col] = "NUMERIC"
                 numeric_cols.append(col)
                 continue
+
 
             # Categorical default
             column_types[col] = "CATEGORICAL"

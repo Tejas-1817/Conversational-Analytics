@@ -72,7 +72,7 @@ class ChatService:
                 hits = ChromaStore().query(
                     tenant_id=user.tenant_id,
                     query_embedding=query_vector,
-                    n_results=3,
+                    n_results=5,
                     source_id=active_source.id if active_source else None
                 )
                 if hits:

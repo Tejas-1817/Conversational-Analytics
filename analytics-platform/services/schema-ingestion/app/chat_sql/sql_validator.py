@@ -43,15 +43,22 @@ class SQLValidator:
             # Fall back gracefully if sqlglot dialect parse hits custom extension syntax
             pass
 
-        # Rule 2: Table existence validation if catalog provided
-        if not catalog:
-            return clean_sql
-
-        tables_in_catalog = set(catalog.keys())
-        found_tables = re.findall(r"\b(?:FROM|JOIN)\s+([a-zA-Z0-9_]+)", clean_sql, re.IGNORECASE)
-        for t in found_tables:
-            t_lower = t.lower()
-            if t_lower not in {table.lower() for table in tables_in_catalog}:
-                return UNANSWERABLE_MSG
+        # Rule 2: Table existence validation via sqlglot AST & catalog inspection
+        if catalog:
+            tables_in_catalog = {table.lower() for table in catalog.keys()}
+            try:
+                import sqlglot
+                parsed_expr = sqlglot.parse_one(clean_sql, read="postgres")
+                if parsed_expr:
+                    ast_tables = {
+                        table.name.lower() 
+                        for table in parsed_expr.find_all(sqlglot.exp.Table) 
+                        if table.name
+                    }
+                    for t_name in ast_tables:
+                        if t_name not in tables_in_catalog:
+                            return UNANSWERABLE_MSG
+            except Exception:
+                pass
 
         return clean_sql

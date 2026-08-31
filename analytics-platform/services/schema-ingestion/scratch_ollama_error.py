@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-model_name = os.getenv("OLLAMA_MODEL", "gemma4:12b")
+model_name = os.getenv("OLLAMA_MODEL", "gemma3:4b")
 base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 print(f"Testing model: {model_name}")

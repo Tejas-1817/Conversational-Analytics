@@ -11,7 +11,9 @@ log = structlog.get_logger(__name__)
 
 
 def _format_val(val: Any) -> str:
-    """Formats numeric values nicely for natural language display."""
+    """Formats numeric and NULL values nicely for natural language display."""
+    if val is None:
+        return "0"
     if isinstance(val, (int, float)):
         return f"{val:,}" if isinstance(val, int) else f"{val:,.2f}"
     try:
@@ -26,7 +28,7 @@ def _format_val(val: Any) -> str:
 class AnswerSynthesizer:
     """Synthesizes natural language business answers from DB result data instantly without SQL validation."""
 
-    def __init__(self, use_llm: bool = False):
+    def __init__(self, use_llm: bool = True):
         self.use_llm = use_llm
         self.llm_provider = LLMProvider()
 
@@ -74,21 +76,33 @@ class AnswerSynthesizer:
 
         # 2. LLM Text Synthesis (Uses generate_text WITHOUT SQL validation)
         data_preview = str(result_data[:5])
-        prompt = f"""Synthesize a direct, concise 1-2 sentence plain English business answer from the data below.
+        prompt = f"""You are an elite Senior Strategic Business Advisor and Executive Data Analyst. Your objective is to analyze the user's business question alongside the executed database query results, and translate those numbers into actionable business intelligence.
+
+CRITICAL RESPONSE GROUNDING RULES:
+1. Every numerical statement MUST be strictly traceable to the executed query result data. Never fabricate metrics, percentages, revenue figures, or growth rates.
+2. Every factual business statement MUST be supported by the data. Distinguish clearly between direct FACTS (from data) and RECOMMENDATIONS (proposed actions).
+3. Use consultative, advisory phrasing ("Consider...", "The data suggests...", "One potential action is...") and avoid stating guaranteed monetary returns unless mathematically proven by data.
 
 Question: {question}
-SQL Query: {sql}
-Result Data: {data_preview}
+Executed SQL Query: {sql}
+Query Result Data: {data_preview}
 
-CRITICAL RULES:
-1. Provide a direct 1-2 sentence business answer in plain English.
-2. State exact numbers from the Result Data.
-3. Do NOT explain SQL logic or code.
+Please structure your response into the following clear markdown sections:
+1. 📊 EXECUTIVE SUMMARY & METRIC BREAKDOWN:
+   - Provide a direct 1-2 sentence descriptive answer stating the exact key metrics from the query result.
+2. ⚡ OPERATIONAL IMPROVEMENT ADVICE:
+   - Give 2 actionable recommendations on how to optimize daily operations, inventory, or workflow based strictly on these figures.
+3. 📈 PRODUCT SALES & REVENUE GROWTH STRATEGIES:
+   - Give 2 specific strategies to increase product sales, boost order volume, or drive revenue growth supported by the data.
+4. 🎯 LONG-TERM BUSINESS GROWTH TIPS:
+   - Share 1 key strategic tip for long-term scalability and business performance.
+5. 💡 SUGGESTED FOLLOW-UP ANALYTICS QUESTIONS:
+   - Provide 2-3 relevant, logical follow-up questions that the user can ask next to explore this data further.
 
 Answer:
 """
         try:
-            raw_answer = self.llm_provider.generate_text(prompt, max_tokens=128, timeout=15)
+            raw_answer = self.llm_provider.generate_text(prompt, max_tokens=256, timeout=120)
             return raw_answer
         except Exception as exc:
             log.warning("llm_answer_synthesis_failed_using_deterministic_fallback", error=str(exc))

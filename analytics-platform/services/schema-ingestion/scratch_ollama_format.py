@@ -6,7 +6,7 @@ class TestSchema(BaseModel):
     hello: str
 
 base_url = "http://localhost:11434"
-model_name = "gemma4:12b"
+model_name = "gemma3:4b"
 
 # Test 1: format = "json"
 try:
