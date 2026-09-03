@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3:4b"  # Benchmarked: ~53s/turn vs ~227s for 14b (4.1x speedup)
     
+    # SQL-generation context and output controls
+    ollama_num_ctx: int = 16384
+    ollama_num_predict: int = 256
+    ollama_timeout_seconds: int = 180
+
+    # Run a second Ollama pass to review/correct generated SQL
+    ollama_sql_review_enabled: bool = True
+
     # Hugging Face Settings
     huggingface_api_key: str = ""
     hf_model: str = "meta-llama/Meta-Llama-3-8B-Instruct"
@@ -52,8 +60,8 @@ class Settings(BaseSettings):
 
     # Chroma Cloud Settings (trychroma.com)
     chroma_mode: Literal["local", "cloud", "ephemeral"] ="cloud"
-    chroma_api_key: str = "ck-J1xXNonq3s5zY7FNnnmF1kEwZBQA3YvgfZUrhASz9vQk"
-    chroma_tenant: str = "3bff9cee-0bfa-44fe-a3f2-35585e2ba3cb"
+    chroma_api_key: str = ""
+    chroma_tenant: str = ""
     chroma_database: str = "Analytics"
     chroma_host: str = "api.trychroma.com"
 

@@ -53,6 +53,7 @@ class RetrievalService:
         tenant_id: str | uuid.UUID,
         db: Session,
         store: ChromaStore | None = None,
+        source_id: str | uuid.UUID | None = None,
     ) -> RetrievalHits:
         """Embed query_text, search Chroma, hydrate hits to ORM objects.
 
@@ -76,6 +77,16 @@ class RetrievalService:
             return hits
 
         try:
+            # Auto-resolve active source_id if not provided
+            if not source_id and db:
+                from app.models import DataSource
+                active_src = db.query(DataSource).filter_by(
+                    tenant_id=tenant_id,
+                    status="connected"
+                ).first()
+                if active_src:
+                    source_id = active_src.id
+
             # 1. Embed the query
             from app.embeddings.registry import get_embedding_provider  # lazy import
             provider = get_embedding_provider()
@@ -90,6 +101,7 @@ class RetrievalService:
                 tenant_id=tenant_id,
                 query_embedding=query_vec,
                 n_results=settings.rag_top_k,
+                source_id=source_id,
             )
 
             if not raw:

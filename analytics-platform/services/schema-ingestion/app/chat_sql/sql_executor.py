@@ -1,127 +1,229 @@
-"""SQL Executor.
+"""Safe execution of validated SQL against a customer data source."""
 
-Executes validated read-only SELECT queries against the connected customer DataSource
-safely with statement timeouts, row limits, and connection verification logging.
-"""
+from __future__ import annotations
+
 import time
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
-import uuid
+
 import structlog
 from sqlalchemy import text
 
 from app.connectors.factory import build_engine
-from app.db import get_engine
 from app.models import DataSource
 
 log = structlog.get_logger(__name__)
 
+ExecutionResult = Tuple[
+    List[Dict[str, Any]],
+    int,
+    float,
+    List[str],
+    Optional[str],
+]
+
 
 class SQLExecutor:
-    """Safely executes read-only SQL queries on the active customer database."""
+    """Execute validated read-only SQL against the customer database."""
 
     @staticmethod
     def execute_query(
         sql: str,
         source: Optional[DataSource] = None,
         limit: int = 100,
-        timeout_ms: int = 5000
-    ) -> Tuple[List[Dict[str, Any]], int, float, List[str]]:
-        """Executes a read-only SELECT query and returns (result_data, row_count, execution_time_ms, columns)."""
-        if not sql or "UNANSWERABLE" in sql.upper() or not sql.strip().upper().startswith(("SELECT", "WITH")):
-            return [], 0, 0.0, []
+        timeout_ms: int = 5_000,
+    ) -> ExecutionResult:
+        """Return rows, row count, time, columns, and optional error."""
 
-        start_time = time.time()
+        clean_sql = (sql or "").strip()
+
+        if clean_sql.upper() == "UNANSWERABLE":
+            return [], 0, 0.0, [], None
+
+        if not clean_sql.upper().startswith(("SELECT", "WITH")):
+            return (
+                [],
+                0,
+                0.0,
+                [],
+                "Executor rejected SQL that was not a SELECT/WITH query.",
+            )
+
+        if source is None:
+            return (
+                [],
+                0,
+                0.0,
+                [],
+                "No connected customer data source was provided.",
+            )
+
+        started_at = time.perf_counter()
         engine = None
-        should_dispose = False
-
-        if source is not None:
-            try:
-                engine = build_engine(source)
-                should_dispose = True
-            except Exception as exc:
-                log.error("failed_to_build_datasource_engine", source_id=str(source.id), error=str(exc))
-                engine = get_engine()
-        else:
-            engine = get_engine()
 
         try:
-            with engine.connect() as conn:
-                # 1. Connection Verification & Logging
-                curr_db = "unknown"
-                curr_schema = "unknown"
-                try:
-                    curr_db = conn.execute(text("SELECT current_database()")).scalar() or "unknown"
-                    curr_schema = conn.execute(text("SELECT current_schema()")).scalar() or "unknown"
-                except Exception as ver_exc:
-                    log.warning("connection_verification_failed", error=str(ver_exc))
+            engine = build_engine(source)
+
+        except Exception as exc:
+            elapsed_ms = round(
+                (time.perf_counter() - started_at) * 1000,
+                2,
+            )
+
+            error = (
+                f"Unable to connect to customer data source "
+                f"{source.name!r}: {type(exc).__name__}: {exc}"
+            )
+
+            log.error(
+                "customer_datasource_connection_failed",
+                source_id=str(source.id),
+                source_name=source.name,
+                error=error,
+            )
+
+            return [], 0, elapsed_ms, [], error
+
+        try:
+            with engine.connect() as connection:
+                source_type = str(source.type).lower()
+
+                # Explicit transaction-level protection ensures that even
+                # a previously pooled connection is read-only.
+                if source_type == "postgres":
+                    connection.execute(
+                        text("SET TRANSACTION READ ONLY")
+                    )
+                    connection.execute(
+                        text(
+                            f"SET LOCAL statement_timeout = "
+                            f"{int(timeout_ms)}"
+                        )
+                    )
+
+                    database_name = connection.execute(
+                        text("SELECT current_database()")
+                    ).scalar_one()
+
+                    schema_name = connection.execute(
+                        text("SELECT current_schema()")
+                    ).scalar_one()
+
+                elif source_type == "mysql":
+                    connection.execute(
+                        text("SET TRANSACTION READ ONLY")
+                    )
+                    connection.execute(
+                        text(
+                            f"SET SESSION max_execution_time = "
+                            f"{int(timeout_ms)}"
+                        )
+                    )
+
+                    database_name = connection.execute(
+                        text("SELECT DATABASE()")
+                    ).scalar_one()
+
+                    schema_name = database_name
+
+                else:
+                    return (
+                        [],
+                        0,
+                        0.0,
+                        [],
+                        f"Unsupported source type: {source.type}",
+                    )
 
                 log.info(
                     "sql_execution_connection_verified",
-                    tenant_id=str(source.tenant_id) if source else "system",
-                    source_id=str(source.id) if source else "default",
-                    database_name=curr_db,
-                    schema_name=curr_schema,
-                    source_name=source.name if source else "default"
+                    tenant_id=str(source.tenant_id),
+                    source_id=str(source.id),
+                    source_name=source.name,
+                    database_name=database_name,
+                    schema_name=schema_name,
                 )
 
-                # 2. Enforce statement timeout and execute query
-                conn.execute(text(f"SET LOCAL statement_timeout = {timeout_ms}"))
-                res = conn.execute(text(sql))
-                keys = list(res.keys())
-                rows = res.fetchmany(limit)
+                result = connection.execute(text(clean_sql))
+                columns = list(result.keys())
+                rows = result.fetchmany(limit)
 
-                # 3. Type Serialization
-                def _serialize_val(v: Any) -> Any:
-                    if v is None:
+                def serialize(value: Any) -> Any:
+                    if value is None:
                         return None
-                    if isinstance(v, Decimal):
-                        return float(v) if v % 1 != 0 else int(v)
-                    if isinstance(v, (datetime, date)):
-                        return v.isoformat()
-                    if isinstance(v, uuid.UUID):
-                        return str(v)
-                    if isinstance(v, (int, float, str, bool)):
-                        return v
-                    return str(v)
 
-                result_data = []
-                for row in rows:
-                    row_dict = {}
-                    for col, val in zip(keys, row):
-                        row_dict[col] = _serialize_val(val)
-                    result_data.append(row_dict)
+                    if isinstance(value, bool):
+                        return value
 
-                exec_time_ms = round((time.time() - start_time) * 1000, 2)
+                    if isinstance(value, Decimal):
+                        if value % 1 == 0:
+                            return int(value)
+                        return float(value)
 
-                # 4. Detailed Stage Validation Logging
-                log.info(
-                    "sql_execution_stage_validation",
-                    generated_sql=sql,
-                    rows_returned=len(result_data),
-                    column_names=keys,
-                    serialized_sample=result_data[:2],
-                    execution_time_ms=exec_time_ms,
-                    connected_db=curr_db
+                    if isinstance(value, (datetime, date)):
+                        return value.isoformat()
+
+                    if isinstance(value, uuid.UUID):
+                        return str(value)
+
+                    if isinstance(value, (int, float, str)):
+                        return value
+
+                    return str(value)
+
+                result_data = [
+                    {
+                        column: serialize(value)
+                        for column, value in zip(columns, row)
+                    }
+                    for row in rows
+                ]
+
+                elapsed_ms = round(
+                    (time.perf_counter() - started_at) * 1000,
+                    2,
                 )
 
-                return result_data, len(result_data), exec_time_ms, keys
+                log.info(
+                    "sql_execution_completed",
+                    source_id=str(source.id),
+                    database_name=database_name,
+                    rows_returned=len(result_data),
+                    column_names=columns,
+                    execution_time_ms=elapsed_ms,
+                )
+
+                return (
+                    result_data,
+                    len(result_data),
+                    elapsed_ms,
+                    columns,
+                    None,
+                )
+
         except Exception as exc:
-            exec_time_ms = round((time.time() - start_time) * 1000, 2)
-            log.error(
-                "sql_execution_failed_exception",
-                generated_sql=sql,
-                error_type=type(exc).__name__,
-                error_message=str(exc),
-                execution_time_ms=exec_time_ms,
-                exc_info=True
+            elapsed_ms = round(
+                (time.perf_counter() - started_at) * 1000,
+                2,
             )
-            return [], 0, exec_time_ms, []
+
+            error = f"{type(exc).__name__}: {exc}"
+
+            log.error(
+                "sql_execution_failed",
+                source_id=str(source.id),
+                error=error,
+                execution_time_ms=elapsed_ms,
+                exc_info=True,
+            )
+
+            return [], 0, elapsed_ms, [], error
+
         finally:
-            if should_dispose and engine is not None:
+            if engine is not None:
                 try:
                     engine.dispose()
                 except Exception:
                     pass
-

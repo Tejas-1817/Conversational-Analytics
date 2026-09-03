@@ -245,10 +245,29 @@ export const ChatInterface = () => {
   const [selectedDomainId, setSelectedDomainId] = useState<string>('');
   const [showDomainPicker, setShowDomainPicker] = useState(false);
 
+  const [sources, setSources] = useState<any[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState<string>(() => localStorage.getItem('active_chat_source_id') || '');
+  const [showSourcePicker, setShowSourcePicker] = useState(false);
+
+
+
   useEffect(() => {
     fetchApi('/domains')
       .then((data: any) => setDomains(Array.isArray(data) ? data : []))
       .catch(() => setDomains([]));
+    fetchApi('/sources')
+      .then((data: any) => {
+        const list = Array.isArray(data) ? data : [];
+        setSources(list);
+        if (list.length > 0) {
+          const saved = localStorage.getItem('active_chat_source_id');
+          const exists = list.some((s: any) => s.id === saved);
+          const initialId = exists ? saved! : list[0].id;
+          setSelectedSourceId(initialId);
+          localStorage.setItem('active_chat_source_id', initialId);
+        }
+      })
+      .catch(() => setSources([]));
   }, []);
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -267,7 +286,8 @@ export const ChatInterface = () => {
         body: JSON.stringify({
           question: questionText,
           conversation_id: convId,
-          domain_id: selectedDomainId || null
+          domain_id: selectedDomainId || null,
+          source_id: selectedSourceId || null
         })
       });
 
@@ -314,8 +334,8 @@ export const ChatInterface = () => {
         body: JSON.stringify({
           name,
           query: msg.question || msg.intent?.original_query || 'Saved Insight',
-          chart_config: { 
-            chartType: msg.chart_recommendation || (msg.recommended_visualization && msg.recommended_visualization.chart_type) || 'table', 
+          chart_config: {
+            chartType: msg.chart_recommendation || (msg.recommended_visualization && msg.recommended_visualization.chart_type) || 'table',
             data: msg.result_data || [],
             columns: msg.columns,
             columnTypes: msg.column_types || (msg.result_data && typeof msg.result_data === 'object' && !Array.isArray(msg.result_data) ? msg.result_data.column_types : undefined) || (msg.recommended_visualization && msg.recommended_visualization.profile?.column_types)
@@ -721,18 +741,98 @@ export const ChatInterface = () => {
 
         <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: 0, zIndex: 20, paddingBottom: '1.5rem', paddingTop: '1rem' }}>
           <div style={{ margin: '0 auto', maxWidth: '800px' }}>
-            {/* Selected domain chip */}
-            {selectedDomainId && (() => {
-              const dom = domains.find((d: any) => d.id === selectedDomainId);
-              return dom ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', paddingLeft: '0.25rem' }}>
+            {/* Database & Domain Selection Bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem', paddingLeft: '0.25rem', flexWrap: 'wrap' }}>
+              {/* Connected Database Selector */}
+              {(() => {
+                const src = sources.find((s: any) => s.id === selectedSourceId);
+                return (
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setShowSourcePicker(prev => !prev); setShowDomainPicker(false); }}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                        padding: '0.25rem 0.65rem',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '99px',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        color: 'var(--text-main)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="Switch connected database"
+                    >
+                      <Database size={13} style={{ color: 'var(--primary)' }} />
+                      <span>{src ? src.name : (sources.length > 0 ? sources[0].name : 'No Database')}</span>
+                      <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>▾</span>
+                    </button>
+
+                    {/* Source Picker Popover */}
+                    {showSourcePicker && (
+                      <div
+                        style={{
+                          position: 'absolute', bottom: 'calc(100% + 8px)', left: 0,
+                          background: 'var(--bg-card)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: '12px',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+                          padding: '0.5rem',
+                          minWidth: '240px',
+                          zIndex: 100,
+                        }}
+                      >
+                        <div style={{ padding: '0.4rem 0.6rem 0.3rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Connected Database
+                        </div>
+                        {sources.map((s: any) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSourceId(s.id);
+                              localStorage.setItem('active_chat_source_id', s.id);
+                              setShowSourcePicker(false);
+                            }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '0.5rem',
+                              width: '100%', padding: '0.5rem 0.75rem',
+                              background: selectedSourceId === s.id ? 'rgba(99,102,241,0.1)' : 'transparent',
+                              border: 'none', borderRadius: '8px',
+                              cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
+                              color: selectedSourceId === s.id ? 'var(--primary)' : 'var(--text-main)',
+                              textAlign: 'left',
+                            }}
+                          >
+                            <Database size={14} style={{ color: selectedSourceId === s.id ? 'var(--primary)' : 'var(--text-muted)' }} />
+                            <div style={{ flex: 1 }}>
+                              <div>{s.name}</div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{s.database_name} ({s.type})</div>
+                            </div>
+                            {selectedSourceId === s.id && <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 700 }}>✓</span>}
+                          </button>
+                        ))}
+                        {sources.length === 0 && (
+                          <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No connected databases found.</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              {/* Selected domain chip */}
+              {selectedDomainId && (() => {
+                const dom = domains.find((d: any) => d.id === selectedDomainId);
+                return dom ? (
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
-                    padding: '0.2rem 0.6rem 0.2rem 0.5rem',
+                    padding: '0.25rem 0.65rem',
                     background: 'rgba(99,102,241,0.12)',
                     border: '1px solid rgba(99,102,241,0.3)',
                     borderRadius: '99px',
-                    fontSize: '0.78rem',
+                    fontSize: '0.8rem',
                     fontWeight: 600,
                     color: 'var(--primary)',
                   }}>
@@ -746,10 +846,9 @@ export const ChatInterface = () => {
                       <X size={12} />
                     </button>
                   </span>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>LLM will use this domain context</span>
-                </div>
-              ) : null;
-            })()}
+                ) : null;
+              })()}
+            </div>
 
             <form onSubmit={sendMessage} className="chat-input-wrapper" style={{ position: 'relative' }}>
               {/* Domain picker + button */}

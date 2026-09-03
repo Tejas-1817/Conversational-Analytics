@@ -14,7 +14,7 @@ ready to be loaded into a vector database in the next step.
 Usage:
     python text_to_embeddings.py schema.txt
     python text_to_embeddings.py schema.txt -o embeddings.json
-    python text_to_embeddings.py schema.txt --model  gemma3:4b
+    python text_to_embeddings.py schema.txt --model gemma3:4b
     python text_to_embeddings.py schema.txt --whole   # embed the whole file as one chunk
 """
 

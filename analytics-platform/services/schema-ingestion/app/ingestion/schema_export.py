@@ -35,6 +35,49 @@ Plain-text description:
 """
 
 
+
+def _infer_column_role(column_name: str, data_type: str) -> str:
+    """Infer semantic column role from name and type patterns when stored role is unknown."""
+    col = column_name.lower()
+    dtype = (data_type or "").lower()
+
+    # Metric: numeric columns that represent amounts, counts, scores
+    metric_keywords = (
+        "amount", "total", "revenue", "price", "cost", "value", "fee",
+        "balance", "sales", "profit", "discount", "tax", "quantity",
+        "qty", "count", "score", "rate", "salary", "spend", "budget",
+        "grand", "subtotal", "net", "gross"
+    )
+    if any(kw in col for kw in metric_keywords) and any(t in dtype for t in ("numeric", "decimal", "float", "int", "bigint", "double")):
+        return "metric"
+
+    # Date Dimension: timestamp/date columns
+    date_keywords = ("_at", "_date", "_time", "created", "updated", "modified", "expired", "joined", "started", "ended", "occurred", "redeemed", "detected", "reviewed")
+    if any(col.endswith(kw) or kw in col for kw in date_keywords) and any(t in dtype for t in ("timestamp", "date", "time")):
+        return "date_dimension"
+
+    # Status / Filter Dimension: categorical string columns
+    status_keywords = ("status", "type", "category", "gender", "level", "tier", "channel", "method", "mode", "stage", "state")
+    if any(kw in col for kw in status_keywords):
+        return "filter_dimension"
+
+    # Boolean flags
+    flag_keywords = ("is_", "has_", "flag", "active", "enabled", "opt_", "verified", "available", "default")
+    if any(col.startswith(kw) or kw in col for kw in flag_keywords) and "bool" in dtype:
+        return "boolean_flag"
+
+    # Name / Label Dimension: descriptive string columns
+    name_keywords = ("name", "title", "label", "code", "email", "phone", "address", "city", "country", "region", "description", "text", "note", "comment", "reason")
+    if any(kw in col for kw in name_keywords):
+        return "label_dimension"
+
+    # Primary / Foreign Key — structural, not a metric or dimension
+    if col.endswith("_id") or col == "id":
+        return "key"
+
+    return "dimension"
+
+
 def _sanitize_slug(value: Any, fallback: str) -> str:
     """Sanitizes username or database_name strings for filesystem safety."""
     if not isinstance(value, str) or not value.strip():
@@ -260,7 +303,8 @@ def export_human_readable_schema(
             flag_str = f", {', '.join(flags)}" if flags else ""
 
             # Annotate Role (Metric/Dimension) & Aggregation
-            role_str = str(c.role) if c.role else "unknown"
+            # Auto-infer role from column name & type if stored role is unknown
+            role_str = str(c.role) if (c.role and str(c.role).lower() != "unknown") else _infer_column_role(c.column_name, c.data_type)
             comment_parts = [f"Role: {role_str}"]
             if getattr(c, "aggregation", None):
                 comment_parts.append(f"Aggregation: {c.aggregation}")
