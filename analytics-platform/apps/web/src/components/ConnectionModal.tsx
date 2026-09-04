@@ -71,7 +71,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    
+
     // Auto update default port when type changes
     if (name === 'type') {
       const defaultPort = value === 'postgres' ? 5432 : 3306;
@@ -83,7 +83,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       ...prev,
       [name]: name === 'port' ? (value === '' ? '' : parseInt(value, 10)) : value
     }));
-    
+
     // Clear field specific error
     if (errors[name as keyof ConnectionFormData]) {
       setErrors(prev => ({ ...prev, [name]: undefined }));
@@ -108,17 +108,24 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     }
   };
 
+  const buildSourcePayload = () => ({
+    ...formData,
+    options: {
+      include_schemas: ['public'],
+    },
+  });
+
   const handleTestConnection = async () => {
     if (!validateForm()) return false;
-    
+
     setIsTesting(true);
     setBackendError(null);
     setTestSuccess(false);
-    
+
     try {
       await fetchApi('/sources/test', {
         method: 'POST',
-        body: JSON.stringify(formData),
+        body: JSON.stringify(buildSourcePayload()),
       });
       setTestSuccess(true);
       return true;
@@ -167,7 +174,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
             <X size={20} />
           </button>
         </div>
-        
+
         <div className="modal-body">
           {backendError && (
             <div className="error-banner">
@@ -188,12 +195,12 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
 
           <div className="form-group">
             <label htmlFor="name">Connection Name</label>
-            <input 
-              id="name" 
-              name="name" 
-              value={formData.name} 
-              onChange={handleChange} 
-              placeholder="e.g., Production Analytics" 
+            <input
+              id="name"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              placeholder="e.g., Production Analytics"
               disabled={isTesting || isSaving}
             />
             {errors.name && <div className="form-error">{errors.name}</div>}
@@ -202,10 +209,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
           <div className="grid grid-cols-2 gap-3" style={{ marginBottom: 'var(--space-3)' }}>
             <div>
               <label htmlFor="type" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>Database Type</label>
-              <select 
-                id="type" 
-                name="type" 
-                value={formData.type} 
+              <select
+                id="type"
+                name="type"
+                value={formData.type}
                 onChange={handleChange}
                 disabled={isTesting || isSaving}
               >
@@ -215,11 +222,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
             </div>
             <div>
               <label htmlFor="database_name" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>Database Name</label>
-              <input 
-                id="database_name" 
-                name="database_name" 
-                value={formData.database_name} 
-                onChange={handleChange} 
+              <input
+                id="database_name"
+                name="database_name"
+                value={formData.database_name}
+                onChange={handleChange}
                 placeholder="postgres"
                 disabled={isTesting || isSaving}
               />
@@ -230,11 +237,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
           <div className="grid grid-cols-4 gap-3 form-group">
             <div style={{ gridColumn: 'span 3' }}>
               <label htmlFor="host">Host</label>
-              <input 
-                id="host" 
-                name="host" 
-                value={formData.host} 
-                onChange={handleChange} 
+              <input
+                id="host"
+                name="host"
+                value={formData.host}
+                onChange={handleChange}
                 placeholder="localhost or DB URL"
                 disabled={isTesting || isSaving}
               />
@@ -242,12 +249,12 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
             </div>
             <div>
               <label htmlFor="port">Port</label>
-              <input 
-                id="port" 
-                name="port" 
+              <input
+                id="port"
+                name="port"
                 type="number"
-                value={formData.port} 
-                onChange={handleChange} 
+                value={formData.port}
+                onChange={handleChange}
                 disabled={isTesting || isSaving}
               />
               {errors.port && <div className="form-error">{errors.port}</div>}
@@ -257,10 +264,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
           <div className="grid grid-cols-2 gap-3 form-group">
             <div>
               <label htmlFor="username">Username</label>
-              <input 
-                id="username" 
-                name="username" 
-                value={formData.username} 
+              <input
+                id="username"
+                name="username"
+                value={formData.username}
                 onChange={handleChange}
                 disabled={isTesting || isSaving}
               />
@@ -268,11 +275,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
             </div>
             <div>
               <label htmlFor="password">Password</label>
-              <input 
-                id="password" 
-                name="password" 
-                type="password" 
-                value={formData.password} 
+              <input
+                id="password"
+                name="password"
+                type="password"
+                value={formData.password}
                 onChange={handleChange}
                 disabled={isTesting || isSaving}
               />
