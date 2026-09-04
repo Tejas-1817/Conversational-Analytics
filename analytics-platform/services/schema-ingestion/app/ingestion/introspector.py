@@ -38,10 +38,20 @@ _SYSTEM_TABLES = {
 
 def run_introspection(session: Session, source: DataSource, engine: Engine) -> dict:
     inspector = inspect(engine)
-    include = set(source.options.get("include_schemas") or [])
-    blocklist = set(source.options.get("table_blocklist") or [])
 
-    schemas = [s for s in inspector.get_schema_names() if s not in _SYSTEM_SCHEMAS]
+    options = source.options or {}
+
+    include = set(options.get("include_schemas") or [])
+    blocklist = set(options.get("table_blocklist") or [])
+
+    # PostgreSQL providers such as Supabase contain protected internal schemas.
+    # Default to the public application schema unless schemas were explicitly supplied.
+    if source.type == "postgres" and not include:
+        include = {"public"}
+
+    schemas = [s for s in inspector.get_schema_names() 
+        if s not in _SYSTEM_SCHEMAS
+    ]
     if include:
         schemas = [s for s in schemas if s in include]
 
