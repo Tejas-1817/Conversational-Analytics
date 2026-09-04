@@ -152,7 +152,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     try {
       await fetchApi('/sources', {
         method: 'POST',
-        body: JSON.stringify(formData),
+        body: JSON.stringify(buildSourcePayload()),
       });
       onSuccess();
       onClose();
