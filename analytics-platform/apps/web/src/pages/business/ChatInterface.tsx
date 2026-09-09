@@ -7,6 +7,9 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { prism as prismLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
 function SqlAccordion({ sql }: { sql: string }) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
@@ -187,17 +190,36 @@ export const ChatInterface = () => {
           role: m.role,
           question: m.role === 'assistant' ? m.question : m.content,
           content: m.content,
+
           answer: m.role === 'assistant' ? m.content : undefined,
+          answer_markdown: m.role === 'assistant' ? m.content : undefined,
+
           sql: m.generated_sql,
+
           result_data: rows,
           rows: rows,
           columns: cols,
-          chart_recommendation: m.recommended_visualization?.chart_type || m.chart_recommendation,
+
+          row_count: parsedData?.row_count ?? rows.length,
+          data_truncated: Boolean(parsedData?.data_truncated),
+
+          follow_up_questions: Array.isArray(parsedData?.follow_up_questions) ? parsedData.follow_up_questions : [],
+
+          column_types: parsedData?.column_types || {},
+
+          visualization: parsedData?.visualization || m.chart_recommendation || 'table',
+
+          title: parsedData?.title || 'Query Result',
+
+          chart_recommendation: parsedData?.visualization || m.recommended_visualization?.chart_type || m.chart_recommendation,
+
           recommended_visualization: m.recommended_visualization,
+
           execution_time_ms: m.execution_time_ms,
           status: m.status,
+
           generated_at: m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
-          database: 'analytics_db'
+          database: 'analytics_db',
         };
       });
       setMessages(normalizedMessages);
@@ -274,6 +296,19 @@ export const ChatInterface = () => {
     e.preventDefault();
     if (!input.trim()) return;
 
+    if (!selectedSourceId) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Date.now(),
+          role: 'assistant',
+          content: 'Please select a connected data source first.',
+          isError: true,
+        },
+      ]);
+      return;
+    }
+
     const questionText = input.trim();
     const userMsg = { id: Date.now(), role: 'user', content: questionText };
     setMessages(prev => [...prev, userMsg]);
@@ -287,7 +322,8 @@ export const ChatInterface = () => {
           question: questionText,
           conversation_id: convId,
           domain_id: selectedDomainId || null,
-          source_id: selectedSourceId || null
+          source_id: selectedSourceId,
+          mode: 'auto'
         })
       });
 
@@ -302,19 +338,27 @@ export const ChatInterface = () => {
       const botMsg = {
         id: Date.now() + 1,
         role: 'assistant',
+        content: data.answer_markdown || data.answer || '',
+        intent: data.intent,
         question: data.question,
         answer: data.answer,
+        answer_markdown: data.answer_markdown || data.answer,
         sql: data.sql,
-        result_data: Array.isArray(data.rows) ? data.rows : (Array.isArray(data.result_data) ? data.result_data : []),
-        rows: Array.isArray(data.rows) ? data.rows : (Array.isArray(data.result_data) ? data.result_data : []),
-        columns: data.columns || (Array.isArray(data.rows) && data.rows.length > 0 ? Object.keys(data.rows[0]) : []),
-        row_count: data.row_count !== undefined ? data.row_count : (Array.isArray(data.rows) ? data.rows.length : 0),
-        chart_recommendation: chartTypeRes,
-        recommended_visualization: recVis,
+        result_data: Array.isArray(data.rows) ? data.rows : [],
+        rows: Array.isArray(data.rows) ? data.rows : [],
+        columns: data.columns || [],
+        column_types: data.column_types || {},
+        row_count: data.row_count || 0,
+        data_truncated: Boolean(data.data_truncated),
+        follow_up_questions: Array.isArray(data.follow_up_questions)
+          ? data.follow_up_questions
+          : [],
+        recommended_visualization: data.recommended_visualization,
+        visualization: data.visualization,
+        title: data.title,
         execution_time_ms: data.execution_time_ms,
         generated_at: data.generated_at,
-        database: data.database || 'analytics_db',
-        content: data.answer || data.sql
+        database: data.database,
       };
       setMessages(prev => [...prev, botMsg]);
       await loadConversationsList();
@@ -545,13 +589,45 @@ export const ChatInterface = () => {
                     {!m.isError && (m.sql || m.content || m.answer) && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
                         {/* 1. Executive Summary — suppress for pure single-metric KPI cards */}
-                        {m.answer && !(m.result_data && m.result_data.length === 1 && m.columns && m.columns.length === 1) && (
-                          <div style={{
-                            fontSize: '0.975rem',
-                            lineHeight: 1.65,
-                            color: 'var(--text-main, #f8fafc)',
-                          }}>
-                            {m.answer}
+                        {m.answer_markdown && (
+                          <div className="business-answer">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                h2: ({ children }) => (
+                                  <h2 style={{
+                                    fontSize: '1.05rem',
+                                    margin: '1rem 0 0.4rem',
+                                    color: 'var(--text-main)',
+                                  }}>
+                                    {children}
+                                  </h2>
+                                ),
+                                p: ({ children }) => (
+                                  <p style={{
+                                    margin: '0.35rem 0',
+                                    lineHeight: 1.65,
+                                  }}>
+                                    {children}
+                                  </p>
+                                ),
+                                ul: ({ children }) => (
+                                  <ul style={{
+                                    paddingLeft: '1.25rem',
+                                    margin: '0.4rem 0',
+                                  }}>
+                                    {children}
+                                  </ul>
+                                ),
+                                li: ({ children }) => (
+                                  <li style={{ marginBottom: '0.3rem' }}>
+                                    {children}
+                                  </li>
+                                ),
+                              }}
+                            >
+                              {m.answer_markdown}
+                            </ReactMarkdown>
                           </div>
                         )}
 
@@ -574,6 +650,19 @@ export const ChatInterface = () => {
                                 </button>
                               </div>
                             </div>
+                            {m.data_truncated && (
+                              <div
+                                className="badge badge-warning"
+                                style={{
+                                  marginBottom: '1rem',
+                                  padding: '0.5rem 0.75rem',
+                                  borderRadius: '8px',
+                                  display: 'block',
+                                }}
+                              >
+                                Showing the first {m.row_count} rows. Download or refine the query for a complete result.
+                              </div>
+                            )}
 
                             {(() => {
                               const rows = m.result_data || m.rows || [];
@@ -667,6 +756,35 @@ export const ChatInterface = () => {
                             </details>
                           );
                         })()}
+                        {/* 5. Suggested follow-up questions */}
+                        {m.follow_up_questions?.length > 0 && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '0.5rem',
+                              marginTop: '1rem',
+                            }}
+                          >
+                            {m.follow_up_questions.map(
+                              (question: string) => (
+                                <button
+                                  key={question}
+                                  type="button"
+                                  className="btn-secondary"
+                                  onClick={() => setInput(question)}
+                                  style={{
+                                    whiteSpace: 'normal',
+                                    textAlign: 'left',
+                                    fontSize: '0.8rem',
+                                  }}
+                                >
+                                  {question}
+                                </button>
+                              ),
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -706,7 +824,7 @@ export const ChatInterface = () => {
                         <div className="flex-1" />
 
                         <div className="flex items-center gap-2">
-                          <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={() => handleCopy(m.content)} title="Copy response"><Copy size={14} /></button>
+                          <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={() => handleCopy(m.answer_markdown || m.answer || m.content || '')} title="Copy response"><Copy size={14} /></button>
                           <button className="btn-ghost" style={{ padding: '0.25rem' }} title="Regenerate"><RefreshCcw size={14} /></button>
                           <button className="btn-ghost" style={{ padding: '0.25rem' }} title="Good response"><ThumbsUp size={14} /></button>
                           <button className="btn-ghost" style={{ padding: '0.25rem' }} title="Bad response"><ThumbsDown size={14} /></button>

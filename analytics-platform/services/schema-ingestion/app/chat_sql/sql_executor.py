@@ -16,17 +16,84 @@ from app.models import DataSource
 
 log = structlog.get_logger(__name__)
 
-ExecutionResult = Tuple[
-    List[Dict[str, Any]],
+ExecutionResult = tuple[
+    list[dict[str, Any]],
     int,
     float,
-    List[str],
-    Optional[str],
+    list[str],
+    str | None,
+    bool,
 ]
 
 
 class SQLExecutor:
     """Execute validated read-only SQL against the customer database."""
+
+    @staticmethod
+    def preflight_query(
+        sql: str,
+        source: Optional[DataSource] = None,
+        timeout_ms: int = 5_000,
+    ) -> str | None:
+        """Ask the source database to validate a query without executing it."""
+
+        clean_sql = (sql or "").strip()
+
+        if not clean_sql.upper().startswith(("SELECT", "WITH")):
+            return "Preflight rejected a non-SELECT/WITH statement."
+
+        if source is None:
+            return "No connected customer data source was provided."
+
+        engine = None
+
+        try:
+            engine = build_engine(source)
+
+            with engine.connect() as connection:
+                source_type = str(source.type).lower()
+
+                if source_type == "postgres":
+                    connection.execute(
+                        text("SET TRANSACTION READ ONLY")
+                    )
+                    connection.execute(
+                        text(
+                            f"SET LOCAL statement_timeout = "
+                            f"{int(timeout_ms)}"
+                        )
+                    )
+                    connection.execute(
+                        text(
+                            f"EXPLAIN (FORMAT JSON) {clean_sql}"
+                        )
+                    )
+
+                elif source_type == "mysql":
+                    connection.execute(
+                        text(
+                            f"SET SESSION max_execution_time = "
+                            f"{int(timeout_ms)}"
+                        )
+                    )
+                    connection.execute(
+                        text(f"EXPLAIN {clean_sql}")
+                    )
+
+                else:
+                    return f"Unsupported source type: {source.type}"
+
+            return None
+
+        except Exception as exc:
+            return f"{type(exc).__name__}: {exc}"
+
+        finally:
+            if engine is not None:
+                try:
+                    engine.dispose()
+                except Exception:
+                    pass
 
     @staticmethod
     def execute_query(
@@ -35,12 +102,12 @@ class SQLExecutor:
         limit: int = 100,
         timeout_ms: int = 5_000,
     ) -> ExecutionResult:
-        """Return rows, row count, time, columns, and optional error."""
+        """Return rows, row count, time, columns, optional error, and truncation."""
 
         clean_sql = (sql or "").strip()
 
         if clean_sql.upper() == "UNANSWERABLE":
-            return [], 0, 0.0, [], None
+            return [], 0, 0.0, [], None, False
 
         if not clean_sql.upper().startswith(("SELECT", "WITH")):
             return (
@@ -49,6 +116,7 @@ class SQLExecutor:
                 0.0,
                 [],
                 "Executor rejected SQL that was not a SELECT/WITH query.",
+                False,
             )
 
         if source is None:
@@ -58,6 +126,7 @@ class SQLExecutor:
                 0.0,
                 [],
                 "No connected customer data source was provided.",
+                False,  
             )
 
         started_at = time.perf_counter()
@@ -84,7 +153,7 @@ class SQLExecutor:
                 error=error,
             )
 
-            return [], 0, elapsed_ms, [], error
+            return [], 0, elapsed_ms, [], error, False
 
         try:
             with engine.connect() as connection:
@@ -135,6 +204,7 @@ class SQLExecutor:
                         0.0,
                         [],
                         f"Unsupported source type: {source.type}",
+                        False,
                     )
 
                 log.info(
@@ -148,7 +218,10 @@ class SQLExecutor:
 
                 result = connection.execute(text(clean_sql))
                 columns = list(result.keys())
-                rows = result.fetchmany(limit)
+                safe_limit = max(1, min(int(limit), 1_000))
+                fetched_rows = result.fetchmany(safe_limit + 1)
+                result_truncated = len(fetched_rows) > safe_limit
+                rows = fetched_rows[:safe_limit]
 
                 def serialize(value: Any) -> Any:
                     if value is None:
@@ -201,6 +274,7 @@ class SQLExecutor:
                     elapsed_ms,
                     columns,
                     None,
+                    result_truncated,
                 )
 
         except Exception as exc:
@@ -219,7 +293,7 @@ class SQLExecutor:
                 exc_info=True,
             )
 
-            return [], 0, elapsed_ms, [], error
+            return [], 0, elapsed_ms, [], error, False
 
         finally:
             if engine is not None:

@@ -18,6 +18,7 @@ Invariants:
 from __future__ import annotations
 
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
 
 import structlog
@@ -54,6 +55,9 @@ class RetrievalService:
         db: Session,
         store: ChromaStore | None = None,
         source_id: str | uuid.UUID | None = None,
+        object_types: list[str] | None = None,
+        top_k: int | None = None,
+        distance_threshold: float | None = None,
     ) -> RetrievalHits:
         """Embed query_text, search Chroma, hydrate hits to ORM objects.
 
@@ -70,7 +74,20 @@ class RetrievalService:
             Chroma is empty, or any exception occurs (safe fallback to keyword path).
         """
         settings = get_settings()
-        hits = RetrievalHits(threshold=settings.rag_distance_threshold)
+
+        effective_threshold = (
+            distance_threshold
+            if distance_threshold is not None
+            else settings.rag_distance_threshold
+        )
+
+        effective_top_k = (
+            top_k
+            if top_k is not None
+            else settings.rag_top_k
+        )
+
+        hits = RetrievalHits(threshold=effective_threshold)
 
         if not settings.rag_enabled:
             log.debug("retrieval_service_disabled", reason="rag_enabled=False")
@@ -100,8 +117,9 @@ class RetrievalService:
             raw: list[RetrievalResult] = store.query(
                 tenant_id=tenant_id,
                 query_embedding=query_vec,
-                n_results=settings.rag_top_k,
+                n_results=effective_top_k,
                 source_id=source_id,
+                object_types=object_types,
             )
 
             if not raw:
@@ -109,11 +127,11 @@ class RetrievalService:
                 return hits
 
             # 4. Filter by distance threshold
-            above_threshold = [r for r in raw if r.distance <= settings.rag_distance_threshold]
+            above_threshold = [r for r in raw if r.distance <= effective_threshold]
             if not above_threshold:
                 log.debug(
                     "retrieval_service_no_hits_above_threshold",
-                    threshold=settings.rag_distance_threshold,
+                    threshold=effective_threshold,
                     closest_dist=raw[0].distance,
                 )
                 return hits
@@ -196,9 +214,16 @@ class RetrievalService:
                 hits.approved_examples.sort(key=lambda t: t[1])
 
             hits.used_rag = True
+            raw_type_counts = Counter(
+                str(result.metadata.get("object_type", "missing"))
+                for result in hits.raw_results
+            )
+
             log.info(
                 "retrieval_service_hits",
                 tenant_id=str(tenant_id),
+                raw_results=len(hits.raw_results),
+                raw_type_counts=dict(raw_type_counts),
                 metrics=len(hits.metrics),
                 dimensions=len(hits.dimensions),
                 tables=len(hits.tables),

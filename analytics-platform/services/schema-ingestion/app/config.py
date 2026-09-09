@@ -32,7 +32,9 @@ class Settings(BaseSettings):
     # Ollama Settings
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "gemma3:4b"  # Benchmarked: ~53s/turn vs ~227s for 14b (4.1x speedup)
-    
+    ollama_fallback_model: str = ""
+    ollama_keep_alive: str = "30m"
+
     # SQL-generation context and output controls
     ollama_num_ctx: int = 16384
     ollama_num_predict: int = 256
@@ -72,6 +74,11 @@ class Settings(BaseSettings):
     rag_distance_threshold: float = 0.60
     rag_top_k: int = 10             # number of Chroma candidates to fetch per query
     rag_enabled: bool = True        # set False in CI / offline environments
+
+    # Text-to-SQL-specific retrieval and prompt limits
+    chat_sql_rag_top_k: int = 12
+    chat_sql_rag_distance_threshold: float = 0.75
+    chat_sql_max_schema_chars: int = 6000
 
     # Semantic layer feature flag
     enable_semantic_generation: bool = False

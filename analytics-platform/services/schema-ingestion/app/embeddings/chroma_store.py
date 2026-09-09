@@ -153,6 +153,7 @@ class ChromaStore:
         query_embedding: list[float],
         n_results: int = 5,
         source_id: str | uuid.UUID | None = None,
+        object_types: list[str] | None = None,
     ) -> list[RetrievalResult]:
         """Query the tenant's/source's collection."""
         collection = self._get_or_create_collection(tenant_id, source_id=source_id)
@@ -163,9 +164,24 @@ class ChromaStore:
             return []
 
         actual_n = min(n_results, count)
-        where_filter: dict = {"tenant_id": tenant_str}
-        if source_id:
-            where_filter = {"$and": [{"tenant_id": tenant_str}, {"source_id": str(source_id)}]}
+
+        filters: list[dict] = [
+            {"tenant_id": tenant_str},
+        ]
+
+        if source_id is not None:
+            filters.append({"source_id": str(source_id)})
+
+        if object_types:
+            filters.append({
+                "object_type": {"$in": object_types}
+            })
+
+        where_filter = (
+            filters[0]
+            if len(filters) == 1
+            else {"$and": filters}
+        )
 
         results = collection.query(
             query_embeddings=[query_embedding],

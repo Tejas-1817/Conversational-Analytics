@@ -39,7 +39,8 @@ Return a strict JSON array of objects with keys:
 - "synonyms": List of alternative names/synonyms (e.g. ["revenue", "turnover"])
 - "category": One of "metric", "dimension", "business_rule", "acronym", "general"
 
-Return ONLY valid JSON array. No markdown, no explanations outside JSON."""
+Return ONLY valid JSON array. No markdown, no explanations outside JSON.
+Return at most 12 of the most important terms."""
 
     try:
         # provider = LLMProvider().generate_sql(prompt)
@@ -47,8 +48,11 @@ Return ONLY valid JSON array. No markdown, no explanations outside JSON."""
         #     messages=[{"role": "user", "content": prompt}],
         #     temperature=0.1
         # )
-        content = LLMProvider().generate_sql(prompt).strip()
-        
+        content = LLMProvider().generate_text(
+            prompt=prompt,
+            max_tokens=768,
+            timeout=300,
+        ).strip()        
         # Strip markdown code blocks if wrapped
         if content.startswith("```"):
             lines = content.split("\n")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from typing import Any, Mapping
 
 import structlog
@@ -34,13 +36,29 @@ BLOCKED_FUNCTIONS = {
     "lo_export",
     "lo_import",
     "pg_cancel_backend",
-    "pg_reload_conf",
     "pg_rotate_logfile",
+    "pg_reload_conf",
     "pg_sleep",
     "pg_terminate_backend",
     "set_config",
+    "pg_read_file",
+    "pg_read_binary_file",
+    "pg_ls_dir",
+    "pg_stat_file",
+    "current_setting",
 }
 
+POSTGRES_INCOMPATIBLE_FUNCTIONS = {
+    "date_bucket",
+    "time_bucket",
+    "date_format",
+    "datediff",
+    "from_unixtime",
+    "ifnull",
+    "str_to_date",
+    "to_days",
+    "unix_timestamp",
+}
 
 class SQLValidator:
     """Validate generated SQL before customer-database execution."""
@@ -98,6 +116,18 @@ class SQLValidator:
             )
             return UNANSWERABLE
 
+        for function_name in POSTGRES_INCOMPATIBLE_FUNCTIONS:
+            if re.search(
+                rf"\b{re.escape(function_name)}\s*\(",
+                clean_sql,
+                flags=re.IGNORECASE,
+            ):
+                log.warning(
+                    "sql_validation_non_postgresql_function",
+                    function_name=function_name,
+                )
+                return UNANSWERABLE
+
         try:
             import sqlglot
             from sqlglot import exp
@@ -134,7 +164,10 @@ class SQLValidator:
                 return UNANSWERABLE
 
         for function in expression.find_all(exp.Func):
-            function_name = function.sql_name().lower()
+            if isinstance(function, exp.Anonymous):
+                function_name = function.name.lower()
+            else:
+                function_name = function.sql_name().lower()
 
             if function_name in BLOCKED_FUNCTIONS:
                 log.warning(
@@ -146,6 +179,12 @@ class SQLValidator:
         if catalog:
             normalized_catalog = cls._normalize_catalog(catalog)
 
+            allowed_schemas = {
+                table_name.rsplit(".", 1)[0]
+                for table_name in normalized_catalog
+                if "." in table_name
+            }
+
             cte_names = {
                 cte.alias_or_name.lower()
                 for cte in expression.find_all(exp.CTE)
@@ -153,6 +192,7 @@ class SQLValidator:
             }
 
             alias_columns: dict[str, set[str]] = {}
+            referenced_column_sets: list[set[str]] = []
 
             for table in expression.find_all(exp.Table):
                 table_name = table.name.lower() if table.name else ""
@@ -165,6 +205,16 @@ class SQLValidator:
                     if table.db
                     else ""
                 )
+                if (
+                    schema_name
+                    and allowed_schemas
+                    and schema_name not in allowed_schemas
+                ):
+                    log.warning(
+                        "sql_validation_unknown_schema",
+                        schema_name=schema_name,
+                    )
+                    return UNANSWERABLE
 
                 qualified_name = (
                     f"{schema_name}.{table_name}"
@@ -172,10 +222,10 @@ class SQLValidator:
                     else table_name
                 )
 
-                columns = (
-                    normalized_catalog.get(qualified_name)
-                    or normalized_catalog.get(table_name)
-                )
+                if schema_name:
+                    columns = normalized_catalog.get(qualified_name)
+                else:
+                    columns = normalized_catalog.get(table_name)
 
                 if columns is None:
                     log.warning(
@@ -192,6 +242,80 @@ class SQLValidator:
 
                 alias_columns[alias_name] = columns
                 alias_columns[table_name] = columns
+                referenced_column_sets.append(columns)
+
+            select_aliases = {
+                alias.alias.lower()
+                for alias in expression.find_all(exp.Alias)
+                if alias.alias
+            }
+
+            for column in expression.find_all(exp.Column):
+                column_name = (
+                    column.name.lower()
+                    if column.name
+                    else ""
+                )
+                qualifier = (
+                    column.table.lower()
+                    if column.table
+                    else ""
+                )
+
+                if not column_name or column_name == "*":
+                    continue
+
+                # CTE columns and calculated SELECT aliases are validated
+                # through their underlying expressions.
+                if qualifier in cte_names:
+                    continue
+
+                if qualifier:
+                    available_columns = alias_columns.get(qualifier)
+
+                    if available_columns is None:
+                        log.warning(
+                            "sql_validation_unknown_qualifier",
+                            qualifier=qualifier,
+                            column_name=column_name,
+                        )
+                        return UNANSWERABLE
+
+                    if (
+                        available_columns
+                        and column_name not in available_columns
+                    ):
+                        log.warning(
+                            "sql_validation_unknown_qualified_column",
+                            qualifier=qualifier,
+                            column_name=column_name,
+                        )
+                        return UNANSWERABLE
+
+                    continue
+
+                if column_name in select_aliases:
+                    continue
+
+                matching_table_count = sum(
+                    1
+                    for available_columns in referenced_column_sets
+                    if column_name in available_columns
+                )
+
+                if matching_table_count == 0:
+                    log.warning(
+                        "sql_validation_unknown_unqualified_column",
+                        column_name=column_name,
+                    )
+                    return UNANSWERABLE
+
+                if matching_table_count > 1:
+                    log.warning(
+                        "sql_validation_ambiguous_unqualified_column",
+                        column_name=column_name,
+                    )
+                    return UNANSWERABLE
 
             # Validate qualified columns such as c.customer_id.
             # Unqualified columns are left to PostgreSQL because they may
@@ -221,6 +345,46 @@ class SQLValidator:
                         column_name=column_name,
                     )
                     return UNANSWERABLE
+
+            # Validate GROUP BY requirements for aggregate queries.
+            select_expression = expression.find(exp.Select)
+
+            if select_expression is not None:
+                contains_aggregate = any(
+                    True
+                    for _ in select_expression.find_all(exp.AggFunc)
+                )
+
+                if contains_aggregate:
+                    group = select_expression.args.get("group")
+                    grouped_expressions = {
+                        item.sql(dialect="postgres").lower()
+                        for item in (group.expressions if group else [])
+                    }
+
+                    for projection in select_expression.expressions:
+                        projected_expression = (
+                            projection.this
+                            if isinstance(projection, exp.Alias)
+                            else projection
+                        )
+
+                        if projected_expression.find(exp.AggFunc):
+                            continue
+
+                        if not any(projected_expression.find_all(exp.Column)):
+                            continue
+
+                        normalized_projection = projected_expression.sql(
+                            dialect="postgres"
+                        ).lower()
+
+                        if normalized_projection not in grouped_expressions:
+                            log.warning(
+                                "sql_validation_missing_group_by",
+                                expression=normalized_projection,
+                            )
+                            return UNANSWERABLE
 
         try:
             return expression.sql(

@@ -13,6 +13,17 @@ from app.config import get_settings
 
 log = structlog.get_logger(__name__)
 
+class LLMProviderError(RuntimeError):
+    """Base Ollama provider error."""
+
+
+class LLMTimeoutError(LLMProviderError):
+    """Ollama did not produce output before the configured deadline."""
+
+
+class LLMUnavailableError(LLMProviderError):
+    """Ollama could not be reached."""
+
 
 class LLMProvider:
     """Generate and review SQL using the configured Ollama model."""
@@ -22,22 +33,23 @@ class LLMProvider:
 
         self.base_url = settings.ollama_base_url.rstrip("/")
         self.model_name = settings.ollama_model.strip()
+        self.fallback_model = settings.ollama_fallback_model.strip()
+        self.keep_alive = settings.ollama_keep_alive.strip()
+        self.http = requests.Session()
+
         self.num_ctx = settings.ollama_num_ctx
         self.num_predict = settings.ollama_num_predict
         self.timeout_seconds = settings.ollama_timeout_seconds
         self.sql_review_enabled = settings.ollama_sql_review_enabled
 
     def _models_to_try(self) -> list[str]:
-        """Return configured model followed by an optional local fallback."""
-
-        return list(
-            dict.fromkeys(
-                [
-                    self.model_name,
-                    "gemma3:4b",
-                ]
+        return [
+            model
+            for model in dict.fromkeys(
+                [self.model_name, self.fallback_model]
             )
-        )
+            if model
+        ]
 
     def _request_ollama(
         self,
@@ -56,6 +68,7 @@ class LLMProvider:
             "model": model,
             "prompt": prompt,
             "stream": True,
+            "keep_alive": self.keep_alive,
             "options": {
                 "temperature": temperature,
                 "top_p": 0.1,
@@ -68,7 +81,7 @@ class LLMProvider:
         response_parts: list[str] = []
         final_chunk: dict = {}
 
-        with requests.post(
+        with self.http.post(
             url,
             json=payload,
             stream=True,
@@ -166,7 +179,7 @@ class LLMProvider:
 
                 return cleaned_sql
 
-            except requests.exceptions.ReadTimeout as exc:
+            except requests.exceptions.Timeout as exc:
                 last_error = exc
                 log.warning(
                     "ollama_sql_timeout",
@@ -193,9 +206,19 @@ class LLMProvider:
                     error=str(exc),
                 )
 
-        raise RuntimeError(
-            f"SQL generation failed for all Ollama models: {last_error}"
-        )
+        if isinstance(last_error, requests.exceptions.Timeout):
+                raise LLMTimeoutError(
+                    "Ollama timed out for every configured model."
+                ) from last_error
+
+        if isinstance(last_error, requests.exceptions.ConnectionError):
+                raise LLMUnavailableError(
+                    "Unable to connect to Ollama."
+                ) from last_error
+
+        raise LLMProviderError(
+                f"SQL generation failed for all Ollama models: {last_error}"
+            ) from last_error
 
     def _clean_sql_output(self, raw_text: str) -> str:
         """Remove reasoning wrappers and normalize SQL output."""
@@ -328,22 +351,23 @@ FINAL REVIEWED SQL:"""
 
         correction_prompt = f"""You are a PostgreSQL SQL correction engine.
 
-The candidate query failed during execution. Correct it using only the
-physical schema and database error.
+Correct the failed query using only the physical schema and database error.
 
 RULES:
-- Do not generate SQL.
-- Do not invent database values, performance results, trends, causes,
-  forecasts, or missing-value counts.
-- Clearly distinguish facts visible in the schema from suggested analyses.
-- For business-opportunity questions, describe potential opportunities as
-  hypotheses that should be verified with data.
-- For missing-data questions, identify possible schema or coverage gaps only.
-- State that row-level profiling is required to confirm NULL values,
-  incomplete records, or data-quality problems.
-- Use concise Markdown paragraphs and bullet points.
-- Keep the complete answer below 300 words and use at most six bullet points.
-- Mention the relevant physical tables and columns supporting each suggestion.
+- Return exactly one read-only SELECT or WITH query.
+- Use only tables and columns declared in DATABASE SCHEMA.
+- Correct the exact syntax, schema, column, join, grouping, or type error.
+- Preserve the user's requested metric, filters, dimensions, and ordering.
+- Do not add unsupported assumptions.
+- Return UNANSWERABLE if a reliable correction is impossible.
+- Return SQL or UNANSWERABLE only.
+- Do not return Markdown, explanation, comments, or reasoning.
+- If DATABASE ERROR says a function does not exist, never reuse that function.
+- The connected database is plain PostgreSQL. DATE_BUCKET and TIME_BUCKET do not exist.
+- For monthly grouping, use DATE_TRUNC('month', the_correct_timestamp_column).
+- If aggregates and non-aggregate expressions are selected together, add
+  the required GROUP BY expressions.
+- Do not repeat any SQL already rejected during this correction attempt.
 
 DATABASE SCHEMA:
 {schema_text}
@@ -411,6 +435,16 @@ CORRECTED SQL:"""
                     error=str(exc),
                 )
 
-        raise RuntimeError(
+        if isinstance(last_error, requests.exceptions.Timeout):
+            raise LLMTimeoutError(
+                "Ollama text generation timed out."
+            ) from last_error
+
+        if isinstance(last_error, requests.exceptions.ConnectionError):
+            raise LLMUnavailableError(
+                "Unable to connect to Ollama."
+            ) from last_error
+
+        raise LLMProviderError(
             f"Text generation failed for all Ollama models: {last_error}"
-        )
+        ) from last_error

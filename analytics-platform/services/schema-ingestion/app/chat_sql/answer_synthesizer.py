@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal
-from typing import Any, Dict, List
-
+from typing import Any, Dict, List, Literal
 import structlog
 
+from app.chat_sql.prompt_builder import PromptBuilder
 from app.chat_sql.llm_provider import LLMProvider
 
 log = structlog.get_logger(__name__)
@@ -242,6 +242,7 @@ class AnswerSynthesizer:
         sql: str,
         domain_context: str | None = None,
         result_truncated: bool = False,
+        force_strategy_format: bool = False,
     ) -> str:
         """Generate a grounded answer from verified result rows."""
 
@@ -259,7 +260,11 @@ class AnswerSynthesizer:
                 "were found for the requested conditions."
             )
 
-        analysis_mode = _detect_analysis_mode(question)
+        analysis_mode = (
+            "hybrid"
+            if force_strategy_format
+            else _detect_analysis_mode(question)
+        )
         forecast_data_present = _contains_forecast_data(result_data)
 
         # Simple standard KPI/detail questions do not need another LLM call.
@@ -271,7 +276,7 @@ class AnswerSynthesizer:
                 question=question,
                 result_data=result_data,
             )
-
+        
         data_preview, preview_row_count, preview_truncated = (
             _build_data_preview(result_data)
         )
@@ -290,39 +295,39 @@ class AnswerSynthesizer:
 answers the question. Mention only values and rankings supported by the
 result data."""
 
-        elif analysis_mode == "strategic":
-            response_format = """Use this format:
+        elif analysis_mode in {"strategic", "hybrid"}:
+            response_format = """Return exactly these Markdown sections:
 
-### Executive Summary
-State the most important verified finding.
+## Executive Summary
+Summarize the most important verified findings.
 
-### Key Insights
-Provide up to three observations directly supported by the result.
+## Operational Advice
+Provide cautious operational actions tied to verified evidence.
 
-### Business Recommendations
-Provide up to two cautious actions linked directly to observed evidence.
-Separate hypotheses from facts.
+## Sales Strategies
+Provide sales recommendations only when supported by the result.
+Otherwise state which sales analysis is needed.
 
-### Suggested Follow-up Analysis
-Provide two focused questions that would gather missing evidence."""
+## Long-Term Tips
+Provide cautious longer-term recommendations and clearly distinguish
+verified facts from hypotheses."""
 
         else:
-            response_format = """Use this format:
+            response_format = """Return exactly these Markdown sections:
 
-### Forecast Summary
-If structured forecast rows exist, summarize those supplied forecast values.
-If they do not exist, state that the result contains historical evidence only
-and that a numeric forecast has not yet been calculated.
+## Executive Summary
+Summarize the most important verified result.
 
-### Historical Trend
-Describe only changes visible in the supplied periods.
+## Operational Advice
+Provide up to three actions grounded in the verified result.
 
-### Uncertainty
-Describe supplied confidence bounds when present. Do not invent uncertainty
-ranges or confidence percentages.
+## Sales Strategies
+Provide up to three sales actions only when sales-related evidence exists.
+Otherwise state which sales analysis should be run first.
 
-### Business Considerations
-Provide up to two cautious actions based on the supplied evidence."""
+## Long-Term Tips
+Provide up to three cautious longer-term considerations.
+Clearly distinguish verified facts from hypotheses."""
 
         prompt = f"""You are an evidence-grounded business data analyst.
 
@@ -403,4 +408,60 @@ FINAL ANSWER:"""
             return _deterministic_answer(
                 question=question,
                 result_data=result_data,
+            ) 
+
+    def synthesize_strategy(
+        self,
+        *,
+        question: str,
+        schema_inventory: str,
+        domain_context: str = "",
+        conversation_context: str = "",
+    ) -> str:
+        """Generate cautious strategy advice without inventing database results."""
+
+        prompt = PromptBuilder.build_strategy_prompt(
+            question=question,
+            schema_inventory=schema_inventory,
+            domain_context=domain_context,
+            conversation_context=conversation_context,
+            verified_data_json=None,
+        )
+
+        if not self.use_llm:
+            return self._strategy_fallback()
+
+        try:
+            return self.llm_provider.generate_text(
+                prompt=prompt,
+                max_tokens=640,
+                timeout=300,
             )
+
+        except Exception as exc:
+            log.warning(
+                "strategy_synthesis_failed_using_safe_fallback",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            return self._strategy_fallback()
+
+    @staticmethod
+    def _strategy_fallback() -> str:
+        """Return safe advice when the strategy LLM call fails."""
+
+        return """## Executive Summary
+
+No row-level database results were executed, so specific performance findings cannot be verified.
+
+## Operational Advice
+
+Identify measurable operational KPIs supported by the connected schema, then analyze their current values and changes over time.
+
+## Sales Strategies
+
+Validate which sales, product, customer, pricing, and margin fields are available before selecting a sales strategy.
+
+## Long-Term Tips
+
+Define approved KPI definitions, establish reliable historical tracking, and treat every recommendation as a hypothesis until verified against measured results."""

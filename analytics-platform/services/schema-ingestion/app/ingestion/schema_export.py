@@ -389,7 +389,7 @@ def export_human_readable_schema(
                     id=r["id"],
                     text=r["text"],
                     embedding=r["embedding"],
-                    metadata={"label": r.get("label", ""), "tenant_id": tenant_str, "source_id": source_str}
+                    metadata={"label": r.get("label", ""), "tenant_id": tenant_str, "source_id": source_str, "object_type": "schema_chunk", "chunk_id": r["id"],}
                 )
                 for r in records
             ]

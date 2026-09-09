@@ -21,7 +21,7 @@ import uuid
 from typing import Optional, Iterator
 
 import structlog
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.audit import AuditEvent, audit
 from app.embeddings.chroma_store import ChromaStore, EmbeddedObject
@@ -47,9 +47,56 @@ _APPROVED = "approved"
 # ---------------------------------------------------------------------------
 
 def _table_text(t: TableMeta) -> str:
-    parts = [t.business_name or t.table_name, t.description or ""]
-    return f"{parts[0]} — {parts[1]}. Table: {t.schema_name}.{t.table_name}".strip(" —")
+    """Build searchable and SQL-useful table embedding text."""
 
+    lines = [
+        f"TABLE: {t.schema_name}.{t.table_name}",
+        f"Business name: {t.business_name or t.table_name}",
+    ]
+
+    if t.description:
+        lines.append(f"Description: {t.description}")
+
+    lines.append("COLUMNS:")
+
+    active_columns = sorted(
+        (
+            column
+            for column in t.columns
+            if column.is_active
+        ),
+        key=lambda column: column.ordinal_position or 0,
+    )
+
+    for column in active_columns:
+        details = [column.data_type]
+
+        if column.is_primary_key:
+            details.append("PRIMARY KEY")
+
+        if not column.is_nullable:
+            details.append("NOT NULL")
+
+        if column.business_name:
+            details.append(
+                f"business name: {column.business_name}"
+            )
+
+        if column.description:
+            details.append(
+                f"description: {column.description}"
+            )
+
+        if column.synonyms:
+            details.append(
+                f"synonyms: {', '.join(column.synonyms)}"
+            )
+
+        lines.append(
+            f"- {column.column_name} ({'; '.join(details)})"
+        )
+
+    return "\n".join(lines)
 
 def _column_text(c: ColumnMeta, table_name: str) -> str:
     name = c.business_name or c.column_name
@@ -121,6 +168,7 @@ def _collect_objects(
     # 1. Tables (scoped via DataSource.tenant_id)
     tables = (
         db.query(TableMeta)
+        .options(selectinload(TableMeta.columns))
         .join(DataSource, TableMeta.source_id == DataSource.id)
         .filter(
             DataSource.tenant_id == tenant_id,
@@ -356,6 +404,48 @@ def embed_approved_objects(
         upserted = store.upsert(tenant_id, objects_chunk)
         upserted_total += upserted
 
+        # Also copy source-owned physical schema objects into the
+        # source-specific collection queried by ChatService.
+        source_groups: dict[
+            str,
+            list[EmbeddedObject],
+        ] = {}
+
+        for obj in objects_chunk:
+            object_type = str(
+                obj.metadata.get("object_type", "")
+            ).lower()
+
+            # These object types contain a real DataSource ID.
+            if object_type not in {
+                "table",
+                "column",
+                "relationship",
+            }:
+                continue
+
+            object_source_id = str(
+                obj.metadata.get("source_id", "")
+            ).strip()
+
+            if not object_source_id:
+                continue
+
+            source_groups.setdefault(
+                object_source_id,
+                [],
+            ).append(obj)
+
+        for (
+            object_source_id,
+            source_objects,
+        ) in source_groups.items():
+            store.upsert(
+                tenant_id=tenant_id,
+                objects=source_objects,
+                source_id=object_source_id,
+            )
+        
     for obj in object_stream:
         chunk.append(obj)
         if len(chunk) >= chunk_size:

@@ -9,6 +9,7 @@ import os
 import csv
 import structlog
 from typing import List, Dict, Any
+from docx import Document
 
 log = structlog.get_logger(__name__)
 
@@ -19,10 +20,15 @@ def parse_document(file_bytes: bytes, file_name: str) -> str:
     
     if ext == "pdf":
         return _parse_pdf(file_bytes)
-    elif ext in ("docx", "doc"):
+    elif ext == "docx":
         return _parse_docx(file_bytes)
+
+    elif ext == "doc":
+        raise ValueError("Legacy .doc files are unsupported. Convert the file to .docx.")
+
     elif ext == "csv":
         return _parse_csv(file_bytes)
+
     elif ext in ("xlsx", "xls"):
         return _parse_excel(file_bytes)
     else:
@@ -53,22 +59,40 @@ def _parse_pdf(file_bytes: bytes) -> str:
 
 
 def _parse_docx(file_bytes: bytes) -> str:
-    """Extract text from DOCX using python-docx if available."""
+    """Extract text and tables from a valid DOCX document."""
     try:
-        import docx
-        doc = docx.Document(io.BytesIO(file_bytes))
-        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-        for table in doc.tables:
-            for row in table.rows:
-                row_txt = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
-                if row_txt:
-                    paragraphs.append(row_txt)
-        return "\n".join(paragraphs)
-    except Exception as exc:
-        log.warning("docx_parsing_fallback", error=str(exc))
-        raw = file_bytes.decode("utf-8", errors="ignore")
-        return "".join(c for c in raw if c.isprintable() or c in "\n\r\t")[:50000]
+        document = Document(io.BytesIO(file_bytes))
 
+        paragraphs = [
+            paragraph.text.strip()
+            for paragraph in document.paragraphs
+            if paragraph.text.strip()
+        ]
+
+        for table in document.tables:
+            for row in table.rows:
+                row_text = " | ".join(
+                    cell.text.strip()
+                    for cell in row.cells
+                    if cell.text.strip()
+                )
+                if row_text:
+                    paragraphs.append(row_text)
+
+        extracted_text = "\n".join(paragraphs).strip()
+
+        if not extracted_text:
+            raise ValueError("DOCX contains no extractable text.")
+
+        return extracted_text
+
+    except Exception as exc:
+        log.error(
+            "docx_parsing_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        raise ValueError("Unable to parse the DOCX document.") from exc
 
 def _parse_csv(file_bytes: bytes) -> str:
     """Extract tabular summaries and header information from CSV."""

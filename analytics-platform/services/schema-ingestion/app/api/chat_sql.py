@@ -1,48 +1,62 @@
-"""Ask AI Chat SQL REST API Controller.
+from __future__ import annotations
 
-Exposes POST /api/v1/chat/sql for natural language to PostgreSQL SQL generation.
-"""
-from typing import Any, Dict, List, Optional
+import uuid
+from typing import Any, Literal
+
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.chat_sql.chat_service import ChatService
+from app.chat_sql.chat_service import ChatService, SourceNotFoundError
+from app.chat_sql.llm_provider import LLMTimeoutError, LLMUnavailableError
 from app.db import get_session
 from app.models import User
 
+
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/v1/chat", tags=["ask-ai-sql"])
-
 chat_service = ChatService()
+
+RequestMode = Literal["auto", "data", "strategy", "hybrid"]
+ResolvedIntent = Literal["data", "strategy", "hybrid"]
 
 
 class SQLQueryRequest(BaseModel):
-    question: str = Field(..., example="How many customers currently have ACTIVE status?")
-    conversation_id: Optional[str] = None
-    domain_id: Optional[str] = None
+    question: str = Field(min_length=1, max_length=2_000)
+    source_id: uuid.UUID
+    conversation_id: uuid.UUID | None = None
+    domain_id: uuid.UUID | None = None
+    mode: RequestMode = "auto"
 
 
 class SQLQueryResponse(BaseModel):
-    success: bool = True
-    conversation_id: Optional[str] = None
+    success: bool
+    intent: ResolvedIntent
+    conversation_id: str | None = None
     question: str
-    summary: Optional[str] = None
-    sql: str
-    answer: Optional[str] = None
-    result_data: Optional[List[Dict[str, Any]]] = None
-    rows: Optional[List[Dict[str, Any]]] = None
-    columns: Optional[List[str]] = None
-    row_count: Optional[int] = 0
-    column_count: Optional[int] = 0
-    visualization: Optional[str] = None
-    title: Optional[str] = None
-    profile: Optional[Dict[str, Any]] = None
-    statistics: Optional[Dict[str, Any]] = None
-    recommended_visualization: Optional[Dict[str, Any]] = None
-    execution_time_ms: Optional[float] = 0.0
+
+    answer: str
+    answer_markdown: str
+    summary: str
+
+    sql: str | None = None
+    rows: list[dict[str, Any]] = Field(default_factory=list)
+    result_data: list[dict[str, Any]] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+    column_types: dict[str, str] = Field(default_factory=dict)
+
+    row_count: int = 0
+    column_count: int = 0
+    data_truncated: bool = False
+
+    visualization: str = "text"
+    title: str
+    recommended_visualization: dict[str, Any] = Field(default_factory=dict)
+    follow_up_questions: list[str] = Field(default_factory=list)
+
+    execution_time_ms: float = 0.0
     generated_at: str
     database: str
 
@@ -52,25 +66,50 @@ def generate_sql_from_question(
     req: SQLQueryRequest,
     db: Session = Depends(get_session),
     user: User = Depends(get_current_user),
-) -> Dict[str, Any]:
-    """Generates PostgreSQL SQL query from natural language question using connected DB schema."""
-    if not req.question or not req.question.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Question cannot be empty."
-        )
-
+) -> dict[str, Any]:
     try:
         return chat_service.process_text_to_sql(
             question=req.question.strip(),
+            source_id=req.source_id,
             conversation_id=req.conversation_id,
             domain_id=req.domain_id,
+            requested_mode=req.mode,
             db_session=db,
             user=user,
         )
+
+    except SourceNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    except LLMTimeoutError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="The AI model timed out while processing the request.",
+        ) from exc
+
+    except LLMUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The AI model is currently unavailable.",
+        ) from exc
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
     except Exception as exc:
-        log.error("api_chat_sql_failed", error=str(exc))
+        log.exception(
+            "api_chat_sql_failed",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate SQL query: {exc}"
-        )
+            detail="The analytics request could not be completed.",
+        ) from exc

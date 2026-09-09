@@ -450,7 +450,25 @@ def _process_document_background(
 
             # 1. Parse text
             raw_text = parse_document(content_bytes, file_name)
-            chunks = chunk_text(raw_text, max_chars=1000, overlap=100)
+
+            if not raw_text.strip():
+                raise ValueError(
+                    f"No readable text was extracted from {file_name}."
+                )
+
+            chunks = chunk_text(
+                raw_text,
+                max_chars=1000,
+                overlap=100,
+            )
+
+            if not chunks:
+                raise ValueError(
+                    f"No searchable chunks were produced from {file_name}."
+                )
+
+            # 2. Extract domain business terms via LLM
+            extracted_terms = []
 
             # 2. Extract domain business terms via LLM
             extracted_terms = []
@@ -482,17 +500,25 @@ def _process_document_background(
                             text=chunk,
                             metadata={
                                 "tenant_id": str(tenant_id),
+                                "source_id": str(source_id),
                                 "domain_id": str(domain_id),
                                 "document_id": str(file_id),
+                                "object_id": str(file_id),
+                                "object_type": "domain_document",
                                 "file_name": file_name,
-                                "chunk_index": idx
+                                "chunk_index": idx,
                             }
                         )
                         for idx, (chunk, emb) in enumerate(zip(chunks, embeddings))
                     ]
                     ChromaStore().upsert(tenant_id, chroma_objects, source_id=source_id)
                 except Exception as exc:
-                    log.warning("chroma_upsert_domain_document_failed", file=file_name, error=str(exc))
+                    log.error(
+                        "chroma_upsert_domain_document_failed",
+                        file=file_name,
+                        error=str(exc),
+                    )
+                    raise RuntimeError("Document chunks could not be indexed.") from exc
 
             # 4. Update record with final chunk count and mark as complete
             doc_record.chunk_count = len(chunks)

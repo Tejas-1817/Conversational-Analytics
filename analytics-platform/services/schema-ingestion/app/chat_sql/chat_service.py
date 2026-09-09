@@ -3,23 +3,190 @@
 Orchestrates SchemaProvider, PromptBuilder, LLMProvider, and SQLValidator
 to handle Text-to-SQL requests.
 """
+import re
+import uuid
+from dataclasses import dataclass
+from typing import Any, Literal
+
+from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
 from typing import Any, Dict
 
 import structlog
 
+from app.chat_sql.chat_recommender import ChatRecommender
+from app.config import get_settings
+from app.engine.retrieval_service import RetrievalService
 from app.chat_sql.answer_synthesizer import AnswerSynthesizer
-from app.chat_sql.llm_provider import LLMProvider
+from app.chat_sql.llm_provider import (
+    LLMProvider,
+    LLMTimeoutError,
+    LLMUnavailableError,
+)
 from app.chat_sql.prompt_builder import PromptBuilder
 from app.chat_sql.schema_provider import SchemaProvider
 from app.chat_sql.sql_executor import SQLExecutor
 from app.chat_sql.sql_validator import SQLValidator
 
 log = structlog.get_logger(__name__)
+# MAX_FULL_SCHEMA_CHARS = 18_000
+
+from app.models import (Conversation, 
+    ConversationMessage, 
+    DataSource, 
+    TableMeta, 
+    ColumnMeta,
+    Domain,
+    DomainTable,
+    DomainTerm,
+)
+
+def _build_table_schema_block(table: TableMeta) -> str:
+    """Build compact SQL-generation context for one physical table."""
+
+    lines = [
+        f"TABLE: {table.schema_name}.{table.table_name}",
+    ]
+
+    if table.business_name:
+        lines.append(f"Business name: {table.business_name}")
+
+    if table.description:
+        lines.append(f"Description: {table.description}")
+
+    lines.append("COLUMNS:")
+
+    active_columns = sorted(
+        (
+            column
+            for column in table.columns
+            if column.is_active
+        ),
+        key=lambda column: column.ordinal_position or 0,
+    )
+
+    for column in active_columns:
+        flags: list[str] = []
+
+        if column.is_primary_key:
+            flags.append("PRIMARY KEY")
+
+        if not column.is_nullable:
+            flags.append("NOT NULL")
+
+        suffix = f" [{', '.join(flags)}]" if flags else ""
+
+        lines.append(
+            f"- {column.column_name} ({column.data_type}){suffix}"
+        )
+
+    return "\n".join(lines)
+
+ResolvedIntent = Literal["data", "strategy", "hybrid"]
+RequestMode = Literal["auto", "data", "strategy", "hybrid"]
 
 
-import uuid
-from app.models import (Conversation, ConversationMessage, DataSource, TableMeta)
+class SourceNotFoundError(RuntimeError):
+    """Raised when the requested source is unavailable to the current tenant."""
+
+
+@dataclass(frozen=True, slots=True)
+class IntentDecision:
+    intent: ResolvedIntent
+    reason: str
+
+
+class IntentRouter:
+    STRATEGY_TERMS = (
+        "improve",
+        "strategy",
+        "strategies",
+        "recommend",
+        "recommendation",
+        "opportunity",
+        "opportunities",
+        "risk",
+        "risks",
+        "grow",
+        "growth",
+        "increase",
+        "reduce",
+        "optimize",
+        "business advice",
+        "what should we do",
+        "unusual",
+        "anomaly",
+        "anomalies",
+        "suspicious",
+        "what might",
+        "indicate",
+        "investigate",
+    )
+
+    DATA_TERMS = (
+        "revenue",
+        "sales",
+        "profit",
+        "margin",
+        "cost",
+        "orders",
+        "customers",
+        "products",
+        "inventory",
+        "returns",
+        "conversion",
+        "price",
+        "performance",
+        "trend",
+        "monthly",
+        "quarterly",
+        "yearly",
+        "customer",
+        "transaction",
+        "transactions",
+        "payment",
+        "fraud",
+    )
+
+    @classmethod
+    def classify(
+        cls,
+        question: str,
+        requested_mode: RequestMode = "auto",
+    ) -> IntentDecision:
+        if requested_mode != "auto":
+            return IntentDecision(
+                intent=requested_mode,
+                reason="The caller explicitly selected the processing mode.",
+            )
+
+        normalized = " ".join(question.lower().split())
+
+        has_strategy = any(
+            re.search(rf"\b{re.escape(term)}\b", normalized)
+            for term in cls.STRATEGY_TERMS
+        )
+        has_data = any(
+            re.search(rf"\b{re.escape(term)}\b", normalized)
+            for term in cls.DATA_TERMS
+        )
+
+        if has_strategy and has_data:
+            return IntentDecision(
+                intent="hybrid",
+                reason="The question requests advice based on measurable data.",
+            )
+
+        if has_strategy:
+            return IntentDecision(
+                intent="strategy",
+                reason="The question requests general strategic guidance.",
+            )
+
+        return IntentDecision(
+            intent="data",
+            reason="The question requests a factual database result.",
+        )
 
 
 class ChatService:
@@ -33,125 +200,482 @@ class ChatService:
         self.sql_executor = SQLExecutor()
         self.answer_synthesizer = AnswerSynthesizer()
 
+    def _persist_exchange(
+        self,
+        *,
+        db_session: Any,
+        user: Any,
+        conversation_id: uuid.UUID | str | None,
+        question: str,
+        answer: str,
+        title: str,
+        intent: str,
+        sql: str | None = None,
+        rows: list[dict[str, Any]] | None = None,
+        columns: list[str] | None = None,
+        column_types: dict[str, Any] | None = None,
+        visualization: str = "text",
+        follow_up_questions: list[str] | None = None,
+        row_count: int | None = None,
+        data_truncated: bool = False,
+        execution_time_ms: float = 0.0,
+    ) -> str:
+        """Persist one complete user/assistant exchange."""
+
+        saved_rows = rows or []
+        saved_columns = columns or []
+        saved_column_types = column_types or {}
+        saved_follow_ups = follow_up_questions or []
+        saved_row_count = (
+            row_count
+            if row_count is not None
+            else len(saved_rows)
+        )
+
+        try:
+            conversation = None
+
+            if conversation_id:
+                try:
+                    parsed_conversation_id = uuid.UUID(
+                        str(conversation_id)
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "Invalid conversation ID."
+                    ) from exc
+
+                conversation = (
+                    db_session.query(Conversation)
+                    .filter(
+                        Conversation.id == parsed_conversation_id,
+                        Conversation.tenant_id == user.tenant_id,
+                        Conversation.user_id == user.id,
+                    )
+                    .one_or_none()
+                )
+
+                if conversation is None:
+                    raise ValueError(
+                        "Conversation was not found."
+                    )
+
+            else:
+                conversation = Conversation(
+                    tenant_id=user.tenant_id,
+                    user_id=user.id,
+                    title=title,
+                )
+                db_session.add(conversation)
+                db_session.flush()
+
+            if (
+                not conversation.title
+                or conversation.title == "New Conversation"
+            ):
+                conversation.title = title
+
+            conversation.updated_at = datetime.now(timezone.utc)
+
+            user_message = ConversationMessage(
+                conversation_id=conversation.id,
+                role="user",
+                content=question,
+                route=intent,
+                intent={"type": intent},
+                status="complete",
+            )
+
+            assistant_message = ConversationMessage(
+                conversation_id=conversation.id,
+                role="assistant",
+                content=answer,
+                route=intent,
+                intent={"type": intent},
+                generated_sql=sql,
+                 result_data={
+                    "rows": saved_rows,
+                    "columns": saved_columns,
+                    "row_count": saved_row_count,
+                    "column_types": saved_column_types,
+                    "visualization": visualization,
+                    "data_truncated": data_truncated,
+                    "follow_up_questions": saved_follow_ups,
+                    "title": title,
+                    "intent": intent,
+                },
+                chart_recommendation=visualization,
+                execution_time_ms=int(execution_time_ms),
+                status="complete",
+            )
+            db_session.add(user_message)
+            db_session.add(assistant_message)
+            db_session.commit()
+
+            return str(conversation.id)
+
+        except Exception as exc:
+            log.warning("failed_to_persist_exchange", error=str(exc))
+            try:
+                db_session.rollback()
+            except Exception:
+                pass
+            return str(conversation_id) if conversation_id else ""
+
+
     def process_text_to_sql(
         self,
         question: str,
-        conversation_id: str | None = None,
-        domain_id: str | None = None,
+        source_id: uuid.UUID,
+        conversation_id: uuid.UUID | None = None,
+        domain_id: uuid.UUID | None = None,
+        requested_mode: RequestMode = "auto",
         db_session: Any | None = None,
-        user: Any | None = None,
-    ) -> Dict[str, Any]:
+        user: Any | None = None,    
+    ) -> dict[str, Any]:
         """Loads connected database schema, prompts LLM, executes SQL, synthesizes answer, persists messages, and returns DTO."""
-        # 1. Dynamically resolve caller's active connected customer DataSource
-        active_source = None
-        if db_session and user and hasattr(user, "tenant_id"):
-            try:
-                active_source = db_session.query(DataSource).filter_by(
-                    tenant_id=user.tenant_id,
-                    status="connected"
-                ).first()
-            except Exception as exc:
-                log.warning("failed_to_resolve_active_datasource", error=str(exc))
-
-        if active_source is None:
-            raise RuntimeError(
-                "No connected customer data source was found for this tenant."
+        # 1. Validate request context and resolve the selected source
+        if db_session is None or user is None:
+            raise ValueError(
+                "Database session and authenticated user are required."
             )
 
-        # 2. Stage 1: Vector DB Semantic Routing (Retrieve Top Relevant Table Schemas)
-        db_name, full_schema_text = self.schema_provider.get_connected_schema(
-            db_session=db_session,
-            user=user,
-            source=active_source
+        active_source = (
+            db_session.query(DataSource)
+            .filter(
+                DataSource.id == source_id,
+                DataSource.tenant_id == user.tenant_id,
+                DataSource.status == "connected",
+            )
+            .one_or_none()
         )
-        if active_source and active_source.database_name:
-            db_name = active_source.database_name
 
-        relevant_schema_text = ""
-        if user and hasattr(user, "tenant_id"):
-            try:
-                from app.embeddings.chroma_store import ChromaStore
-                from app.embeddings.registry import get_embedding_provider
+        if active_source is None:
+            raise SourceNotFoundError(
+                "The selected connected data source was not found."
+            )
 
-                query_vector = get_embedding_provider().embed([question])[0]
-                hits = ChromaStore().query(
-                    tenant_id=user.tenant_id,
-                    query_embedding=query_vector,
-                    n_results=7,
-                    source_id=active_source.id if active_source else None
+        decision = IntentRouter.classify(
+            question=question,
+            requested_mode=requested_mode,
+        )
+
+        log.info(
+            "chat_intent_resolved",
+            intent=decision.intent,
+            reason=decision.reason,
+            source_id=str(active_source.id),
+        )
+
+        conversation_context = ""
+
+        if conversation_id:
+            conversation = (
+                db_session.query(Conversation)
+                .filter(
+                    Conversation.id == conversation_id,
+                    Conversation.tenant_id == user.tenant_id,
+                    Conversation.user_id == user.id,
                 )
-                if hits:
-                    # Filter out FK-only/relationship chunks — they contain no column definitions
-                    # A valid table chunk must contain the "TABLE:" keyword
-                    table_hits = [
-                        hit for hit in hits
-                        if "TABLE:" in hit.text or "-- TABLE:" in hit.text
-                    ]
-                    # Safety fallback: if filtering removed everything, use all hits
-                    valid_hits = table_hits if table_hits else hits
+                .one_or_none()
+            )
 
-                    relevant_schema_text = "\n\n".join(hit.text for hit in valid_hits)
-                    table_labels = [
-                        hit.metadata.get("label", "").replace("TABLE: ", "").strip()
-                        for hit in valid_hits
-                        if hit.metadata.get("label")
-                    ]
-                    log.info(
-                        "stage_1_vector_db_relevant_tables_found",
-                        chunks=len(valid_hits),
-                        fk_chunks_filtered=len(hits) - len(valid_hits),
-                        relevant_tables=table_labels,
-                        schema_chars=len(relevant_schema_text)
-                    )
-            except Exception as exc:
-                log.warning("stage_1_vector_search_fallback", error=str(exc))
+            if conversation is None:
+                raise ValueError("Conversation was not found.")
 
-        # Fallback: if vector search returned empty or was unavailable, use full schema text
-        schema_text = relevant_schema_text if relevant_schema_text else full_schema_text
+            previous_messages = (
+                db_session.query(ConversationMessage)
+                .filter(ConversationMessage.conversation_id == conversation.id)
+                .order_by(ConversationMessage.created_at.desc())
+                .limit(8)
+                .all()
+            )
+
+            conversation_context = "\n".join(
+                f"{message.role}: {message.content}"
+                for message in reversed(previous_messages)
+                if message.content
+            )[:6_000]
+
+        # 2. Load full schema or retrieve relevant schema sections
+        db_name, full_schema_text = (
+            self.schema_provider.get_connected_schema(
+                db_session=db_session,
+                user=user,
+                source=active_source,
+            )
+        )
+
+        if not full_schema_text.strip():
+            raise ValueError(
+                "No active schema is available for the selected data source."
+            )
+        settings = get_settings()
+        max_schema_chars = settings.chat_sql_max_schema_chars
 
         source_tables = (
             db_session.query(TableMeta)
+            .options(selectinload(TableMeta.columns))
             .filter(
                 TableMeta.source_id == active_source.id,
                 TableMeta.is_active.is_(True),
             )
+            .order_by(
+                TableMeta.schema_name,
+                TableMeta.table_name,
+            )
             .all()
         )
 
-        catalog = {}
+        if not source_tables:
+            raise ValueError(
+                "No active table metadata is available for the selected data source."
+            )
+        
+        # Build the validation catalog for every execution path.
+        catalog: dict[str, set[str]] = {}
+
         for table in source_tables:
             columns = {
                 column.column_name
                 for column in table.columns
                 if column.is_active
             }
+
+            catalog[
+                f"{table.schema_name}.{table.table_name}"
+            ] = columns
+
             catalog[table.table_name] = columns
-            catalog[f"{table.schema_name}.{table.table_name}"] = columns
 
-        # 3. Domain context & table scoping
+        if len(full_schema_text) <= max_schema_chars: 
+            schema_text = full_schema_text
+        else:
+            retrieval_query = question
+
+            # Follow-up questions such as "break this down by category"
+            # require the previous conversation to resolve "this".
+            if conversation_context:
+                retrieval_query = (
+                    f"CURRENT QUESTION:\n{question}\n\n"
+                    f"RECENT CONVERSATION:\n"
+                    f"{conversation_context[-2_000:]}"
+                )
+
+            retrieval = RetrievalService.retrieve(
+                query_text=retrieval_query,
+                tenant_id=user.tenant_id,
+                db=db_session,
+                source_id=active_source.id,
+                object_types=[
+                    "table",
+                    "schema_chunk",
+                    "relationship",
+                ],
+                top_k=settings.chat_sql_rag_top_k,
+                distance_threshold=settings.chat_sql_rag_distance_threshold,
+            )
+
+            table_chunks: list[str] = []
+
+            # Keep complete schema chunks produced during schema ingestion.
+            # Use a case-insensitive comparison for TABLE:/Table:.
+            for result in retrieval.raw_results:
+                object_type = str(
+                    result.metadata.get("object_type", "")
+                ).strip().lower()
+                result_text = (result.text or "").strip()
+
+                if not result_text:
+                    continue
+
+                # Accept actual table objects and schema blocks containing TABLE:.
+                if (
+                    object_type in {
+                        "table",
+                        "schema_chunk",
+                        "relationship",
+                    }
+                    or "TABLE:" in result_text.upper()
+                ):
+                    table_chunks.append(result_text)
+
+            # Hydrated table results contain authoritative physical columns.
+            for table, _distance in retrieval.tables:
+                table_chunks.append(
+                    _build_table_schema_block(table)
+                )
+
+            # Remove duplicate chunks without changing their order.
+            table_chunks = list(dict.fromkeys(table_chunks))
+
+            if table_chunks:
+                selected_chunks: list[str] = []
+                selected_length = 0
+
+                for chunk in table_chunks:
+                    additional_length = len(chunk) + 2
+
+                    if (
+                        selected_chunks
+                        and selected_length + additional_length
+                        > max_schema_chars
+                    ):
+                        continue
+
+                    selected_chunks.append(chunk)
+                    selected_length += additional_length
+
+                schema_text = "\n\n".join(selected_chunks)
+            
+            else:
+                log.warning(
+                    "schema_retrieval_empty_using_compact_fallback",
+                    source_id=str(active_source.id),
+                    used_rag=retrieval.used_rag,
+                    threshold=retrieval.threshold,
+                    question=question[:200],
+                )
+
+                fallback_blocks: list[str] = []
+                fallback_length = 0
+
+                for table in source_tables:
+                    block = _build_table_schema_block(table)
+                    additional_length = len(block) + 2
+
+                    if (
+                        fallback_blocks
+                        and fallback_length + additional_length > max_schema_chars
+                    ):
+                        break
+
+                    fallback_blocks.append(block)
+                    fallback_length += additional_length
+
+                if not fallback_blocks:
+                    raise ValueError(
+                        "No active table metadata is available for schema fallback."
+                    )
+
+                schema_text = "\n\n".join(fallback_blocks)
+                
+        # 3. Load and validate optional domain context
         domain_context_str = ""
-        if domain_id and db_session:
-            try:
-                from app.models import Domain, DomainTable, DomainTerm
-                dom_uuid = uuid.UUID(str(domain_id))
-                domain = db_session.query(Domain).filter(Domain.id == dom_uuid).first()
-                if domain:
-                    # Fetch domain terms
-                    terms = db_session.query(DomainTerm).filter(DomainTerm.domain_id == dom_uuid).limit(10).all()
-                    terms_str = "\n".join(f"- {t.term}: {t.definition}" for t in terms)
 
-                    # Fetch domain selected tables
-                    dom_tables = db_session.query(DomainTable).filter(DomainTable.domain_id == dom_uuid).all()
-                    table_names = []
-                    for dt in dom_tables:
-                        tm = db_session.query(TableMeta).filter(TableMeta.id == dt.table_id).first()
-                        if tm:
-                            table_names.append(tm.table_name)
+        if domain_id:
+            domain_uuid = uuid.UUID(str(domain_id))
 
-                    domain_context_str = f"Domain Name: {domain.name}\nDescription: {domain.description or 'None'}\nScoped Domain Tables: {', '.join(table_names) if table_names else 'All'}\nBusiness Terms & Definitions:\n{terms_str if terms_str else 'None'}"
-            except Exception as exc:
-                log.warning("failed_to_load_domain_context", error=str(exc))
+            domain = (
+                db_session.query(Domain)
+                .filter(
+                    Domain.id == domain_uuid,
+                    Domain.tenant_id == user.tenant_id,
+                )
+                .one_or_none()
+            )
 
+            if domain is None:
+                raise ValueError("Domain was not found.")
+
+            if (
+                domain.source_id is not None
+                and domain.source_id != active_source.id
+            ):
+                raise ValueError(
+                    "The selected domain belongs to a different data source."
+                )
+
+            terms = (
+                db_session.query(DomainTerm)
+                .filter(DomainTerm.domain_id == domain.id)
+                .order_by(DomainTerm.term)
+                .limit(30)
+                .all()
+            )
+
+            domain_context_str = "\n".join(
+                [
+                    f"Domain: {domain.name}",
+                    f"Description: {domain.description or 'None'}",
+                    "Terms:",
+                    *[
+                        f"- {term.term}: {term.definition}"
+                        for term in terms
+                    ],
+                ]
+            )[:4_000]
+        
+        schema_inventory = "\n".join(
+            f"- {table.schema_name}.{table.table_name}: "
+            + ", ".join(
+                column.column_name
+                for column in table.columns
+                if column.is_active
+            )
+            for table in source_tables
+        )
+
+        if decision.intent == "strategy":
+            answer = self.answer_synthesizer.synthesize_strategy(
+                question=question,
+                schema_inventory=schema_inventory,
+                domain_context=domain_context_str,
+                conversation_context=conversation_context,
+            )
+
+            follow_ups = ChatRecommender.recommend(
+                intent="strategy",
+                question=question,
+                columns=[],
+                schema_inventory=schema_inventory,
+            )
+            res_conv_id = self._persist_exchange(
+                db_session=db_session,
+                user=user,
+                conversation_id=conversation_id,
+                question=question,
+                answer=answer,
+                title="Business Strategy",
+                intent="strategy",
+                sql=None,
+                rows=[],
+                columns=[],
+                column_types={},
+                visualization="text",
+                follow_up_questions=follow_ups,
+                row_count=0,
+                data_truncated=False,
+                execution_time_ms=0.0,
+            )
+
+            return {
+                "success": True,
+                "intent": "strategy",
+                "conversation_id": res_conv_id,
+                "question": question,
+                "answer": answer,
+                "answer_markdown": answer,
+                "summary": answer,
+                "sql": None,
+                "rows": [],
+                "result_data": [],
+                "columns": [],
+                "column_types": {},
+                "row_count": 0,
+                "column_count": 0,
+                "data_truncated": False,
+                "visualization": "text",
+                "title": "Business Strategy",
+                "recommended_visualization": {
+                    "visualization": "text",
+                    "title": "Business Strategy",
+                },
+                "follow_up_questions": follow_ups,
+                "execution_time_ms": 0.0,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "database": active_source.database_name,
+            }
 
         # 4. Route broad overview, strategy, and schema-gap questions
         # directly to grounded text analysis instead of Text-to-SQL.
@@ -231,21 +755,50 @@ USER QUESTION:
 {question}
 """.strip()
 
+                     
             direct_answer = self.llm_provider.generate_text(
                 prompt=analysis_prompt,
                 max_tokens=384,
-                timeout=300
+                timeout=300,
+            )
+
+            direct_follow_ups = ChatRecommender.recommend(
+                intent=decision.intent,
+                question=question,
+                columns=[],
+                schema_inventory=schema_inventory,
+            )
+
+            res_conv_id = self._persist_exchange(
+                db_session=db_session,
+                user=user,
+                conversation_id=conversation_id,
+                question=question,
+                answer=direct_answer,
+                title="Business and Data Analysis",
+                intent=decision.intent,
+                sql=None,
+                rows=[],
+                columns=[],
+                column_types={},
+                visualization="text",
+                follow_up_questions=direct_follow_ups,
+                row_count=0,
+                data_truncated=False,
+                execution_time_ms=0.0,
             )
 
             generated_at = datetime.now(timezone.utc).isoformat()
 
             return {
                 "success": True,
-                "conversation_id": conversation_id,
+                "intent": decision.intent,
+                "conversation_id": res_conv_id,
                 "question": question,
                 "summary": direct_answer,
                 "answer": direct_answer,
-                "sql": "-- No SQL required for this broad analysis question",
+                "answer_markdown": direct_answer,
+                "sql": None,
                 "result_data": [],
                 "rows": [],
                 "columns": [],
@@ -263,6 +816,7 @@ USER QUESTION:
                     "visualization": "text",
                     "title": "Business and Data Analysis",
                 },
+                "follow_up_questions": direct_follow_ups,
                 "execution_time_ms": 0,
                 "generated_at": generated_at,
                 "database": db_name,
@@ -275,6 +829,7 @@ USER QUESTION:
             schema_text=schema_text,
             database_name=db_name,
             domain_context=domain_context_str,
+            conversation_context=conversation_context,
         )
         # 4b. Generate the initial SQL draft
         try:
@@ -282,84 +837,199 @@ USER QUESTION:
                 prompt=prompt,
                 question=question,
             )
+
+        except (LLMTimeoutError, LLMUnavailableError):
+            raise
+
         except Exception as exc:
             log.error(
                 "chat_sql_generation_error",
+                error_type=type(exc).__name__,
                 error=str(exc),
             )
             raise RuntimeError(
                 f"Ollama SQL generation failed: {exc}"
             ) from exc
 
-        # 5. Deterministic validation of the generated draft
+        # 5. Deterministically validate the generated SQL.
         draft_sql = self.sql_validator.validate_sql(
             raw_sql,
             catalog=catalog,
         )
 
-        if draft_sql == "UNANSWERABLE":
-            validated_sql = "UNANSWERABLE"
-        else:
-            # 5b. Second Ollama pass for semantic review/correction
+        # Attempt correction when Ollama returned SQL but static validation
+        # rejected it. Do not correct an intentional UNANSWERABLE response.
+        if (
+            draft_sql == "UNANSWERABLE"
+            and raw_sql.strip().upper() != "UNANSWERABLE"
+        ):
+            corrected_raw_sql = self.llm_provider.refine_sql(
+                question=question,
+                failed_sql=raw_sql,
+                error_message=(
+                    "Static validation rejected the query. Use PostgreSQL "
+                    "syntax and only physical tables and columns declared "
+                    "in DATABASE SCHEMA."
+                ),
+                schema_text=schema_text,
+            )
+
+            draft_sql = self.sql_validator.validate_sql(
+                corrected_raw_sql,
+                catalog=catalog,
+            )
+
+        validated_sql = draft_sql
+
+        # Optional semantic review. Keep the validated draft if the reviewer
+        # returns invalid SQL instead of discarding a usable query.
+        if validated_sql != "UNANSWERABLE":
             reviewed_sql = self.llm_provider.review_sql(
                 question=question,
-                candidate_sql=draft_sql,
+                candidate_sql=validated_sql,
                 schema_text=schema_text,
                 domain_context=domain_context_str,
             )
 
-            # 5c. Never trust the reviewed output without validating it again
-            validated_sql = self.sql_validator.validate_sql(
+            reviewed_validated_sql = self.sql_validator.validate_sql(
                 reviewed_sql,
                 catalog=catalog,
             )
 
+            if reviewed_validated_sql != "UNANSWERABLE":
+                validated_sql = reviewed_validated_sql
+            else:
+                log.warning(
+                    "sql_review_rejected_using_validated_draft"
+                )
+            # 5c. Never trust the reviewed output without validating it again
+            # validated_sql = self.sql_validator.validate_sql(
+            #     reviewed_sql,
+            #     catalog=catalog,
+            # )
+
+         # Preflight the reviewed SQL and allow one correction attempt.
+        if validated_sql != "UNANSWERABLE":
+            attempted_sql: list[str] = []
+            candidate_sql = validated_sql
+            last_error: str | None = None
+
+            for attempt_number in range(2):
+                attempted_sql.append(candidate_sql)
+
+                preflight_error = self.sql_executor.preflight_query(
+                    candidate_sql,
+                    source=active_source,
+                )
+
+                if preflight_error is None:
+                    break
+
+                last_error = preflight_error
+
+                if attempt_number == 1:
+                    candidate_sql = "UNANSWERABLE"
+                    break
+
+                corrected_sql = self.llm_provider.refine_sql(
+                    question=question,
+                    failed_sql=candidate_sql,
+                    error_message=(
+                        f"{preflight_error}\n\n"
+                        "Previously rejected queries:\n"
+                        + "\n---\n".join(attempted_sql)
+                    ),
+                    schema_text=schema_text,
+                )
+
+                candidate_sql = self.sql_validator.validate_sql(
+                    corrected_sql,
+                    catalog=catalog,
+                )
+
+                if candidate_sql == "UNANSWERABLE":
+                    break
+
+            validated_sql = candidate_sql
+
+            if validated_sql == "UNANSWERABLE":
+                log.warning(
+                    "sql_preflight_failed_after_correction",
+                    error=last_error,
+                    attempted_sql_count=len(attempted_sql),
+                )
+
         # Return a controlled response instead of sending UNANSWERABLE to the database executor.
         if validated_sql == "UNANSWERABLE":
             generated_at = datetime.now(timezone.utc).isoformat()
+            clarification_answer = (
+                "I could not produce a reliable query for this question. "
+                "Please specify which type of unusual behavior you want to "
+                "analyze: fraud alerts, failed payments, high-value orders, "
+                "refunds, or login activity."
+            )
+
+            clarification_questions = [
+                "Which customers have the most high-risk fraud alerts?",
+                "Which customers have unusually frequent failed payments?",
+                "Which orders have unusually high values?",
+            ]
+
+            res_conv_id = self._persist_exchange(
+                db_session=db_session,
+                user=user,
+                conversation_id=conversation_id,
+                question=question,
+                answer=clarification_answer,
+                title="Clarification required",
+                intent=decision.intent,
+                sql="UNANSWERABLE",
+                rows=[],
+                columns=[],
+                column_types={},
+                visualization="text",
+                follow_up_questions=clarification_questions,
+                row_count=0,
+                data_truncated=False,
+                execution_time_ms=0.0,
+            )
 
             return {
                 "success": False,
-                "conversation_id": conversation_id,
+                "intent": decision.intent,
+                "conversation_id": res_conv_id,
                 "question": question,
-                "summary": (
-                    "This question cannot be answered reliably using the "
-                    "connected database schema."
-                ),
-                "answer": (
-                    "This question cannot be answered reliably using the "
-                    "connected database schema."
-                ),
+                "summary": clarification_answer,
+                "answer": clarification_answer,
+                "answer_markdown": clarification_answer,
                 "sql": "UNANSWERABLE",
-                "result_data": [],
                 "rows": [],
+                "result_data": [],
                 "columns": [],
+                "column_types": {},
                 "row_count": 0,
                 "column_count": 0,
+                "data_truncated": False,
                 "visualization": "text",
-                "title": "Question cannot be answered",
-                "profile": None,
-                "statistics": {
-                    "row_count": 0,
-                    "column_count": 0,
-                    "execution_time_ms": 0,
-                },
+                "title": "Clarification required",
                 "recommended_visualization": {
                     "visualization": "text",
-                    "title": "Question cannot be answered",
+                    "title": "Clarification required",
                 },
-                "execution_time_ms": 0,
+                "follow_up_questions": clarification_questions,
+                "execution_time_ms": 0.0,
                 "generated_at": generated_at,
                 "database": db_name,
-                "column_types": {},
             }
 
         # 6. Execute reviewed and validated SQL
-        (result_data,
+        (
+            result_data,
             row_count,
             execution_time_ms,
             columns,
             execution_error,
+            result_truncated,
         ) = self.sql_executor.execute_query(
             validated_sql,
             source=active_source,
@@ -395,6 +1065,7 @@ USER QUESTION:
                 retry_time_ms,
                 retry_columns,
                 retry_error,
+                retry_truncated,
             ) = self.sql_executor.execute_query(
                 refined_sql,
                 source=active_source,
@@ -411,6 +1082,7 @@ USER QUESTION:
             result_data = retry_data
             row_count = retry_row_count
             columns = retry_columns
+            result_truncated = retry_truncated
 
             log.info(
                 "refined_sql_execution_succeeded",
@@ -424,6 +1096,8 @@ USER QUESTION:
             result_data=result_data,
             sql=validated_sql,
             domain_context=domain_context_str,
+            result_truncated=result_truncated,
+            force_strategy_format=decision.intent == "hybrid",
         )
 
         # 8. Recommend Visualization Type (KPI Card, Detail Card, Bar/Line/Pie Chart, Table)
@@ -436,6 +1110,13 @@ USER QUESTION:
         )
         vis_type = vis_payload.get("visualization", "table")
         title = vis_payload.get("title", question[:40] if question else "Query Results")
+
+        follow_ups = ChatRecommender.recommend(
+            intent=decision.intent,
+            question=question,
+            columns=columns,
+            schema_inventory=schema_inventory,
+        )
 
         format_date = lambda d: d.strftime("%d %b %Y, %I:%M %p")
         generated_at = format_date(datetime.now(timezone.utc))
@@ -451,82 +1132,60 @@ USER QUESTION:
             execution_time_ms=execution_time_ms
         )
 
-        # 9. Persist Conversation & Messages to PostgreSQL if session and user provided
-        res_conv_id = conversation_id
-        if db_session and user:
-            try:
-                conv = None
-                if conversation_id:
-                    try:
-                        conv_uuid = uuid.UUID(conversation_id) if isinstance(conversation_id, str) else conversation_id
-                        conv = db_session.query(Conversation).filter(
-                            Conversation.id == conv_uuid,
-                            Conversation.tenant_id == user.tenant_id
-                        ).first()
-                    except Exception:
-                        pass
+        # 9. Persist the successful user/assistant exchange.
+        column_types = (
+            vis_payload.get("profile", {}).get(
+                "column_types",
+                {},
+            )
+        )
 
-                if not conv:
-                    conv = Conversation(
-                        tenant_id=user.tenant_id,
-                        user_id=user.id,
-                        title=title
-                    )
-                    db_session.add(conv)
-                    db_session.flush()
-                elif not conv.title or conv.title == "New Conversation":
-                    conv.title = title
-
-                res_conv_id = str(conv.id)
-
-                # Store user question message
-                user_msg = ConversationMessage(
-                    conversation_id=conv.id,
-                    role="user",
-                    content=question,
-                    status="complete"
-                )
-                db_session.add(user_msg)
-
-                # Store assistant answer message
-                asst_msg = ConversationMessage(
-                    conversation_id=conv.id,
-                    role="assistant",
-                    content=answer,
-                    generated_sql=validated_sql,
-                    result_data={"rows": result_data, "columns": columns, "row_count": row_count, "visualization": vis_type, "title": title, "column_types": vis_payload.get("profile", {}).get("column_types", {})},
-                    chart_recommendation=vis_type,
-                    execution_time_ms=int(execution_time_ms),
-                    status="complete"
-                )
-                db_session.add(asst_msg)
-                db_session.commit()
-            except Exception as exc:
-                log.warning("failed_to_persist_chat_messages", error=str(exc))
-                try:
-                    db_session.rollback()
-                except Exception:
-                    pass
+        res_conv_id = self._persist_exchange(
+            db_session=db_session,
+            user=user,
+            conversation_id=conversation_id,
+            question=question,
+            answer=answer,
+            title=title,
+            intent=decision.intent,
+            sql=validated_sql,
+            rows=result_data,
+            columns=columns,
+            column_types=column_types,
+            visualization=vis_type,
+            follow_up_questions=follow_ups,
+            row_count=row_count,
+            data_truncated=result_truncated,
+            execution_time_ms=execution_time_ms,
+        )
 
         return {
             "success": True,
+            "intent": decision.intent,
             "conversation_id": res_conv_id,
             "question": question,
             "summary": answer,
             "answer": answer,
+            "answer_markdown": answer,
             "sql": validated_sql,
             "result_data": result_data,
             "rows": result_data,
             "columns": columns,
             "row_count": row_count,
             "column_count": len(columns),
+            "data_truncated": result_truncated,
             "visualization": vis_type,
             "title": title,
             "profile": vis_payload.get("profile"),
-            "statistics": {"row_count": row_count, "column_count": len(columns), "execution_time_ms": execution_time_ms},
+            "statistics": {
+                "row_count": row_count,
+                "column_count": len(columns),
+                "execution_time_ms": execution_time_ms,
+            },
             "recommended_visualization": vis_payload,
+            "follow_up_questions": follow_ups,
             "execution_time_ms": execution_time_ms,
             "generated_at": generated_at,
             "database": db_name,
-            "column_types": vis_payload.get("profile", {}).get("column_types", {}),
+            "column_types": column_types,
         }
