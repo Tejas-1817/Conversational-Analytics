@@ -408,7 +408,7 @@ def export_human_readable_schema(
     new_registry = SchemaRegistry(
         tenant_id=source.tenant_id,
         source_id=source.id,
-        database_name=source.database_name,
+        database_name=source.database_name or source.name or "excel_db",
         schema_version=next_version,
         file_path=str(filepath),
         is_active=True

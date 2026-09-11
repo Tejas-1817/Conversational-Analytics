@@ -34,7 +34,7 @@ rel_source = ENUM("declared_fk", "naming", "value_overlap", "llm",
                   name="rel_source", create_type=False)
 job_status = ENUM("queued", "running", "succeeded", "failed", "succeeded_with_warnings",
                   name="job_status", create_type=False)
-source_type = ENUM("postgres", "mysql", "snowflake", "bigquery",
+source_type = ENUM("postgres", "mysql", "snowflake", "bigquery", "excel",
                    name="source_type", create_type=False)
 user_role = ENUM("ADMIN", "ANALYST", "VIEWER",
                  name="user_role", create_type=False)
@@ -65,9 +65,11 @@ class DataSource(Base):
     type: Mapped[str] = mapped_column(source_type, nullable=False)
     host: Mapped[str | None] = mapped_column(Text)
     port: Mapped[int | None] = mapped_column(Integer)
-    database_name: Mapped[str] = mapped_column(Text, nullable=False)
-    username: Mapped[str] = mapped_column(Text, nullable=False)
-    credentials_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    database_name: Mapped[str | None] = mapped_column(Text)
+    username: Mapped[str | None] = mapped_column(Text)
+    credentials_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary)
+    file_path: Mapped[str | None] = mapped_column(Text)
+    original_upload_path: Mapped[str | None] = mapped_column(Text)
     options: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="registered")
     last_ingested_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))

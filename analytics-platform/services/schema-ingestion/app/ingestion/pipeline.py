@@ -47,6 +47,34 @@ def run_pipeline(job_id: str, source_id: str) -> None:
         engine = None
         stats: dict = {}
         try:
+            # Stage 0: Excel Materialization (only for type='excel')
+            if source.type == "excel":
+                job.stage = "Excel Materialization"
+                session.commit()
+                log.info("stage_started", stage="Excel Materialization", source=source.name)
+
+                from app.config import get_settings
+                from app.ingestion.excel_ingestor import materialize_excel_to_sqlite
+                from pathlib import Path
+                settings = get_settings()
+
+                target_sqlite_dir = Path(settings.excel_sqlite_dir) / str(source.tenant_id) / str(source.id)
+                target_sqlite_dir.mkdir(parents=True, exist_ok=True)
+                target_sqlite_path = (target_sqlite_dir / "materialized.db").resolve().as_posix()
+
+                upload_src = source.original_upload_path or source.file_path
+                sheet_overrides = source.options.get("sheet_overrides") if source.options else None
+                mat_stats = materialize_excel_to_sqlite(
+                    upload_path=upload_src,
+                    sqlite_path=target_sqlite_path,
+                    sheet_overrides=sheet_overrides
+                )
+                source.file_path = target_sqlite_path
+                stats["excel_materialization"] = mat_stats
+                job.stats = dict(stats)
+                session.commit()
+                log.info("stage_finished", stage="Excel Materialization", **mat_stats)
+
             # Stage 1: Connection Validation
             job.stage = "Connection Validation"
             session.commit()
@@ -56,7 +84,7 @@ def run_pipeline(job_id: str, source_id: str) -> None:
             from app.connectors.factory import test_connection, verify_read_only
             test_connection(engine)
             verify_read_only(engine, source.type)
-            stats["connection_validation"] = {"status": "succeeded", "database": source.database_name}
+            stats["connection_validation"] = {"status": "succeeded", "database": source.database_name or "sqlite"}
             job.stats = dict(stats)
             session.commit()
             log.info("stage_finished", stage="Connection Validation", status="succeeded")
@@ -71,6 +99,20 @@ def run_pipeline(job_id: str, source_id: str) -> None:
             job.stats = dict(stats)
             session.commit()
             log.info("stage_finished", stage="Schema Extraction", **intro_res)
+
+            # Stage 2b: Relationship Detection (naming & value overlap heuristic)
+            job.stage = "Relationship Detection"
+            session.commit()
+            log.info("stage_started", stage="Relationship Detection", source=source.name)
+            try:
+                rel_res = run_relationship_detection(session, source, engine)
+                stats["relationship_detection"] = rel_res
+                job.stats = dict(stats)
+                session.commit()
+                log.info("stage_finished", stage="Relationship Detection", **rel_res)
+            except Exception as rel_exc:
+                log.warning("relationship_detection_failed_non_fatal", error=str(rel_exc))
+                stats["relationship_detection"] = {"status": "skipped", "error": str(rel_exc)}
 
             # Stage 3: Schema File Generation & Storage
             job.stage = "Schema File Generation"
@@ -110,7 +152,10 @@ def run_pipeline(job_id: str, source_id: str) -> None:
             log.info("pipeline_completed_successfully", source=source.name)
 
         except Exception as exc:
-            log.exception("new_pipeline_failed", source=source.name)
+            import traceback
+            tb = traceback.format_exc()
+            log.error("new_pipeline_failed", source=source.name, stage=job.stage, error=str(exc), error_type=type(exc).__name__, traceback=tb)
+            print(f"\n[PIPELINE ERROR] Stage '{job.stage}' failed for source '{source.name}':\n{tb}\n", flush=True)
             job.status = "failed"
             job.error = f"{type(exc).__name__}: {exc}"
             version.sync_status = "failed"

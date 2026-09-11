@@ -98,6 +98,11 @@ class Settings(BaseSettings):
     default_tenant_id: str = "00000000-0000-0000-0000-000000000001"
     schema_snapshot_dir: str = "./data/schema-snapshots"
 
+    # Excel Data Source Settings
+    excel_upload_dir: str = "./storage/uploads"
+    excel_sqlite_dir: str = "./storage/excel_dbs"
+    excel_max_upload_mb: int = 50
+
     # =========================================================================
     # Phase 6 — Security & Multi-Tenancy
     # =========================================================================

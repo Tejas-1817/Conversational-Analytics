@@ -1,7 +1,7 @@
 """Trigger and monitor ingestion jobs (async via RQ)."""
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from redis import Redis
 from rq import Queue
 from sqlalchemy import select
@@ -24,7 +24,13 @@ def _queue() -> Queue:
 
 
 @router.post("/ingest/{source_id}", response_model=JobOut, status_code=202)
-def trigger_ingestion(source_id: uuid.UUID, session: Session = Depends(get_session), current_user: User = Depends(require_admin)) -> IngestionJob:
+def trigger_ingestion(
+    source_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+) -> IngestionJob:
+    from datetime import datetime, timezone, timedelta
     source = session.get(DataSource, source_id)
     if source is None:
         raise HTTPException(status_code=404, detail="Source not found")
@@ -32,20 +38,43 @@ def trigger_ingestion(source_id: uuid.UUID, session: Session = Depends(get_sessi
     # Tenant isolation — admin can only trigger jobs for their own tenant's sources
     verify_tenant_owns(source.tenant_id, current_user)
 
-    running = (session.query(IngestionJob)
-               .filter(IngestionJob.source_id == source_id, IngestionJob.status.in_(["queued", "running"]))
-               .first())
-    if running is not None:
-        raise HTTPException(status_code=409, detail=f"Job {running.id} is already {running.status}")
+    stale_cutoff = datetime.now(timezone.utc) - timedelta(minutes=2)
+    running_jobs = (
+        session.query(IngestionJob)
+        .filter(IngestionJob.source_id == source_id, IngestionJob.status.in_(["queued", "running"]))
+        .all()
+    )
 
-    job = IngestionJob(source_id=source_id, stage="Connection Validation", status="running")
+    for r_job in running_jobs:
+        # If job created over 2 minutes ago and still running, mark as timed out so user can re-run
+        job_created = r_job.created_at
+        if job_created and job_created.tzinfo is None:
+            job_created = job_created.replace(tzinfo=timezone.utc)
+        if job_created and job_created < stale_cutoff:
+            r_job.status = "failed"
+            r_job.error = "Job timed out or worker was restarted"
+            session.commit()
+        else:
+            raise HTTPException(status_code=409, detail=f"Job {r_job.id} is already {r_job.status}")
+
+    init_stage = "Excel Materialization" if source.type == "excel" else "Connection Validation"
+    job = IngestionJob(source_id=source_id, stage=init_stage, status="running")
     session.add(job)
     session.commit()
+
+    # Enqueue in Redis Queue; if queue is offline or no worker, run via FastAPI background tasks
+    enqueued = False
     try:
-        _queue().enqueue(run_pipeline, str(job.id), str(source_id), job_id=str(job.id))
+        q = _queue()
+        # Verify redis is alive and has workers
+        q.enqueue(run_pipeline, str(job.id), str(source_id), job_id=str(job.id))
+        enqueued = True
     except Exception:
-        # Fallback to direct synchronous execution if Redis queue is offline
-        run_pipeline(str(job.id), str(source_id))
+        enqueued = False
+
+    if not enqueued:
+        background_tasks.add_task(run_pipeline, str(job.id), str(source_id))
+
     return job
 
 

@@ -49,11 +49,18 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
     if source.type == "postgres" and not include:
         include = {"public"}
 
-    schemas = [s for s in inspector.get_schema_names() 
-        if s not in _SYSTEM_SCHEMAS
-    ]
-    if include:
+    try:
+        raw_schemas = inspector.get_schema_names()
+    except Exception:
+        raw_schemas = []
+
+    schemas = [s for s in raw_schemas if s not in _SYSTEM_SCHEMAS]
+    if include and source.type != "excel":
         schemas = [s for s in schemas if s in include]
+
+    # For SQLite / Excel, default to main or None if no schemas returned
+    if not schemas:
+        schemas = ["main"] if source.type == "excel" or "sqlite" in engine.name else ["public"]
 
     existing_tables = {(t.schema_name, t.table_name): t
                        for t in session.query(TableMeta).filter_by(source_id=source.id)}
@@ -62,7 +69,15 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
              "columns_seen": 0, "declared_fks": 0, "tables_deactivated": 0}
 
     for schema in schemas:
-        for table_name in inspector.get_table_names(schema=schema):
+        try:
+            tbl_names = inspector.get_table_names(schema=schema)
+        except Exception:
+            try:
+                tbl_names = inspector.get_table_names()
+            except Exception:
+                tbl_names = []
+
+        for table_name in tbl_names:
             if table_name.lower() in _SYSTEM_TABLES or f"{schema}.{table_name}" in blocklist or table_name in blocklist:
                 continue
             seen.add((schema, table_name))
@@ -76,10 +91,13 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
                 stats["tables_new"] += 1
             table.is_active = True
 
-            comment = (inspector.get_table_comment(table_name, schema=schema) or {}).get("text")
-            if comment and not table.description:
-                table.description = comment  # DB comments seed drafts; approved text is never overwritten
-                table.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            try:
+                comment = (inspector.get_table_comment(table_name, schema=schema) or {}).get("text")
+                if comment and not table.description:
+                    table.description = comment  # DB comments seed drafts; approved text is never overwritten
+                    table.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            except (NotImplementedError, AttributeError, Exception):
+                pass
 
             changed = _upsert_columns(session, inspector, table, schema, table_name, stats)
             if changed:
@@ -93,10 +111,16 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
             log.info("table_deactivated", schema=key[0], table=key[1])
 
         if table.is_active:
-            _upsert_indexes(session, inspector, table, key[0], key[1], stats)
+            try:
+                _upsert_indexes(session, inspector, table, key[0], key[1], stats)
+            except Exception as e:
+                log.warning("upsert_indexes_failed_non_fatal", error=str(e))
 
     session.flush()
-    _record_declared_fks(session, inspector, source, stats)
+    try:
+        _record_declared_fks(session, inspector, source, stats)
+    except Exception as e:
+        log.warning("record_declared_fks_failed_non_fatal", error=str(e))
     session.flush()
     return stats
 

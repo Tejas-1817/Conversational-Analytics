@@ -64,7 +64,17 @@ def _build_engine_with_retry(url: URL, pool_kwargs: dict, connect_args: dict) ->
 
 def build_engine(source: DataSource) -> Engine:
     settings = get_settings()
-    password = decrypt_secret(source.credentials_encrypted)
+
+    if source.type == "excel":
+        if not source.file_path:
+            raise ValueError("Excel data source has no materialized file_path.")
+        from pathlib import Path
+        db_path = Path(source.file_path).resolve().as_posix()
+        url = f"sqlite:///{db_path}?mode=ro"
+        engine = create_engine(url, connect_args={"uri": True})
+        return engine
+
+    password = decrypt_secret(source.credentials_encrypted) if source.credentials_encrypted else ""
 
     if source.type == "postgres":
         url = URL.create(
@@ -129,6 +139,10 @@ def verify_read_only(engine: Engine, source_type: str) -> None:
     enforcement is the per-connection read-only session guard in build_engine().
     Refuses registration when write privileges are detected.
     """
+    if source_type == "excel":
+        log.info("read_only_verification_excel_sqlite_uri_enforced", source_type=source_type)
+        return
+
     if source_type == "postgres":
         sql = text("""
             SELECT count(*) FROM pg_catalog.pg_class c

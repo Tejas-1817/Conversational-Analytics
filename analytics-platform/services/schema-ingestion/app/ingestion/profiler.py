@@ -28,7 +28,12 @@ def run_profiling(session: Session, source: DataSource, engine: Engine) -> dict:
 
     tables = session.query(TableMeta).filter_by(source_id=source.id, is_active=True).all()
     for table in tables:
-        fq_table = f"{_quote(engine, table.schema_name)}.{_quote(engine, table.table_name)}"
+        if table.schema_name and table.schema_name != "main" and "sqlite" not in engine.name:
+            fq_table = f"{_quote(engine, table.schema_name)}.{_quote(engine, table.table_name)}"
+        elif table.schema_name:
+            fq_table = f"{_quote(engine, table.schema_name)}.{_quote(engine, table.table_name)}"
+        else:
+            fq_table = _quote(engine, table.table_name)
         try:
             with engine.connect() as conn:
                 row_count = conn.execute(text(f"SELECT count(*) FROM {fq_table}")).scalar_one()  # noqa: S608 — identifiers quoted via identifier_preparer, limits are config ints

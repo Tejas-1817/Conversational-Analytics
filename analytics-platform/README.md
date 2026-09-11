@@ -48,16 +48,20 @@ Built with a **Local-First**, privacy-focused architecture powered by an AI Sema
 - **Prompt & Token Statistics**: Logs character counts, schema size, question length, and estimated token usage (`len(prompt) // 4`).
 - **Failure Classification Taxonomy**: Maps errors to `LLM_TIMEOUT`, `LLM_CONNECTION_FAILED`, `LLM_EMPTY_RESPONSE`, `LLM_INVALID_RESPONSE`, or `LLM_INVALID_SQL`.
 - **Raw Response Audit Logging**: Captures full un-cleaned Ollama text outputs (including reasoning `<thought>` blocks) before cleaning.
-- **Feature Flag Control**: Guarded by `ENABLE_ENTERPRISE_VISUALIZATIONS = True` in settings for instant rollback capability.
+### 📁 Excel (.xlsx) Data Source Integration
+- **Zero-Config Spreadsheet Ingestion**: Upload multi-sheet `.xlsx` files directly via the UI with automatic sheet preview and column type detection.
+- **Isolated SQLite Materialization**: Materializes workbook sheets into a dedicated per-source SQLite database with non-negotiable read-only URI enforcement (`?mode=ro`).
+- **Heuristic Relationship Discovery**: Automatic cross-sheet join path detection based on column naming conventions and value overlap.
+- **Full Text-to-SQL & Visualization Support**: Spreadsheet data is introspected, profiled, PII-masked, and queryable in Chat SQL identically to relational databases.
 
 ---
 
 ## 🛠️ Architecture & Tech Stack
 
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS / Vanilla HSL Design Tokens, Lucide Icons, Recharts, Responsive Modern Glassmorphism Theme.
-- **Backend Service**: Python 3.10+ / 3.13, FastAPI, SQLAlchemy 2.0 ORM, Pydantic v2, Structlog.
+- **Backend Service**: Python 3.10+ / 3.13, FastAPI, SQLAlchemy 2.0 ORM, Pydantic v2, Structlog, Pandas, OpenPyXL, Sqlglot.
 - **Queue & Async Workers**: RQ (Redis Queue) with background worker process for schema ingestion and chat pipeline execution.
-- **Storage & Metadata**: PostgreSQL (production) / SQLite (local fallback), Redis.
+- **Storage & Metadata**: PostgreSQL (production) / SQLite (local fallback), Redis, Per-Source SQLite for Materialized Excel Workbooks.
 
 ---
 
@@ -68,6 +72,12 @@ Built with a **Local-First**, privacy-focused architecture powered by an AI Sema
 - **Python**: 3.10+
 - **Redis**: Running on `localhost:6380` (or `localhost:6379`)
 - **Ollama** *(Optional for local AI)*: Serving local models on `localhost:11434`
+
+### Configuration Variables
+Key environment variables for Excel ingestion (in `services/schema-ingestion/.env` or system environment):
+- `EXCEL_UPLOAD_DIR`: Directory for storing original uploaded `.xlsx` files (default: `./storage/excel_uploads`).
+- `EXCEL_SQLITE_DIR`: Directory for materialized read-only SQLite database files (default: `./storage/excel_dbs`).
+- `EXCEL_MAX_UPLOAD_MB`: Maximum allowable upload size in MB (default: `50`).
 
 ---
 
@@ -150,9 +160,11 @@ The seeding script generates pre-configured credentials for quick testing:
 ## 📖 Usage Walkthrough
 
 1. **Log In**: Log in as `admin@company.com` / `admin123`.
-2. **Data Sources**: Go to **Administration ➔ Data Sources**. Set up or test database connections (`127.0.0.1:5432` for local pgAdmin DB or `127.0.0.1:5443` for demo container). Click **Trigger Ingestion** to run the 6-stage pipeline (including versioned snapshot export under `SCHEMA_SNAPSHOT_DIR` default `./data/schema-snapshots`).
+2. **Data Sources**: Go to **Administration ➔ Data Sources**.
+   - **Relational Databases**: Select PostgreSQL/MySQL/Snowflake, configure host/port/credentials, and trigger ingestion.
+   - **Excel Files**: Select **Excel (.xlsx)**, upload your workbook, review sheet previews and table names, and click **Connect & Ingest**.
 3. **Jobs Progress**: Watch live multi-stage job progress in **Administration ➔ Jobs**.
-4. **Semantic Layer**: Explore auto-generated metrics (e.g., *Revenue*), dimensions (e.g., *Region*, *Date*), and business glossary terms.
+4. **Semantic Layer**: Explore auto-generated metrics, dimensions, and business glossary terms.
 5. **Ask AI Chat**: Ask plain English questions like *"Show me total revenue by month"*. View the generated query, execution trace, and auto-recommended line chart.
 6. **Dashboards**: View and customize widget layouts on the Executive Summary dashboard.
 
@@ -161,5 +173,6 @@ The seeding script generates pre-configured credentials for quick testing:
 ## 🔐 Production Security & Best Practices
 
 - **Read-Only Database Users**: For target database ingestion, always configure a database user with `SELECT` privileges only (`GRANT SELECT ON ALL TABLES IN SCHEMA public TO <user>`).
+- **Read-Only SQLite Files**: Excel data sources are mounted via SQLite URI read-only mode (`?mode=ro`), physically prohibiting `INSERT`/`UPDATE`/`DELETE`/`DROP` mutations.
 - **Encrypted Credentials**: Stored secrets are encrypted at rest using Fernet symmetric encryption.
 - **Tenant Scope Enforcement**: All API routes and database queries enforce `tenant_id` boundaries.

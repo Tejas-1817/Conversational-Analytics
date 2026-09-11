@@ -704,6 +704,20 @@ class ChatService:
             "what data is missing",
             "data gaps",
             "schema gaps",
+            "insights",
+            "insight",
+            "give me insights",
+            "key insights",
+            "provide insights",
+            "what insights",
+            "summarize data",
+            "summarize the data",
+            "summary of data",
+            "tell me about the data",
+            "analyze this data",
+            "trends and insights",
+            "analytics overview",
+            "data overview",
         )
 
         is_direct_analysis = any(
