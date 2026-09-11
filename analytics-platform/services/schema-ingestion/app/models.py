@@ -34,7 +34,7 @@ rel_source = ENUM("declared_fk", "naming", "value_overlap", "llm",
                   name="rel_source", create_type=False)
 job_status = ENUM("queued", "running", "succeeded", "failed", "succeeded_with_warnings",
                   name="job_status", create_type=False)
-source_type = ENUM("postgres", "mysql", "snowflake", "bigquery",
+source_type = ENUM("postgres", "mysql", "mssql", "snowflake", "bigquery",
                    name="source_type", create_type=False)
 user_role = ENUM("ADMIN", "ANALYST", "VIEWER",
                  name="user_role", create_type=False)
@@ -68,6 +68,36 @@ class DataSource(Base):
     database_name: Mapped[str] = mapped_column(Text, nullable=False)
     username: Mapped[str] = mapped_column(Text, nullable=False)
     credentials_encrypted: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    secret_ref: Mapped[str | None] = mapped_column(Text)
+    credential_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default="1",
+    )
+    ssl_mode: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default="verify-full",
+    )
+    connection_status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default="pending",
+    )
+    schema_status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default="pending",
+    )
+    embedding_status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default="pending",
+    )
+    last_connection_error_code: Mapped[str | None] = mapped_column(Text)
+    last_connection_test_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True)
+    )
     options: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="registered")
     last_ingested_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))

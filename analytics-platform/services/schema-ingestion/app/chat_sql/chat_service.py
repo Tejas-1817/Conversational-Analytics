@@ -823,6 +823,8 @@ USER QUESTION:
                 "column_types": {},
             }
 
+        source_dialect = (active_source.type or "postgres").lower()
+
         # 4b. Build a SQL prompt only when the question requires SQL.
         prompt = self.prompt_builder.build_prompt(
             question=question,
@@ -830,6 +832,7 @@ USER QUESTION:
             database_name=db_name,
             domain_context=domain_context_str,
             conversation_context=conversation_context,
+            dialect=source_dialect,
         )
         # 4b. Generate the initial SQL draft
         try:
@@ -855,6 +858,7 @@ USER QUESTION:
         draft_sql = self.sql_validator.validate_sql(
             raw_sql,
             catalog=catalog,
+            dialect=source_dialect,
         )
 
         # Attempt correction when Ollama returned SQL but static validation
@@ -867,7 +871,7 @@ USER QUESTION:
                 question=question,
                 failed_sql=raw_sql,
                 error_message=(
-                    "Static validation rejected the query. Use PostgreSQL "
+                    f"Static validation rejected the query. Use {source_dialect.upper()} "
                     "syntax and only physical tables and columns declared "
                     "in DATABASE SCHEMA."
                 ),
@@ -877,6 +881,7 @@ USER QUESTION:
             draft_sql = self.sql_validator.validate_sql(
                 corrected_raw_sql,
                 catalog=catalog,
+                dialect=source_dialect,
             )
 
         validated_sql = draft_sql
@@ -894,6 +899,7 @@ USER QUESTION:
             reviewed_validated_sql = self.sql_validator.validate_sql(
                 reviewed_sql,
                 catalog=catalog,
+                dialect=source_dialect,
             )
 
             if reviewed_validated_sql != "UNANSWERABLE":
@@ -902,11 +908,6 @@ USER QUESTION:
                 log.warning(
                     "sql_review_rejected_using_validated_draft"
                 )
-            # 5c. Never trust the reviewed output without validating it again
-            # validated_sql = self.sql_validator.validate_sql(
-            #     reviewed_sql,
-            #     catalog=catalog,
-            # )
 
          # Preflight the reviewed SQL and allow one correction attempt.
         if validated_sql != "UNANSWERABLE":
@@ -945,6 +946,7 @@ USER QUESTION:
                 candidate_sql = self.sql_validator.validate_sql(
                     corrected_sql,
                     catalog=catalog,
+                    dialect=source_dialect,
                 )
 
                 if candidate_sql == "UNANSWERABLE":

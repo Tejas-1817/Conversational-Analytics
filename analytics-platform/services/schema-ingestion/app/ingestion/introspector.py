@@ -17,7 +17,10 @@ from app.models import ColumnMeta, DataSource, Relationship, TableMeta, IndexMet
 
 log = structlog.get_logger()
 
-_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "mysql", "performance_schema", "sys"}
+_SYSTEM_SCHEMAS = {
+    "information_schema", "pg_catalog", "pg_toast", "mysql", "performance_schema",
+    "sys", "guest", "INFORMATION_SCHEMA", "sysdiagrams",
+}
 _SYSTEM_TABLES = {
     "users", "tenants", "conversations", "conversation_messages", "data_sources",
     "ingestion_jobs", "dashboards", "saved_insights", "audit_log", "tenant_policies",
@@ -44,16 +47,27 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
     include = set(options.get("include_schemas") or [])
     blocklist = set(options.get("table_blocklist") or [])
 
-    # PostgreSQL providers such as Supabase contain protected internal schemas.
-    # Default to the public application schema unless schemas were explicitly supplied.
-    if source.type == "postgres" and not include:
-        include = {"public"}
+    # Default application schemas per dialect unless schemas were explicitly supplied.
+    if not include:
+        if source.type == "postgres":
+            include = {"public"}
+        elif source.type == "mysql" and source.database_name:
+            include = {source.database_name}
+        elif source.type == "mssql":
+            include = {"dbo"}
 
-    schemas = [s for s in inspector.get_schema_names() 
-        if s not in _SYSTEM_SCHEMAS
-    ]
+    try:
+        raw_schemas = inspector.get_schema_names()
+    except Exception:
+        raw_schemas = ["public"] if source.type == "postgres" else (["dbo"] if source.type == "mssql" else [source.database_name or "default"])
+
+    schemas = [s for s in raw_schemas if s not in _SYSTEM_SCHEMAS]
     if include:
-        schemas = [s for s in schemas if s in include]
+        matched_schemas = [s for s in schemas if s in include]
+        if matched_schemas:
+            schemas = matched_schemas
+        elif list(include)[0] not in _SYSTEM_SCHEMAS:
+            schemas = list(include)
 
     existing_tables = {(t.schema_name, t.table_name): t
                        for t in session.query(TableMeta).filter_by(source_id=source.id)}
@@ -62,7 +76,13 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
              "columns_seen": 0, "declared_fks": 0, "tables_deactivated": 0}
 
     for schema in schemas:
-        for table_name in inspector.get_table_names(schema=schema):
+        try:
+            table_names = inspector.get_table_names(schema=schema)
+        except Exception as exc:
+            log.warning("schema_table_names_failed", schema=schema, error=str(exc))
+            continue
+
+        for table_name in table_names:
             if table_name.lower() in _SYSTEM_TABLES or f"{schema}.{table_name}" in blocklist or table_name in blocklist:
                 continue
             seen.add((schema, table_name))
@@ -76,7 +96,12 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
                 stats["tables_new"] += 1
             table.is_active = True
 
-            comment = (inspector.get_table_comment(table_name, schema=schema) or {}).get("text")
+            comment = None
+            try:
+                comment = (inspector.get_table_comment(table_name, schema=schema) or {}).get("text")
+            except Exception:
+                pass
+
             if comment and not table.description:
                 table.description = comment  # DB comments seed drafts; approved text is never overwritten
                 table.updated_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)

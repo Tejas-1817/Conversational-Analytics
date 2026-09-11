@@ -80,6 +80,14 @@ class SQLExecutor:
                         text(f"EXPLAIN {clean_sql}")
                     )
 
+                elif source_type == "mssql":
+                    connection.execute(
+                        text(f"SET LOCK_TIMEOUT {int(timeout_ms)}")
+                    )
+                    connection.execute(
+                        text(f"SET NOEXEC ON;\n{clean_sql}\nSET NOEXEC OFF;")
+                    )
+
                 else:
                     return f"Unsupported source type: {source.type}"
 
@@ -196,6 +204,22 @@ class SQLExecutor:
                     ).scalar_one()
 
                     schema_name = database_name
+
+                elif source_type == "mssql":
+                    connection.execute(
+                        text("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                    )
+                    connection.execute(
+                        text(
+                            f"SET LOCK_TIMEOUT {int(timeout_ms)}"
+                        )
+                    )
+
+                    database_name = connection.execute(
+                        text("SELECT DB_NAME()")
+                    ).scalar_one()
+
+                    schema_name = "dbo"
 
                 else:
                     return (

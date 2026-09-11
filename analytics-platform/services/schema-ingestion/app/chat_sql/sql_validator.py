@@ -98,10 +98,12 @@ class SQLValidator:
         cls,
         sql: str,
         catalog: Mapping[str, Any] | None = None,
+        dialect: str = "postgres",
     ) -> str:
         """Return normalized safe SQL or exactly UNANSWERABLE."""
 
         clean_sql = (sql or "").strip()
+        dialect_lower = (dialect or "postgres").strip().lower()
 
         if not clean_sql:
             return UNANSWERABLE
@@ -116,17 +118,25 @@ class SQLValidator:
             )
             return UNANSWERABLE
 
-        for function_name in POSTGRES_INCOMPATIBLE_FUNCTIONS:
-            if re.search(
-                rf"\b{re.escape(function_name)}\s*\(",
-                clean_sql,
-                flags=re.IGNORECASE,
-            ):
-                log.warning(
-                    "sql_validation_non_postgresql_function",
-                    function_name=function_name,
-                )
-                return UNANSWERABLE
+        if dialect_lower == "postgres":
+            for function_name in POSTGRES_INCOMPATIBLE_FUNCTIONS:
+                if re.search(
+                    rf"\b{re.escape(function_name)}\s*\(",
+                    clean_sql,
+                    flags=re.IGNORECASE,
+                ):
+                    log.warning(
+                        "sql_validation_non_postgresql_function",
+                        function_name=function_name,
+                    )
+                    return UNANSWERABLE
+
+        # Map dialect to sqlglot dialect identifier
+        glot_dialect = "postgres"
+        if dialect_lower == "mysql":
+            glot_dialect = "mysql"
+        elif dialect_lower == "mssql":
+            glot_dialect = "tsql"
 
         try:
             import sqlglot
@@ -134,7 +144,7 @@ class SQLValidator:
 
             statements = sqlglot.parse(
                 clean_sql,
-                read="postgres",
+                read=glot_dialect,
             )
 
             if len(statements) != 1 or statements[0] is None:
@@ -358,7 +368,7 @@ class SQLValidator:
                 if contains_aggregate:
                     group = select_expression.args.get("group")
                     grouped_expressions = {
-                        item.sql(dialect="postgres").lower()
+                        item.sql(dialect=glot_dialect).lower()
                         for item in (group.expressions if group else [])
                     }
 
@@ -376,7 +386,7 @@ class SQLValidator:
                             continue
 
                         normalized_projection = projected_expression.sql(
-                            dialect="postgres"
+                            dialect=glot_dialect
                         ).lower()
 
                         if normalized_projection not in grouped_expressions:
@@ -388,7 +398,7 @@ class SQLValidator:
 
         try:
             return expression.sql(
-                dialect="postgres",
+                dialect=glot_dialect,
                 pretty=False,
             )
         except Exception:

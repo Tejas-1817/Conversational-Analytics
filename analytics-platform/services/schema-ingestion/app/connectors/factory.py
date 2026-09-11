@@ -115,7 +115,35 @@ def build_engine(source: DataSource) -> Engine:
 
         return engine
 
-    # Snowflake / BigQuery: not wired up until a test account is available.
+    if source.type == "mssql":
+        url = URL.create(
+            "mssql+pymssql",
+            username=source.username,
+            password=password,
+            host=source.host,
+            port=source.port or 1433,
+            database=source.database_name,
+            query={"charset": "utf8"},
+        )
+        engine = _build_engine_with_retry(
+            url,
+            pool_kwargs={"pool_size": 2, "pool_pre_ping": True},
+            connect_args={"timeout": 10},
+        )
+
+        @event.listens_for(engine, "connect")
+        def _mssql_session_guards(dbapi_conn, _record):  # noqa: ANN001
+            cursor = dbapi_conn.cursor()
+            try:
+                cursor.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED;")
+                cursor.execute(f"SET LOCK_TIMEOUT {settings.statement_timeout_ms};")
+                cursor.execute("SET DEADLOCK_PRIORITY LOW;")
+            finally:
+                cursor.close()
+
+        return engine
+
+    # Snowflake / BigQuery / Databricks: not wired up until a test account is available.
     raise NotImplementedError(
         f"Source type '{source.type}' is not implemented yet. "
         "Add the dialect driver, session guards, and an integration test before enabling it."
@@ -157,6 +185,33 @@ def verify_read_only(engine: Engine, source_type: str) -> None:
                     f"The supplied user has write privileges ({grant!r}). "
                     "Register a read-only user; the platform must never be able to modify customer data."
                 )
+        return
+
+    if source_type == "mssql":
+        sql = text("""
+            SELECT COUNT(*) FROM (
+                SELECT r.name FROM sys.database_role_members rm
+                JOIN sys.database_principals r ON rm.role_principal_id = r.principal_id
+                JOIN sys.database_principals m ON rm.member_principal_id = m.principal_id
+                WHERE m.name = USER_NAME() AND r.name IN ('db_owner', 'db_datawriter', 'db_ddladmin')
+                UNION ALL
+                SELECT p.permission_name FROM sys.database_permissions p
+                JOIN sys.database_principals u ON p.grantee_principal_id = u.principal_id
+                WHERE u.name = USER_NAME() AND p.state IN ('G', 'W') AND p.permission_name IN ('INSERT', 'UPDATE', 'DELETE', 'ALTER', 'CONTROL')
+            ) AS writable
+        """)
+        try:
+            with engine.connect() as conn:
+                writable_count = conn.execute(sql).scalar_one()
+            if writable_count and writable_count > 0:
+                raise PermissionError(
+                    f"The supplied MSSQL user has write/admin privileges ({writable_count} permission/role grants detected). "
+                    "Register a read-only user (e.g. db_datareader role only); the platform must never be able to modify customer data."
+                )
+        except PermissionError:
+            raise
+        except Exception as exc:
+            log.warning("mssql_catalog_check_skipped", error=str(exc))
         return
 
     log.warning("read_only_verification_not_implemented", source_type=source_type)

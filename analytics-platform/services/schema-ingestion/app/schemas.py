@@ -5,16 +5,36 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from pydantic import BaseModel, Field, SecretStr
+from typing import Literal
+
+
+DatabaseType = Literal["postgres", "mysql", "mssql", "snowflake", "bigquery"]
+
+
+class ConnectionOptions(BaseModel):
+    include_schemas: list[str] = Field(default_factory=list)
+    table_blocklist: list[str] = Field(default_factory=list)
+    require_tls: bool = True
+    connect_timeout_seconds: int = Field(default=10, ge=1, le=30)
+
 
 class DataSourceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    type: Literal["postgres", "mysql", "snowflake", "bigquery"]
-    host: str
-    port: int | None = None
-    database_name: str
-    username: str
-    password: str = Field(repr=False)  # encrypted immediately; never persisted or logged in plain text
-    options: dict = Field(default_factory=dict)
+    type: DatabaseType
+    host: str = Field(min_length=1, max_length=253)
+    port: int = Field(ge=1, le=65535)
+    database_name: str = Field(min_length=1, max_length=128)
+    username: str = Field(min_length=1, max_length=128)
+    password: SecretStr
+    ssl_mode: Literal[
+        "require",
+        "verify-ca",
+        "verify-full",
+    ] = "verify-full"
+    options: ConnectionOptions = Field(
+        default_factory=ConnectionOptions
+    )
 
 
 class DataSourceOut(BaseModel):
@@ -27,6 +47,10 @@ class DataSourceOut(BaseModel):
     database_name: str
     username: str
     status: str
+    connection_status: str
+    schema_status: str
+    embedding_status: str
+    last_connection_test_at: datetime | None
     last_ingested_at: datetime | None
     # deliberately no credentials field
 

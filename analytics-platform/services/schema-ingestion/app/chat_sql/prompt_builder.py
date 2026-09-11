@@ -10,7 +10,7 @@ MAX_DOMAIN_CONTEXT_CHARS = 4_000
 
 
 class PromptBuilder:
-    """Build compact prompts for safe PostgreSQL generation."""
+    """Build compact prompts for safe multi-database Text-to-SQL generation."""
 
     @classmethod
     def build_prompt(
@@ -21,11 +21,13 @@ class PromptBuilder:
         schema_version: int = 1,
         domain_context: str | None = None,
         conversation_context: str | None = None,
-      ) -> str:
+        dialect: str = "postgres",
+    ) -> str:
         """Build a prompt that returns one SELECT/WITH query or UNANSWERABLE."""
 
         question = (question or "").strip()
         schema_text = (schema_text or "").strip()
+        dialect_lower = (dialect or "postgres").strip().lower()
 
         if not question:
             return "Return exactly UNANSWERABLE because no question was provided."
@@ -49,9 +51,59 @@ class PromptBuilder:
             else "None"
         )
 
-        prompt = f"""You are a strict PostgreSQL Text-to-SQL engine.
+        # Dialect specific rules & configuration
+        if dialect_lower == "mysql":
+            dialect_title = "MySQL"
+            time_trunc_rule = "- For MySQL time grouping, use DATE_FORMAT(alias.timestamp_column, '%Y-%m-01')."
+            limit_rule = "- Use ORDER BY and LIMIT for top, bottom, highest, or lowest questions."
+            identifier_rule = "- Use standard backticks `table_name` or unquoted table names."
+            ref_example = """Example question:
+How many orders were placed each month?
 
-Generate exactly one safe, read-only PostgreSQL query that retrieves the
+Example SQL:
+SELECT
+    DATE_FORMAT(o.placed_at, '%Y-%m-01') AS order_month,
+    COUNT(DISTINCT o.order_id) AS total_orders
+FROM orders AS o
+GROUP BY DATE_FORMAT(o.placed_at, '%Y-%m-01')
+ORDER BY order_month;"""
+        elif dialect_lower == "mssql":
+            dialect_title = "Microsoft SQL Server (T-SQL)"
+            time_trunc_rule = "- For MSSQL time grouping, use DATETRUNC(month, alias.timestamp_column) or DATEFROMPARTS(YEAR(alias.timestamp_column), MONTH(alias.timestamp_column), 1)."
+            limit_rule = "- For limiting rows, use SELECT TOP (N) ... OR ORDER BY ... OFFSET 0 ROWS FETCH NEXT N ROWS ONLY. STRICT RULE: NEVER use LIMIT keyword in MSSQL."
+            identifier_rule = "- Use schema-qualified brackets [dbo].[table_name] or standard table names."
+            ref_example = """Example question:
+How many orders were placed each month?
+
+Example SQL:
+SELECT
+    DATETRUNC(month, o.placed_at) AS order_month,
+    COUNT(DISTINCT o.order_id) AS total_orders
+FROM [dbo].[orders] AS o
+GROUP BY DATETRUNC(month, o.placed_at)
+ORDER BY order_month;"""
+        else:
+            dialect_title = "PostgreSQL"
+            time_trunc_rule = """- For PostgreSQL time grouping, use DATE_TRUNC('month', alias.timestamp_column).
+- Plain PostgreSQL does not provide DATE_BUCKET or TIME_BUCKET.
+- Never use DATE_BUCKET or TIME_BUCKET unless the available database
+  capabilities explicitly declare that extension."""
+            limit_rule = "- Use ORDER BY and LIMIT for top, bottom, highest, or lowest questions."
+            identifier_rule = "- Use schema-qualified physical table names (e.g. public.table_name)."
+            ref_example = """Example question:
+How many orders were placed each month?
+
+Example SQL:
+SELECT
+    DATE_TRUNC('month', o.placed_at) AS order_month,
+    COUNT(DISTINCT o.order_id) AS total_orders
+FROM public.orders AS o
+GROUP BY DATE_TRUNC('month', o.placed_at)
+ORDER BY order_month;"""
+
+        prompt = f"""You are a strict {dialect_title} Text-to-SQL engine.
+
+Generate exactly one safe, read-only {dialect_title} query that retrieves the
 database evidence required to answer the user question.
 
 SOURCE-OF-TRUTH PRIORITY:
@@ -72,7 +124,7 @@ GROUNDING RULES:
 
 SQL CORRECTNESS RULES:
 - Return exactly one SELECT or WITH query.
-- Use schema-qualified physical table names.
+{identifier_rule}
 - Qualify every base-table column with its table alias.
 - Use declared key relationships for joins.
 - Select every requested metric, dimension, filter, and time period.
@@ -80,7 +132,7 @@ SQL CORRECTNESS RULES:
 - Apply date filters only when requested.
 - Use half-open date ranges when appropriate.
 - Use the requested time grain for time-series questions.
-- Use ORDER BY and LIMIT for top, bottom, highest, or lowest questions.
+{limit_rule}
 - Use clear snake_case aliases for calculated fields.
 - Use NULLIF where division by zero is possible.
 - Use COALESCE for nullable aggregate results when appropriate.
@@ -89,10 +141,7 @@ SQL CORRECTNESS RULES:
 - Avoid join fan-out that could inflate COUNT, SUM, or AVG.
 - Pre-aggregate child tables in CTEs when necessary.
 - Use COUNT(DISTINCT column) only when unique entities are requested.
-- For PostgreSQL time grouping, use DATE_TRUNC('month', alias.timestamp_column).
-- Plain PostgreSQL does not provide DATE_BUCKET or TIME_BUCKET.
-- Never use DATE_BUCKET or TIME_BUCKET unless the available database
-  capabilities explicitly declare that extension.
+{time_trunc_rule}
 - When SELECT contains aggregates, every selected non-aggregate column
   or expression must also appear in GROUP BY.
 
@@ -100,16 +149,7 @@ REFERENCE EXAMPLE — MONTHLY ENTITY COUNT:
 Use this pattern only when all referenced tables and columns exist in
 DATABASE SCHEMA. Never copy identifiers from this example into another schema.
 
-Example question:
-How many orders were placed each month?
-
-Example SQL:
-SELECT
-    DATE_TRUNC('month', o.placed_at) AS order_month,
-    COUNT(DISTINCT o.order_id) AS total_orders
-FROM public.orders AS o
-GROUP BY DATE_TRUNC('month', o.placed_at)
-ORDER BY order_month;
+{ref_example}
 
 PREDICTIVE QUESTION RULES:
 - For forecast or prediction questions, retrieve chronological historical data
@@ -136,6 +176,7 @@ SECURITY RULES:
 
 Database: {database_name}
 Schema version: {schema_version}
+Dialect: {dialect_title}
 
 BUSINESS CONTEXT:
 {business_context}
@@ -154,13 +195,14 @@ USER QUESTION:
 {question}
 
 FINAL OUTPUT:
-Return only one PostgreSQL SELECT/WITH query or exactly UNANSWERABLE.
+Return only one {dialect_title} SELECT/WITH query or exactly UNANSWERABLE.
 
 FINAL SQL:"""
 
         log.info(
             "prompt_built_telemetry",
             database_name=database_name,
+            dialect=dialect_title,
             schema_version=schema_version,
             prompt_length=len(prompt),
             estimated_tokens=len(prompt) // 4,
