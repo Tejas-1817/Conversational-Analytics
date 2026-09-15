@@ -93,17 +93,17 @@ def _validate_address(
             f"Link-local database address is not allowed: {address}"
         )
 
-    if address.is_reserved:
-        raise NetworkPolicyError(
-            f"Reserved database address is not allowed: {address}"
-        )
-
     if address.is_loopback:
         if allow_loopback:
             return
 
         raise NetworkPolicyError(
             f"Loopback database address is not allowed: {address}"
+        )
+
+    if address.is_reserved:
+        raise NetworkPolicyError(
+            f"Reserved database address is not allowed: {address}"
         )
 
     if address.is_private:

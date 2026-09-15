@@ -124,8 +124,13 @@ GROUNDING RULES:
 
 SQL CORRECTNESS RULES:
 - Return exactly one SELECT or WITH query.
+
 {identifier_rule}
 - Qualify every base-table column with its table alias.
+
+- Use schema-qualified physical table names.
+- Qualify every base-table column with its table alias (e.g. if 'FROM prescriptions AS p', use 'p.column', NEVER 'prescriptions.column').
+
 - Use declared key relationships for joins.
 - Select every requested metric, dimension, filter, and time period.
 - Apply status filters only when requested or defined by business context.

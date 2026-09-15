@@ -12,6 +12,13 @@ log = structlog.get_logger(__name__)
 
 UNANSWERABLE = "UNANSWERABLE"
 
+SQLGLOT_DIALECTS = {
+    "postgres": "postgres",
+    "mysql": "mysql",
+    "mssql": "tsql",
+    "excel": "sqlite",
+}
+
 BLOCKED_NODE_TYPES = {
     "ALTER",
     "COMMAND",
@@ -131,12 +138,14 @@ class SQLValidator:
                     )
                     return UNANSWERABLE
 
-        # Map dialect to sqlglot dialect identifier
-        glot_dialect = "postgres"
-        if dialect_lower == "mysql":
-            glot_dialect = "mysql"
-        elif dialect_lower == "mssql":
-            glot_dialect = "tsql"
+        glot_dialect = SQLGLOT_DIALECTS.get(dialect_lower)
+
+        if glot_dialect is None:
+            log.warning(
+                "sql_validation_unsupported_dialect",
+                dialect=dialect_lower,
+            )
+            return UNANSWERABLE
 
         try:
             import sqlglot

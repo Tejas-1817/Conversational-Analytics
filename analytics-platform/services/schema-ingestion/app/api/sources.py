@@ -1,17 +1,21 @@
-"""Data source registration and connection testing."""
+import shutil
 import uuid
+from pathlib import Path
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, File, UploadFile
+from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import Permission, require_admin, require_permission, verify_tenant_owns
 from app.audit import AuditEvent, audit
+from app.config import get_settings
 from app.connectors.factory import build_engine, test_connection, verify_read_only
 from app.db import get_session
+from app.ingestion.excel_ingestor import preview_excel_sheets
 from app.models import DataSource, User
-from app.schemas import DataSourceCreate, DataSourceOut
+from app.schemas import DataSourceCreate, DataSourceOut, ExcelPreviewResponse, ExcelSourceCreate
 from app.security.crypto import encrypt_secret
 
 log = structlog.get_logger()
@@ -30,18 +34,21 @@ def create_source(
     # dedicated_tenant_id = uuid.uuid4()
 
     source = DataSource(
-        tenant_id=current_user.tenant_id,
-        name=payload.name,
-        type=payload.type,
-        host=payload.host,
-        port=payload.port,
-        database_name=payload.database_name,
-        username=payload.username,
-        credentials_encrypted=encrypt_secret(payload.password),
-        options=payload.options,
-        created_by=current_user.email,
-        updated_by=current_user.email,
-    )
+    tenant_id=current_user.tenant_id,
+    name=payload.name,
+    type=payload.type,
+    host=payload.host,
+    port=payload.port,
+    database_name=payload.database_name,
+    username=payload.username,
+    credentials_encrypted=encrypt_secret(
+        payload.password.get_secret_value()
+    ),
+    ssl_mode=payload.ssl_mode,
+    options=payload.options.model_dump(),
+    created_by=current_user.email,
+    updated_by=current_user.email,
+)
     session.add(source)
     try:
         session.flush()
@@ -95,6 +102,118 @@ def create_source(
     return source
 
 
+@router.post("/excel/preview", response_model=ExcelPreviewResponse)
+async def preview_excel_source(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_admin),
+) -> ExcelPreviewResponse:
+    """Accepts an uploaded .xlsx file and returns sheet previews without materializing to SQLite."""
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file format. Only Excel (.xlsx) files are supported."
+        )
+
+    settings = get_settings()
+    max_bytes = settings.excel_max_upload_mb * 1024 * 1024
+    content = await file.read()
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File exceeds maximum allowed size of {settings.excel_max_upload_mb}MB."
+        )
+
+    temp_id = str(uuid.uuid4())
+    temp_dir = Path(settings.excel_upload_dir) / str(current_user.tenant_id) / "temp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / f"{temp_id}.xlsx"
+    temp_path.write_bytes(content)
+
+    try:
+        preview_data = preview_excel_sheets(temp_path)
+    except Exception as exc:
+        log.error("excel_preview_failed", error=str(exc))
+        raise HTTPException(status_code=400, detail=f"Failed to parse Excel workbook: {exc}") from exc
+
+    return ExcelPreviewResponse(
+        temp_file_id=temp_id,
+        filename=file.filename,
+        sheets=preview_data.get("sheets", [])
+    )
+
+
+@router.post("/excel", response_model=DataSourceOut, status_code=201)
+def create_excel_source(
+    payload: ExcelSourceCreate,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+) -> DataSource:
+    """Creates a new Excel-backed DataSource with confirmed sheet overrides and enqueues ingestion."""
+    settings = get_settings()
+    temp_path = Path(settings.excel_upload_dir) / str(current_user.tenant_id) / "temp" / f"{payload.temp_file_id}.xlsx"
+    if not temp_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file session expired or not found. Please upload the file again."
+        )
+
+    source_id = uuid.uuid4()
+    final_dir = Path(settings.excel_upload_dir) / str(current_user.tenant_id) / str(source_id)
+    final_dir.mkdir(parents=True, exist_ok=True)
+    final_upload_path = (final_dir / "original.xlsx").resolve().as_posix()
+    
+    shutil.copy2(str(temp_path), final_upload_path)
+
+    options = dict(payload.options)
+    # Serialize sheet overrides
+    options["sheet_overrides"] = {k: v.model_dump() for k, v in payload.sheet_overrides.items()}
+
+    source = DataSource(
+        id=source_id,
+        tenant_id=current_user.tenant_id,
+        name=payload.name,
+        type="excel",
+        original_upload_path=final_upload_path,
+        options=options,
+        created_by=current_user.email,
+        updated_by=current_user.email,
+    )
+    session.add(source)
+    try:
+        session.flush()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"A data source named '{payload.name}' already exists in your workspace."
+        )
+
+    from app.models import IngestionJob
+    from app.ingestion.pipeline import run_pipeline
+    job = IngestionJob(source_id=source.id, stage="Excel Materialization", status="running")
+    session.add(job)
+    session.commit()
+
+    background_tasks.add_task(run_pipeline, str(job.id), str(source.id))
+
+    audit(
+        session,
+        tenant_id=current_user.tenant_id,
+        entity_type="data_sources",
+        entity_id=source.id,
+        action=AuditEvent.SOURCE_REGISTERED,
+        actor=current_user.email,
+        after={"name": source.name, "type": source.type, "original_upload_path": source.original_upload_path},
+        request=request,
+    )
+
+    session.commit()
+    log.info("excel_source_registered", source=payload.name, source_id=str(source.id))
+    return source
+
+
 @router.get("", response_model=list[DataSourceOut])
 def list_sources(
     session: Session = Depends(get_session),
@@ -120,9 +239,12 @@ def test_new_source(
         port=payload.port,
         database_name=payload.database_name,
         username=payload.username,
-        credentials_encrypted=encrypt_secret(payload.password),
-        options=payload.options,
-    )
+        credentials_encrypted=encrypt_secret(
+        payload.password.get_secret_value()
+    ),
+    ssl_mode=payload.ssl_mode,
+    options=payload.options.model_dump(),
+)
 
     try:
         engine = build_engine(source)

@@ -92,11 +92,21 @@ class Settings(BaseSettings):
     profile_sample_rows: int = 10_000
     profile_top_n_values: int = 20
     statement_timeout_ms: int = 30_000
+
+    # Customer database outbound network policy
+    database_allow_loopback: bool = False
+    database_allowed_private_cidrs: str = ""
+
     overlap_sample_values: int = 1_000
     overlap_min_confidence: float = 0.90
 
     default_tenant_id: str = "00000000-0000-0000-0000-000000000001"
     schema_snapshot_dir: str = "./data/schema-snapshots"
+
+    # Excel Data Source Settings
+    excel_upload_dir: str = "./storage/uploads"
+    excel_sqlite_dir: str = "./storage/excel_dbs"
+    excel_max_upload_mb: int = 50
 
     # =========================================================================
     # Phase 6 — Security & Multi-Tenancy

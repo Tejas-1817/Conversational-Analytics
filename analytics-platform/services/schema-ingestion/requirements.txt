@@ -18,6 +18,9 @@ huggingface_hub>=0.23.0
 tenacity>=8.3.0
 asgi-correlation-id>=4.3.1
 python-multipart
+sqlglot>=25.0                  # SQL AST parser & dialect validator
+pandas>=2.2                    # Excel data processing (BSD-3-Clause)
+openpyxl>=3.1                  # Excel file reader engine (MIT)
 
 # Phase 6 — Security & Multi-Tenancy
 slowapi>=0.1.9              # rate limiting (optional but recommended)

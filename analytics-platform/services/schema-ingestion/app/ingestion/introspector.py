@@ -56,10 +56,17 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
         elif source.type == "mssql":
             include = {"dbo"}
 
-    try:
-        raw_schemas = inspector.get_schema_names()
-    except Exception:
-        raw_schemas = ["public"] if source.type == "postgres" else (["dbo"] if source.type == "mssql" else [source.database_name or "default"])
+        try:
+            raw_schemas = inspector.get_schema_names()
+        except Exception as exc:
+            log.exception(
+                "schema_names_failed",
+                source_id=str(source.id),
+                source_type=source.type,
+            )
+            raise RuntimeError(
+                "Unable to read database schemas."
+            ) from exc
 
     schemas = [s for s in raw_schemas if s not in _SYSTEM_SCHEMAS]
     if include:
@@ -68,6 +75,10 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
             schemas = matched_schemas
         elif list(include)[0] not in _SYSTEM_SCHEMAS:
             schemas = list(include)
+
+    # For SQLite / Excel fallback
+    if not schemas:
+        schemas = ["main"] if source.type == "excel" or "sqlite" in getattr(engine, "name", "") else ["public"]
 
     existing_tables = {(t.schema_name, t.table_name): t
                        for t in session.query(TableMeta).filter_by(source_id=source.id)}
@@ -78,12 +89,18 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
     for schema in schemas:
         try:
             table_names = inspector.get_table_names(schema=schema)
-        except Exception as exc:
-            log.warning("schema_table_names_failed", schema=schema, error=str(exc))
-            continue
+        except Exception:
+            try:
+                table_names = inspector.get_table_names()
+            except Exception as exc:
+                log.warning("schema_table_names_failed", schema=schema, error=str(exc))
+                continue
 
         for table_name in table_names:
-            if table_name.lower() in _SYSTEM_TABLES or f"{schema}.{table_name}" in blocklist or table_name in blocklist:
+            if (
+                f"{schema}.{table_name}" in blocklist
+                or table_name in blocklist
+            ):
                 continue
             seen.add((schema, table_name))
             stats["tables_seen"] += 1
@@ -99,7 +116,7 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
             comment = None
             try:
                 comment = (inspector.get_table_comment(table_name, schema=schema) or {}).get("text")
-            except Exception:
+            except (NotImplementedError, AttributeError, Exception):
                 pass
 
             if comment and not table.description:
@@ -118,10 +135,16 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
             log.info("table_deactivated", schema=key[0], table=key[1])
 
         if table.is_active:
-            _upsert_indexes(session, inspector, table, key[0], key[1], stats)
+            try:
+                _upsert_indexes(session, inspector, table, key[0], key[1], stats)
+            except Exception as e:
+                log.warning("upsert_indexes_failed_non_fatal", error=str(e))
 
     session.flush()
-    _record_declared_fks(session, inspector, source, stats)
+    try:
+        _record_declared_fks(session, inspector, source, stats)
+    except Exception as e:
+        log.warning("record_declared_fks_failed_non_fatal", error=str(e))
     session.flush()
     return stats
 

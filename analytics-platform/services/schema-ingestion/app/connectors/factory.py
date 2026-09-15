@@ -17,6 +17,7 @@ from sqlalchemy.engine import URL, Engine
 from sqlalchemy.exc import OperationalError
 
 from app.config import get_settings
+from app.connectors.network_policy import validate_database_endpoint
 from app.models import DataSource
 from app.security.crypto import decrypt_secret
 
@@ -24,6 +25,14 @@ log = structlog.get_logger()
 
 MAX_CONNECT_RETRIES = 3
 _RETRY_BASE_DELAY_S = 0.5  # seconds; doubles on each attempt
+
+POOL_OPTIONS = {
+    "pool_size": 5,
+    "max_overflow": 5,
+    "pool_timeout": 10,
+    "pool_recycle": 1800,
+    "pool_pre_ping": True,
+}
 
 
 def _build_engine_with_retry(url: URL, pool_kwargs: dict, connect_args: dict) -> Engine:
@@ -64,7 +73,45 @@ def _build_engine_with_retry(url: URL, pool_kwargs: dict, connect_args: dict) ->
 
 def build_engine(source: DataSource) -> Engine:
     settings = get_settings()
-    password = decrypt_secret(source.credentials_encrypted)
+
+    if source.type == "excel":
+        if not source.file_path:
+            raise ValueError("Excel data source has no materialized file_path.")
+        from pathlib import Path
+        db_path = Path(source.file_path).resolve().as_posix()
+        engine = create_engine(
+            f"sqlite:///file:{db_path}?mode=ro&uri=true",
+            pool_pre_ping=True,
+        )
+        @event.listens_for(engine, "connect")
+        def enforce_sqlite_read_only(dbapi_connection, _record):
+            dbapi_connection.execute("PRAGMA query_only = ON")
+
+        return engine
+
+    default_ports = {
+        "postgres": 5432,
+        "mysql": 3306,
+        "mssql": 1433,
+    }
+
+    if source.type in default_ports:
+        validate_database_endpoint(
+            host=source.host or "",
+            port=source.port or default_ports[source.type],
+            allowed_private_cidrs=(
+                cidr.strip() 
+                for cidr in settings.database_allowed_private_cidrs.split(",")
+                if cidr.strip()
+            ),
+            allow_loopback=settings.database_allow_loopback,
+        )
+
+    password = (
+        decrypt_secret(source.credentials_encrypted)
+        if source.credentials_encrypted
+        else ""
+    )
 
     if source.type == "postgres":
         url = URL.create(
@@ -77,7 +124,7 @@ def build_engine(source: DataSource) -> Engine:
         )
         engine = _build_engine_with_retry(
             url,
-            pool_kwargs={"pool_size": 2, "pool_pre_ping": True},
+            pool_kwargs=POOL_OPTIONS,
             connect_args={"connect_timeout": 10},
         )
 
@@ -100,7 +147,7 @@ def build_engine(source: DataSource) -> Engine:
         )
         engine = _build_engine_with_retry(
             url,
-            pool_kwargs={"pool_size": 2, "pool_pre_ping": True},
+            pool_kwargs=POOL_OPTIONS,
             connect_args={"connect_timeout": 10},
         )
 
@@ -117,17 +164,21 @@ def build_engine(source: DataSource) -> Engine:
 
     if source.type == "mssql":
         url = URL.create(
-            "mssql+pymssql",
+            "mssql+pyodbc",
             username=source.username,
             password=password,
             host=source.host,
             port=source.port or 1433,
             database=source.database_name,
-            query={"charset": "utf8"},
+            query={
+                "driver": "ODBC Driver 18 for SQL Server",
+                "Encrypt": "yes",
+                "TrustServerCertificate": "no",
+            },
         )
         engine = _build_engine_with_retry(
             url,
-            pool_kwargs={"pool_size": 2, "pool_pre_ping": True},
+            pool_kwargs=POOL_OPTIONS,
             connect_args={"timeout": 10},
         )
 
@@ -157,6 +208,10 @@ def verify_read_only(engine: Engine, source_type: str) -> None:
     enforcement is the per-connection read-only session guard in build_engine().
     Refuses registration when write privileges are detected.
     """
+    if source_type == "excel":
+        log.info("read_only_verification_excel_sqlite_uri_enforced", source_type=source_type)
+        return
+
     if source_type == "postgres":
         sql = text("""
             SELECT count(*) FROM pg_catalog.pg_class c

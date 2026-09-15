@@ -26,6 +26,23 @@ ExecutionResult = tuple[
 ]
 
 
+import re
+
+def _normalize_sqlite_aliases(sql: str) -> str:
+    """If a table was aliased in FROM/JOIN (e.g. FROM table AS t), replace table.col with t.col."""
+    alias_map = {}
+    pattern = re.compile(r'\b(?:FROM|JOIN)\s+([a-zA-Z0-9_]+)\s+(?:AS\s+)?([a-zA-Z0-9_]+)\b', re.IGNORECASE)
+    for match in pattern.finditer(sql):
+        tbl, alias = match.group(1), match.group(2)
+        if tbl.lower() != alias.lower() and alias.upper() not in ("ON", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "GROUP", "ORDER", "LIMIT", "SET"):
+            alias_map[tbl] = alias
+
+    res_sql = sql
+    for tbl, alias in alias_map.items():
+        res_sql = re.sub(rf'(?<!FROM\s)(?<!JOIN\s)\b{re.escape(tbl)}\.([a-zA-Z0-9_]+)\b', rf'{alias}.\1', res_sql, flags=re.IGNORECASE)
+    return res_sql
+
+
 class SQLExecutor:
     """Execute validated read-only SQL against the customer database."""
 
@@ -80,12 +97,19 @@ class SQLExecutor:
                         text(f"EXPLAIN {clean_sql}")
                     )
 
+
                 elif source_type == "mssql":
                     connection.execute(
                         text(f"SET LOCK_TIMEOUT {int(timeout_ms)}")
                     )
                     connection.execute(
-                        text(f"SET NOEXEC ON;\n{clean_sql}\nSET NOEXEC OFF;")
+                        text(f"SET NOEXEC ON;\n{clean_sql}\nSET NOEXEC OFF;"))
+
+                elif source_type in ("excel", "sqlite"):
+                    exec_sql = _normalize_sqlite_aliases(clean_sql)
+                    connection.execute(
+                        text(f"EXPLAIN QUERY PLAN {exec_sql}")
+
                     )
 
                 else:
@@ -221,6 +245,11 @@ class SQLExecutor:
 
                     schema_name = "dbo"
 
+                elif source_type in ("excel", "sqlite"):
+                    database_name = source.name
+                    schema_name = "main"
+
+
                 else:
                     return (
                         [],
@@ -240,7 +269,8 @@ class SQLExecutor:
                     schema_name=schema_name,
                 )
 
-                result = connection.execute(text(clean_sql))
+                exec_sql = _normalize_sqlite_aliases(clean_sql) if source_type in ("excel", "sqlite") else clean_sql
+                result = connection.execute(text(exec_sql))
                 columns = list(result.keys())
                 safe_limit = max(1, min(int(limit), 1_000))
                 fetched_rows = result.fetchmany(safe_limit + 1)

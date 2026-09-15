@@ -87,8 +87,8 @@ def _score_by_value_overlap(engine: Engine, from_table, from_col, to_table, to_c
     """Sampled inclusion test: what fraction of child values exist in the parent key?"""
     settings = get_settings()
     q = engine.dialect.identifier_preparer.quote
-    child = f"{q(from_table.schema_name)}.{q(from_table.table_name)}"
-    parent = f"{q(to_table.schema_name)}.{q(to_table.table_name)}"
+    child = f"{q(from_table.schema_name)}.{q(from_table.table_name)}" if from_table.schema_name else q(from_table.table_name)
+    parent = f"{q(to_table.schema_name)}.{q(to_table.table_name)}" if to_table.schema_name else q(to_table.table_name)
     overlap_sql = f"""
         SELECT count(*) AS total,
                count(p.pk) AS matched

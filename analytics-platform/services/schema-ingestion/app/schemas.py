@@ -3,13 +3,10 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
-
-from pydantic import BaseModel, Field, SecretStr
-from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field, computed_field, SecretStr
 
 
-DatabaseType = Literal["postgres", "mysql", "mssql", "snowflake", "bigquery"]
+DatabaseType = Literal["postgres", "mysql", "mssql"]
 
 
 class ConnectionOptions(BaseModel):
@@ -21,12 +18,14 @@ class ConnectionOptions(BaseModel):
 
 class DataSourceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+
     type: DatabaseType
     host: str = Field(min_length=1, max_length=253)
     port: int = Field(ge=1, le=65535)
     database_name: str = Field(min_length=1, max_length=128)
     username: str = Field(min_length=1, max_length=128)
     password: SecretStr
+
     ssl_mode: Literal[
         "require",
         "verify-ca",
@@ -36,22 +35,59 @@ class DataSourceCreate(BaseModel):
         default_factory=ConnectionOptions
     )
 
+class ExcelSheetOverride(BaseModel):
+    table_name: str | None = None
+    header_row: int = 0
+    include: bool = True
+    forward_fill_columns: list[str] | None = None
+
+
+class ExcelSheetPreview(BaseModel):
+    sheet_name: str
+    suggested_table_name: str
+    row_count: int
+    column_names: list[str]
+    suggested_header_row: int = 0
+    preview_rows: list[dict] = []
+    is_empty: bool = False
+    warning: str | None = None
+
+
+class ExcelPreviewResponse(BaseModel):
+    temp_file_id: str
+    filename: str
+    sheets: list[ExcelSheetPreview]
+
+
+class ExcelSourceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    temp_file_id: str
+    sheet_overrides: dict[str, ExcelSheetOverride] = Field(default_factory=dict)
+    options: dict = Field(default_factory=dict)
+
+
 
 class DataSourceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
     name: str
     type: str
-    host: str | None
-    port: int | None
-    database_name: str
-    username: str
+    host: str | None = None
+    port: int | None = None
+    database_name: str | None = None
+    username: str | None = None
+    file_path: str | None = None
+    original_upload_path: str | None = None
     status: str
+
     connection_status: str
     schema_status: str
     embedding_status: str
     last_connection_test_at: datetime | None
     last_ingested_at: datetime | None
+
+    last_ingested_at: datetime | None = None
+
     # deliberately no credentials field
 
 

@@ -1,0 +1,2 @@
+ALTER TYPE source_type ADD VALUE IF NOT EXISTS 'mssql';
+ALTER TYPE source_type ADD VALUE IF NOT EXISTS 'excel';
