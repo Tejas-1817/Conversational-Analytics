@@ -6,10 +6,11 @@ to handle Text-to-SQL requests.
 import re
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Literal
 
 from sqlalchemy.orm import selectinload
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from typing import Any, Dict
 
 import structlog
@@ -206,6 +207,8 @@ class ChatService:
         db_session: Any,
         user: Any,
         conversation_id: uuid.UUID | str | None,
+        source_id: uuid.UUID | str | None = None,
+        domain_id: uuid.UUID | str | None = None,
         question: str,
         answer: str,
         title: str,
@@ -231,6 +234,47 @@ class ChatService:
             if row_count is not None
             else len(saved_rows)
         )
+
+        parsed_source_id = None
+        if source_id:
+            try:
+                parsed_source_id = uuid.UUID(str(source_id))
+            except (TypeError, ValueError):
+                parsed_source_id = None
+
+        parsed_domain_id = None
+        if domain_id:
+            try:
+                parsed_domain_id = uuid.UUID(str(domain_id))
+            except (TypeError, ValueError):
+                parsed_domain_id = None
+
+        def _make_json_safe(obj: Any) -> Any:
+            if obj is None or isinstance(obj, (int, float, str, bool)):
+                return obj
+            if isinstance(obj, Decimal):
+                return int(obj) if obj % 1 == 0 else float(obj)
+            if isinstance(obj, (datetime, date)):
+                return obj.isoformat()
+            if isinstance(obj, uuid.UUID):
+                return str(obj)
+            if isinstance(obj, dict):
+                return {str(k): _make_json_safe(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple, set)):
+                return [_make_json_safe(x) for x in obj]
+            return str(obj)
+
+        safe_result_data = _make_json_safe({
+            "rows": saved_rows,
+            "columns": saved_columns,
+            "row_count": saved_row_count,
+            "column_types": saved_column_types,
+            "visualization": visualization,
+            "data_truncated": data_truncated,
+            "follow_up_questions": saved_follow_ups,
+            "title": title,
+            "intent": intent,
+        })
 
         try:
             conversation = None
@@ -260,11 +304,18 @@ class ChatService:
                         "Conversation was not found."
                     )
 
+                if parsed_source_id:
+                    conversation.source_id = parsed_source_id
+                if parsed_domain_id is not None:
+                    conversation.domain_id = parsed_domain_id
+
             else:
                 conversation = Conversation(
                     tenant_id=user.tenant_id,
                     user_id=user.id,
                     title=title,
+                    source_id=parsed_source_id,
+                    domain_id=parsed_domain_id,
                 )
                 db_session.add(conversation)
                 db_session.flush()
@@ -275,7 +326,11 @@ class ChatService:
             ):
                 conversation.title = title
 
-            conversation.updated_at = datetime.now(timezone.utc)
+            now_time = datetime.now(timezone.utc)
+            user_time = now_time - timedelta(milliseconds=100)
+            asst_time = now_time
+
+            conversation.updated_at = asst_time
 
             user_message = ConversationMessage(
                 conversation_id=conversation.id,
@@ -284,6 +339,7 @@ class ChatService:
                 route=intent,
                 intent={"type": intent},
                 status="complete",
+                created_at=user_time,
             )
 
             assistant_message = ConversationMessage(
@@ -293,20 +349,11 @@ class ChatService:
                 route=intent,
                 intent={"type": intent},
                 generated_sql=sql,
-                 result_data={
-                    "rows": saved_rows,
-                    "columns": saved_columns,
-                    "row_count": saved_row_count,
-                    "column_types": saved_column_types,
-                    "visualization": visualization,
-                    "data_truncated": data_truncated,
-                    "follow_up_questions": saved_follow_ups,
-                    "title": title,
-                    "intent": intent,
-                },
+                result_data=safe_result_data,
                 chart_recommendation=visualization,
                 execution_time_ms=int(execution_time_ms),
                 status="complete",
+                created_at=asst_time,
             )
             db_session.add(user_message)
             db_session.add(assistant_message)
@@ -594,17 +641,50 @@ class ChatService:
                 .all()
             )
 
-            domain_context_str = "\n".join(
-                [
-                    f"Domain: {domain.name}",
-                    f"Description: {domain.description or 'None'}",
-                    "Terms:",
-                    *[
-                        f"- {term.term}: {term.definition}"
-                        for term in terms
-                    ],
-                ]
-            )[:4_000]
+            context_sections = [
+                f"Domain: {domain.name}",
+                f"Description: {domain.description or 'None'}",
+            ]
+
+            if terms:
+                context_sections.append("Business Terms & Knowledge Definitions:")
+                context_sections.extend([
+                    f"- {term.term}: {term.definition}"
+                    for term in terms
+                ])
+
+            # Semantic RAG retrieval for domain document chunks & embedded knowledge
+            rag_chunks: list[str] = []
+            try:
+                from app.embeddings.chroma_store import ChromaStore
+                from app.embeddings.registry import get_embedding_provider
+
+                embed_provider = get_embedding_provider()
+                query_vec = embed_provider.embed([question])[0]
+
+                store = ChromaStore()
+                domain_hits = store.query(
+                    tenant_id=user.tenant_id,
+                    query_embedding=query_vec,
+                    n_results=6,
+                    source_id=active_source.id if domain.source_id else None,
+                    object_types=["domain_document", "domain_knowledge", "domain_term"],
+                )
+
+                for hit in domain_hits:
+                    hit_domain_id = str(hit.metadata.get("domain_id", "")).strip()
+                    if not hit_domain_id or hit_domain_id == str(domain.id):
+                        txt = (hit.text or "").strip()
+                        if txt and txt not in rag_chunks:
+                            rag_chunks.append(txt)
+            except Exception as rag_err:
+                log.warning("domain_rag_retrieval_warning", domain_id=str(domain.id), error=str(rag_err))
+
+            if rag_chunks:
+                context_sections.append("Relevant Domain Knowledge & Document Context:")
+                context_sections.extend([f"- {chunk}" for chunk in rag_chunks[:5]])
+
+            domain_context_str = "\n".join(context_sections)[:6_000]
         
         schema_inventory = "\n".join(
             f"- {table.schema_name}.{table.table_name}: "
@@ -634,6 +714,8 @@ class ChatService:
                 db_session=db_session,
                 user=user,
                 conversation_id=conversation_id,
+                source_id=source_id,
+                domain_id=domain_id,
                 question=question,
                 answer=answer,
                 title="Business Strategy",
@@ -787,6 +869,8 @@ USER QUESTION:
                 db_session=db_session,
                 user=user,
                 conversation_id=conversation_id,
+                source_id=source_id,
+                domain_id=domain_id,
                 question=question,
                 answer=direct_answer,
                 title="Business and Data Analysis",
@@ -995,6 +1079,8 @@ USER QUESTION:
                 db_session=db_session,
                 user=user,
                 conversation_id=conversation_id,
+                source_id=source_id,
+                domain_id=domain_id,
                 question=question,
                 answer=clarification_answer,
                 title="Clarification required",
@@ -1160,6 +1246,8 @@ USER QUESTION:
             db_session=db_session,
             user=user,
             conversation_id=conversation_id,
+            source_id=source_id,
+            domain_id=domain_id,
             question=question,
             answer=answer,
             title=title,

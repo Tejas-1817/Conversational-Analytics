@@ -46,7 +46,7 @@ export const Jobs = () => {
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="title" style={{ margin: 0 }}>
-            <Activity size={24} style={{ color: 'var(--primary)' }} /> Ingestion Jobs
+            Ingestion Jobs
           </h2>
           <p className="subtitle" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
             Monitor automated connection validation, schema extraction, and file registration jobs.

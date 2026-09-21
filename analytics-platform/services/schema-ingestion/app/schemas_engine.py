@@ -107,9 +107,21 @@ class ChatMessageOut(BaseModel):
     class Config:
         from_attributes = True
 
+class ConversationCreate(BaseModel):
+    title: str | None = None
+    source_id: uuid.UUID | None = None
+    domain_id: uuid.UUID | None = None
+
+class ConversationUpdate(BaseModel):
+    title: str | None = None
+    source_id: uuid.UUID | None = None
+    domain_id: uuid.UUID | None = None
+
 class ConversationOut(BaseModel):
     id: uuid.UUID
     title: str | None = None
+    source_id: uuid.UUID | None = None
+    domain_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
     messages: list[ChatMessageOut] = []

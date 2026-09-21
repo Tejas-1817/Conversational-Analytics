@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { fetchApi } from '../../services/api';
 import { Database, Plus, RefreshCw, MoreVertical, Play, Server, Clock, Trash2 } from 'lucide-react';
 import { ConnectionModal } from '../../components/ConnectionModal';
+import { SourceLogo } from '../../components/SourceLogos';
 
 export const DataSources = () => {
   const [sources, setSources] = useState<any[]>([]);
@@ -52,7 +53,7 @@ export const DataSources = () => {
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="title" style={{ margin: 0 }}>
-            <Database size={24} style={{ color: 'var(--primary)' }} /> Data Sources
+            Data Sources
           </h2>
           <p className="subtitle" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
             Manage connections to your data warehouses and databases.
@@ -67,6 +68,7 @@ export const DataSources = () => {
             <thead>
               <tr>
                 <th>Source Name</th>
+                <th>Database Name</th>
                 <th>Database Type</th>
                 <th>Connection Status</th>
                 <th>Last Ingested</th>
@@ -76,14 +78,14 @@ export const DataSources = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="text-center p-4">
+                  <td colSpan={6} className="text-center p-4">
                     <div className="skeleton" style={{ height: '40px', width: '100%', marginBottom: '10px' }} />
                     <div className="skeleton" style={{ height: '40px', width: '100%' }} />
                   </td>
                 </tr>
               ) : sources.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center p-4 text-muted">
+                  <td colSpan={6} className="text-center p-4 text-muted">
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '3rem' }}>
                       <Server size={48} style={{ opacity: 0.2 }} />
                       <div>
@@ -100,10 +102,15 @@ export const DataSources = () => {
                     <td>
                       <div className="flex items-center gap-2">
                         <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Database size={16} color="var(--primary)" />
+                          <SourceLogo type={s.type} size={20} />
                         </div>
                         <span style={{ fontWeight: 600 }}>{s.name}</span>
                       </div>
+                    </td>
+                    <td>
+                      <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '13px', color: 'var(--text-main)' }}>
+                        {s.database_name || (s.type === 'excel' ? (s.file_path ? s.file_path.split(/[/\\]/).pop() : 'Excel File') : '-')}
+                      </span>
                     </td>
                     <td>
                       <span className="badge badge-default" style={{ textTransform: 'capitalize' }}>{s.type}</span>

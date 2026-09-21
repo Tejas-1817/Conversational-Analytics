@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -18,7 +19,7 @@ from app.engine.retrieval_service import RetrievalService
 from app.engine.router_service import RouterService
 from app.engine.validation_service import ValidationService
 from app.models import Conversation, ConversationMessage, User, ApprovedSQLExample, UserFeedback
-from app.schemas_engine import ChatMessageOut, ChatRequest, ConversationOut, ApprovedExampleCreate, ApprovedExampleOut, UserFeedbackCreate, UserFeedbackOut
+from app.schemas_engine import ChatMessageOut, ChatRequest, ConversationOut, ConversationCreate, ConversationUpdate, ApprovedExampleCreate, ApprovedExampleOut, UserFeedbackCreate, UserFeedbackOut
 from app.audit import audit
 from app.engine.query_intelligence_service import QueryIntelligenceService
 from app.schemas_engine import QueryIntelligenceRequest
@@ -31,9 +32,34 @@ from app.tasks.chat_tasks import process_chat_message
 router = APIRouter(prefix="/engine", tags=["engine"])
 
 @router.post("/conversations", response_model=ConversationOut)
-def create_conversation(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    conv = Conversation(tenant_id=user.tenant_id, user_id=user.id, title="New Conversation")
+def create_conversation(req: ConversationCreate | None = None, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    conv = Conversation(
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        title=req.title if req and req.title else "New Conversation",
+        source_id=req.source_id if req else None,
+        domain_id=req.domain_id if req else None,
+    )
     db.add(conv)
+    db.commit()
+    db.refresh(conv)
+    return conv
+
+@router.patch("/conversations/{conv_id}", response_model=ConversationOut)
+def update_conversation(conv_id: uuid.UUID, req: ConversationUpdate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    conv = db.scalar(select(Conversation).where(
+        Conversation.id == conv_id,
+        Conversation.tenant_id == user.tenant_id
+    ))
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if req.title is not None:
+        conv.title = req.title
+    if req.source_id is not None:
+        conv.source_id = req.source_id
+    if req.domain_id is not None:
+        conv.domain_id = req.domain_id
+    conv.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(conv)
     return conv
@@ -43,7 +69,7 @@ def list_conversations(db: Session = Depends(get_session), user: User = Depends(
     convs = db.scalars(select(Conversation).where(
         Conversation.tenant_id == user.tenant_id,
         Conversation.user_id == user.id
-    ).order_by(Conversation.created_at.desc())).all()
+    ).order_by(Conversation.updated_at.desc())).all()
     return convs
 
 @router.get("/conversations/{conv_id}", response_model=ConversationOut)

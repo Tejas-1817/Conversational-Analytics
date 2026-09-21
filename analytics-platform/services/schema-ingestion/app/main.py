@@ -250,6 +250,13 @@ def bootstrap_admin():
                 Base.metadata.create_all(bind=engine, tables=[tbl])
             except Exception as e:
                 log.warning("table_creation_warning", table=tbl.name, error=str(e))
+
+        with engine.begin() as conn:
+            try:
+                conn.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS source_id UUID;"))
+                conn.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS domain_id UUID;"))
+            except Exception as e:
+                log.warning("conversations_column_migration_warning", error=str(e))
     except Exception as exc:
         log.warning("database_table_creation_warning", error=str(exc))
 

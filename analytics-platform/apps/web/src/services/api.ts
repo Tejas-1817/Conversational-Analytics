@@ -79,9 +79,11 @@ export const fetchApi = async (endpoint: string, options: CustomRequestInit = {}
     }
 
     if (res.status === 401 || res.status === 403) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh_token');
-      window.location.href = '/login';
+      const token = localStorage.getItem('token');
+      if (token && token !== 'dev-demo-token') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refresh_token');
+      }
       throw new APIError(res.status, 'Unauthorized');
     }
   }

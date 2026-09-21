@@ -30,7 +30,7 @@ export const SchemaExplorer = () => {
     return (
       <div>
         <h2 className="title" style={{ margin: 0 }}>
-          <Search size={24} style={{ color: 'var(--primary)' }} /> Schema Explorer
+          Schema Explorer
         </h2>
         <p className="subtitle" style={{ marginTop: '0.25rem', marginBottom: '2rem' }}>
           Inspect table structures, column profiles, and metadata.
@@ -59,7 +59,7 @@ export const SchemaExplorer = () => {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="mb-4">
         <h2 className="title" style={{ margin: 0 }}>
-          <Search size={24} style={{ color: 'var(--primary)' }} /> Schema Explorer
+          Schema Explorer
         </h2>
         <p className="subtitle" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
           Inspect table structures, column profiles, and metadata.

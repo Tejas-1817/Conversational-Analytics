@@ -67,6 +67,21 @@ SELECT
 FROM orders AS o
 GROUP BY DATE_FORMAT(o.placed_at, '%Y-%m-01')
 ORDER BY order_month;"""
+        elif dialect_lower in ("excel", "sqlite"):
+            dialect_title = "SQLite / Excel"
+            time_trunc_rule = "- For SQLite / Excel time grouping, use strftime('%Y-%m-01', alias.timestamp_column) or date(alias.timestamp_column)."
+            limit_rule = "- Use ORDER BY and LIMIT for top, bottom, highest, or lowest questions."
+            identifier_rule = "- Use simple table names matching the sheet name without schema prefixes (e.g. `orders` AS o)."
+            ref_example = """Example question:
+How many orders were placed each month?
+
+Example SQL:
+SELECT
+    strftime('%Y-%m-01', o.placed_at) AS order_month,
+    COUNT(DISTINCT o.order_id) AS total_orders
+FROM orders AS o
+GROUP BY strftime('%Y-%m-01', o.placed_at)
+ORDER BY order_month;"""
         elif dialect_lower == "mssql":
             dialect_title = "Microsoft SQL Server (T-SQL)"
             time_trunc_rule = "- For MSSQL time grouping, use DATETRUNC(month, alias.timestamp_column) or DATEFROMPARTS(YEAR(alias.timestamp_column), MONTH(alias.timestamp_column), 1)."

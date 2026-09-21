@@ -1,7 +1,5 @@
 import { Check, Copy, Terminal } from "lucide-react";
 import React, { useState } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { atomDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 interface SqlBlockProps {
   sql: string;
@@ -62,19 +60,21 @@ export function SqlBlock({ sql, className = "", defaultOpen = false }: SqlBlockP
 
       {/* Code Body */}
       {isOpen && (
-        <SyntaxHighlighter
-          language="sql"
-          style={atomDark}
-          customStyle={{
+        <pre
+          style={{
             margin: 0,
             padding: "1rem",
-            background: "#1e1e1e",
+            background: "#1E293B",
+            color: "#F8FAFC",
             fontSize: "0.875rem",
-            borderRadius: "0",
+            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+            overflowX: "auto",
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.5,
           }}
         >
-          {sql}
-        </SyntaxHighlighter>
+          <code>{sql}</code>
+        </pre>
       )}
     </div>
   );

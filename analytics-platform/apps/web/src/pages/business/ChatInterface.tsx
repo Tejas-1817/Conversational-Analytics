@@ -3,10 +3,6 @@ import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
 import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { prism as prismLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -62,13 +58,21 @@ function SqlAccordion({ sql }: { sql: string }) {
       </div>
       {/* Code body */}
       {isOpen && (
-        <SyntaxHighlighter
-          language="sql"
-          style={prismLight}
-          customStyle={{ margin: 0, padding: '1rem', background: '#ffffff', fontSize: '0.85rem', borderRadius: 0, color: '#1a1a1a' }}
+        <pre
+          style={{
+            margin: 0,
+            padding: '1rem',
+            background: '#F8FAFC',
+            fontSize: '0.85rem',
+            color: '#0F172A',
+            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+            overflowX: 'auto',
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.5,
+          }}
         >
-          {sql}
-        </SyntaxHighlighter>
+          <code>{sql}</code>
+        </pre>
       )}
     </div>
   );
@@ -177,7 +181,32 @@ export const ChatInterface = () => {
       setConvId(data.id);
       localStorage.setItem('active_conversation_id', data.id);
 
-      const normalizedMessages = (data.messages || []).map((m: any) => {
+      let effectiveSourceId = data.source_id ? String(data.source_id) : '';
+      if (!effectiveSourceId && sources.length > 0) {
+        effectiveSourceId = sources[0].id;
+        fetchApi(`/engine/conversations/${data.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ source_id: effectiveSourceId }),
+        }).catch(() => {});
+      }
+
+      if (effectiveSourceId) {
+        setSelectedSourceId(effectiveSourceId);
+        localStorage.setItem('active_chat_source_id', effectiveSourceId);
+      }
+      setSelectedDomainId(data.domain_id ? String(data.domain_id) : '');
+
+      const rawMessages = [...(data.messages || [])].sort((a: any, b: any) => {
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (Math.abs(timeA - timeB) <= 1000) {
+          if (a.role === 'user' && b.role === 'assistant') return -1;
+          if (a.role === 'assistant' && b.role === 'user') return 1;
+        }
+        return timeA - timeB;
+      });
+
+      const normalizedMessages = rawMessages.map((m: any) => {
         let parsedData = m.result_data;
         if (typeof parsedData === 'string') {
           try { parsedData = JSON.parse(parsedData); } catch (e) { }
@@ -230,7 +259,13 @@ export const ChatInterface = () => {
 
   const handleNewChat = async () => {
     try {
-      const data = await fetchApi('/engine/conversations', { method: 'POST' });
+      const data = await fetchApi('/engine/conversations', {
+        method: 'POST',
+        body: JSON.stringify({
+          source_id: selectedSourceId || null,
+          domain_id: selectedDomainId || null,
+        }),
+      });
       setConvId(data.id);
       localStorage.setItem('active_conversation_id', data.id);
       setMessages([]);
@@ -282,11 +317,16 @@ export const ChatInterface = () => {
         const list = Array.isArray(data) ? data : [];
         setSources(list);
         if (list.length > 0) {
-          const saved = localStorage.getItem('active_chat_source_id');
-          const exists = list.some((s: any) => s.id === saved);
-          const initialId = exists ? saved! : list[0].id;
-          setSelectedSourceId(initialId);
-          localStorage.setItem('active_chat_source_id', initialId);
+          setSelectedSourceId(prev => {
+            if (prev && list.some((s: any) => s.id === prev)) {
+              return prev;
+            }
+            const saved = localStorage.getItem('active_chat_source_id');
+            const exists = list.some((s: any) => s.id === saved);
+            const fallbackId = exists ? saved! : list[0].id;
+            localStorage.setItem('active_chat_source_id', fallbackId);
+            return fallbackId;
+          });
         }
       })
       .catch(() => setSources([]));
@@ -684,7 +724,6 @@ export const ChatInterface = () => {
                               }
 
                               const cardTitle = m.title || (m.result_data && m.result_data.title) || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
-                              const containerHeight = resolvedType === 'kpi_card' ? '180px' : (resolvedType === 'detail_card' ? '220px' : (resolvedType === 'multi_kpi' ? '160px' : '360px'));
 
                               // Resolve column_types from API response or persisted result_data
                               const columnTypes: Record<string, string> =
@@ -693,9 +732,22 @@ export const ChatInterface = () => {
                                 (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.profile?.column_types : undefined) ||
                                 {};
 
+                              const containerHeight = resolvedType === 'kpi_card' ? '180px' : (resolvedType === 'detail_card' ? '220px' : (resolvedType === 'multi_kpi' ? '160px' : '380px'));
+
                               return (
                                 <div style={{ height: containerHeight, width: '100%' }}>
-                                  <ChartRenderer data={rows} chartType={resolvedType} title={cardTitle} columns={cols} columnTypes={columnTypes} />
+                                  <ChartRenderer
+                                    data={rows}
+                                    chartType={resolvedType}
+                                    title={cardTitle}
+                                    columns={cols}
+                                    columnTypes={columnTypes}
+                                    onPointClick={(pt) => {
+                                      if (pt.category) {
+                                        setInput(`Break down ${pt.category} in more detail`);
+                                      }
+                                    }}
+                                  />
                                 </div>
                               );
                             })()}
@@ -909,10 +961,22 @@ export const ChatInterface = () => {
                           <button
                             key={s.id}
                             type="button"
-                            onClick={() => {
+                            onClick={async () => {
                               setSelectedSourceId(s.id);
                               localStorage.setItem('active_chat_source_id', s.id);
                               setShowSourcePicker(false);
+                              if (convId) {
+                                setConversations(prev => prev.map(c => c.id === convId ? { ...c, source_id: s.id } : c));
+                                try {
+                                  await fetchApi(`/engine/conversations/${convId}`, {
+                                    method: 'PATCH',
+                                    body: JSON.stringify({ source_id: s.id }),
+                                  });
+                                  await loadConversationsList();
+                                } catch (e) {
+                                  console.error('Failed to update conversation source', e);
+                                }
+                              }
                             }}
                             style={{
                               display: 'flex', alignItems: 'center', gap: '0.5rem',
@@ -957,7 +1021,19 @@ export const ChatInterface = () => {
                     🎯 {dom.name}
                     <button
                       type="button"
-                      onClick={() => setSelectedDomainId('')}
+                      onClick={async () => {
+                        setSelectedDomainId('');
+                        if (convId) {
+                          try {
+                            await fetchApi(`/engine/conversations/${convId}`, {
+                              method: 'PATCH',
+                              body: JSON.stringify({ domain_id: null }),
+                            });
+                          } catch (e) {
+                            console.error('Failed to update conversation domain', e);
+                          }
+                        }
+                      }}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'var(--primary)', opacity: 0.7, marginLeft: '2px' }}
                       title="Remove domain context"
                     >
@@ -1009,7 +1085,20 @@ export const ChatInterface = () => {
                     {/* Default / clear option */}
                     <button
                       type="button"
-                      onClick={() => { setSelectedDomainId(''); setShowDomainPicker(false); }}
+                      onClick={async () => {
+                        setSelectedDomainId('');
+                        setShowDomainPicker(false);
+                        if (convId) {
+                          try {
+                            await fetchApi(`/engine/conversations/${convId}`, {
+                              method: 'PATCH',
+                              body: JSON.stringify({ domain_id: null }),
+                            });
+                          } catch (e) {
+                            console.error('Failed to update conversation domain', e);
+                          }
+                        }
+                      }}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '0.5rem',
                         width: '100%', padding: '0.5rem 0.75rem',
@@ -1028,7 +1117,20 @@ export const ChatInterface = () => {
                       <button
                         key={d.id}
                         type="button"
-                        onClick={() => { setSelectedDomainId(d.id); setShowDomainPicker(false); }}
+                        onClick={async () => {
+                          setSelectedDomainId(d.id);
+                          setShowDomainPicker(false);
+                          if (convId) {
+                            try {
+                              await fetchApi(`/engine/conversations/${convId}`, {
+                                method: 'PATCH',
+                                body: JSON.stringify({ domain_id: d.id }),
+                              });
+                            } catch (e) {
+                              console.error('Failed to update conversation domain', e);
+                            }
+                          }
+                        }}
                         style={{
                           display: 'flex', alignItems: 'center', gap: '0.5rem',
                           width: '100%', padding: '0.5rem 0.75rem',

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { z } from 'zod';
 import { fetchApi } from '../services/api';
+import { SourceLogo } from './SourceLogos';
 
 const connectionSchema = z.object({
   name: z.string().min(1, 'Connection Name is required').max(200, 'Name must be 200 characters or less'),
@@ -105,14 +106,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'database',
       description: 'Connect directly to PostgreSQL 12+ instances and read-only replicas.',
       isAvailable: true,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#EBF3FC" />
-          <path d="M12 4C8.13 4 5 7.13 5 11c0 2.38 1.19 4.47 3 5.74V19a1 1 0 001 1h6a1 1 0 001-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7z" fill="#336791" />
-          <path d="M9 13a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z" fill="#FFFFFF" />
-          <path d="M10 16.5c1 .5 3 .5 4 0" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="postgres" size={32} />,
     },
     {
       id: 'mysql',
@@ -121,13 +115,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'database',
       description: 'Connect to MySQL 8.0+ or MariaDB database servers.',
       isAvailable: true,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#E6F2F7" />
-          <path d="M5.5 14.5c1.5-3 5-6 10.5-5.5.5-1.5 2-2.5 3.5-2.5 0 2-1 3.5-2.5 4.5 1 2 .5 4.5-1 5.5-2 1.5-5.5.5-7.5-1-1.5-.5-2.5-.5-3-1z" fill="#00758F" />
-          <path d="M16 11c-.5 0-1-.5-1-1s.5-1 1-1 1 .5 1 1-.5 1-1 1z" fill="#F29111" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="mysql" size={32} />,
     },
     {
       id: 'excel',
@@ -136,14 +124,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'files',
       description: 'Upload multi-sheet spreadsheets with automatic schema introspection.',
       isAvailable: true,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#E6F4EA" />
-          <path d="M6 4h8l5 5v11a1 1 0 01-1 1H6a1 1 0 01-1-1V5a1 1 0 011-1z" fill="#107C41" />
-          <path d="M14 4v5h5" fill="#33C481" />
-          <path d="M8.5 11l2.5 4m0-4l-2.5 4m5.5-4v4m3-4v4" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="excel" size={32} />,
     },
     {
       id: 'snowflake',
@@ -152,13 +133,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'warehouse',
       description: 'Query enterprise Snowflake cloud data warehouses securely.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#EBF8FF" />
-          <path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4" stroke="#29B5E8" strokeWidth="2" strokeLinecap="round" />
-          <circle cx="12" cy="12" r="2.5" fill="#29B5E8" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="snowflake" size={32} />,
     },
     {
       id: 'redshift',
@@ -167,14 +142,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'warehouse',
       description: 'Amazon Redshift petabyte-scale data warehouse.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#FBEAEB" />
-          <path d="M12 4L5 8v8l7 4 7-4V8l-7-4z" fill="#8C1D40" />
-          <path d="M12 4l7 4-7 4-7-4 7-4z" fill="#C93B57" />
-          <path d="M5 8l7 4v8l-7-4V8z" fill="#701230" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="redshift" size={32} />,
     },
     {
       id: 'bigquery',
@@ -183,14 +151,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'warehouse',
       description: 'Google Cloud BigQuery serverless data warehouse.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#EEF2FF" />
-          <path d="M12 4l6.5 3.75v7.5L12 19l-6.5-3.75v-7.5L12 4z" stroke="#4285F4" strokeWidth="1.8" fill="none" />
-          <circle cx="12" cy="11.5" r="3" fill="#4285F4" />
-          <path d="M14 14l2.5 2.5" stroke="#4285F4" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="bigquery" size={32} />,
     },
     {
       id: 'mssql',
@@ -199,14 +160,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'database',
       description: 'Microsoft SQL Server enterprise relational database.',
       isAvailable: true,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#FDE8E8" />
-          <ellipse cx="12" cy="7" rx="7" ry="3" fill="#CC292B" />
-          <path d="M5 7v5c0 1.66 3.13 3 7 3s7-1.34 7-3V7" stroke="#CC292B" strokeWidth="1.5" fill="none" />
-          <path d="M5 12v5c0 1.66 3.13 3 7 3s7-1.34 7-3v-5" stroke="#CC292B" strokeWidth="1.5" fill="none" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="mssql" size={32} />,
     },
     {
       id: 'databricks',
@@ -215,14 +169,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'warehouse',
       description: 'Databricks Lakehouse Platform with Delta Lake.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#FFF1F0" />
-          <path d="M12 4l8 4.5-8 4.5-8-4.5L12 4z" fill="#FF3621" />
-          <path d="M4 11.5l8 4.5 8-4.5" stroke="#FF3621" strokeWidth="2" strokeLinecap="round" />
-          <path d="M4 15.5l8 4.5 8-4.5" stroke="#FF3621" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="databricks" size={32} />,
     },
     {
       id: 'clickhouse',
@@ -231,15 +178,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'database',
       description: 'Fast open-source columnar database management system.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#FEF9E7" />
-          <rect x="5" y="6" width="2.5" height="12" rx="1" fill="#FA4616" />
-          <rect x="8.5" y="8" width="2.5" height="8" rx="1" fill="#FFCC00" />
-          <rect x="12" y="5" width="2.5" height="14" rx="1" fill="#FA4616" />
-          <rect x="15.5" y="9" width="2.5" height="6" rx="1" fill="#FFCC00" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="clickhouse" size={32} />,
     },
     {
       id: 'athena',
@@ -248,13 +187,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'warehouse',
       description: 'Amazon Athena interactive serverless SQL query service.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#F3E8FF" />
-          <path d="M12 4L6 8v8l6 4 6-4V8l-6-4z" fill="#8C4FFF" />
-          <path d="M12 9a3 3 0 100 6 3 3 0 000-6z" fill="#FFFFFF" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="athena" size={32} />,
     },
     {
       id: 's3',
@@ -263,13 +196,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'files',
       description: 'Query CSV, Parquet, and JSON files in Amazon S3 buckets.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#FEF2F2" />
-          <path d="M6 7l6-3 6 3v10l-6 3-6-3V7z" fill="#E2553E" />
-          <path d="M6 7l6 3 6-3M12 10v10" stroke="#FFFFFF" strokeWidth="1.2" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="s3" size={32} />,
     },
     {
       id: 'mcp_server',
@@ -278,15 +205,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'tools',
       description: 'Connect Model Context Protocol server endpoints.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#F1F5F9" />
-          <circle cx="7" cy="8" r="2.5" fill="#475569" />
-          <circle cx="17" cy="8" r="2.5" fill="#475569" />
-          <circle cx="12" cy="16" r="2.5" fill="#475569" />
-          <path d="M7 8l5 8 5-8" stroke="#475569" strokeWidth="1.5" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="mcpserver" size={32} />,
     },
     {
       id: 'azure_synapse',
@@ -295,13 +214,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'warehouse',
       description: 'Azure Synapse Analytics enterprise data warehouse.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#EBF5FF" />
-          <path d="M12 4l7 4v8l-7 4-7-4V8l7-4z" stroke="#0078D4" strokeWidth="1.8" fill="none" />
-          <circle cx="12" cy="12" r="3" fill="#0078D4" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="azuresynapse" size={32} />,
     },
     {
       id: 'azure_blob',
@@ -310,14 +223,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'files',
       description: 'Scalable cloud object storage for modern data workloads.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#EBF5FF" />
-          <rect x="5" y="6" width="14" height="12" rx="2" fill="#0078D4" />
-          <line x1="9" y1="10" x2="15" y2="10" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
-          <line x1="9" y1="14" x2="13" y2="14" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="azureblob" size={32} />,
     },
     {
       id: 'trino',
@@ -326,12 +232,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'warehouse',
       description: 'Fast distributed SQL query engine for big data analytics.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#FDF2F8" />
-          <path d="M7 6l5 6-5 6M12 6l5 6-5 6" stroke="#DD00A1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="trino" size={32} />,
     },
     {
       id: 'sharepoint',
@@ -340,13 +241,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'files',
       description: 'Microsoft SharePoint document libraries and lists.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#E6F4F1" />
-          <circle cx="10" cy="10" r="4" fill="#008272" opacity="0.8" />
-          <circle cx="14" cy="13" r="4.5" fill="#038387" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="sharepoint" size={32} />,
     },
     {
       id: 'spanner',
@@ -355,12 +250,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'database',
       description: 'Google Cloud globally distributed relational database.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#EEF2FF" />
-          <path d="M12 4l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5z" fill="#4285F4" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="spanner" size={32} />,
     },
     {
       id: 'teradata',
@@ -369,13 +259,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'warehouse',
       description: 'Enterprise analytical database and cloud analytics platform.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#FFF7ED" />
-          <circle cx="12" cy="12" r="7" fill="#F37023" />
-          <text x="12" y="15" textAnchor="middle" fill="#FFFFFF" fontSize="9" fontWeight="bold" fontFamily="sans-serif">T</text>
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="teradata" size={32} />,
     },
     {
       id: 'oracle',
@@ -384,12 +268,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'database',
       description: 'Oracle Cloud and on-premise Autonomous Database.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#FEF2F2" />
-          <ellipse cx="12" cy="12" rx="7.5" ry="4.5" stroke="#F80000" strokeWidth="2" fill="none" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="oracle" size={32} />,
     },
     {
       id: 'github',
@@ -398,12 +277,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'tools',
       description: 'Repository issues, pull requests, and commit metadata.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#F3F4F6" />
-          <path fillRule="evenodd" clipRule="evenodd" d="M12 4C7.58 4 4 7.58 4 12c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0020 12c0-4.42-3.58-8-8-8z" fill="#1F242E" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="github" size={32} />,
     },
     {
       id: 'gitlab',
@@ -412,16 +286,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'tools',
       description: 'GitLab project commits, pipelines, and issue analytics.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#FFF7ED" />
-          <path d="M12 18.5l3.5-10.5h-7L12 18.5z" fill="#E24329" />
-          <path d="M12 18.5l-3.5-10.5H4L12 18.5z" fill="#FC6D26" />
-          <path d="M4 8h4.5L7 3.5 4 8z" fill="#FCA326" />
-          <path d="M12 18.5l3.5-10.5H20L12 18.5z" fill="#FC6D26" />
-          <path d="M20 8h-4.5L17 3.5 20 8z" fill="#FCA326" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="gitlab" size={32} />,
     },
     {
       id: 'azure_devops',
@@ -430,12 +295,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'tools',
       description: 'Azure Boards work items, sprint metrics, and CI/CD pipelines.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#EFF6FF" />
-          <path d="M5 9l5-4v3l7-3v14l-7-3v3L5 15V9z" fill="#0078D7" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="azuredevops" size={32} />,
     },
     {
       id: 'dremio',
@@ -444,13 +304,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'warehouse',
       description: 'Dremio SQL Lakehouse engine with semantic data virtualization.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#ECFEFF" />
-          <path d="M6 8c2-3 8-3 10 1 1 2 2 4 2 6-2 3-8 3-10-1-1-2-2-4-2-6z" fill="#58CBDC" />
-          <circle cx="14" cy="11" r="1.5" fill="#FFFFFF" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="dremio" size={32} />,
     },
     {
       id: 'outlook_calendar',
@@ -459,16 +313,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       category: 'tools',
       description: 'Microsoft 365 calendar schedules, meeting events, and attendees.',
       isAvailable: false,
-      renderIcon: () => (
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-          <rect width="24" height="24" rx="6" fill="#EFF6FF" />
-          <rect x="5" y="7" width="14" height="12" rx="2" fill="#0078D4" />
-          <path d="M5 10h14" stroke="#FFFFFF" strokeWidth="1.2" />
-          <circle cx="9" cy="14" r="1" fill="#FFFFFF" />
-          <circle cx="12" cy="14" r="1" fill="#FFFFFF" />
-          <circle cx="15" cy="14" r="1" fill="#FFFFFF" />
-        </svg>
-      ),
+      renderIcon: () => <SourceLogo type="outlook" size={32} />,
     },
   ];
 
@@ -772,6 +617,9 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
               >
                 <ArrowLeft size={18} />
               </button>
+            )}
+            {step === 'configure' && (
+              <SourceLogo type={formData.type} size={28} />
             )}
             <div>
               <h2 style={{ fontSize: '1.15rem', fontWeight: 600, margin: 0 }}>

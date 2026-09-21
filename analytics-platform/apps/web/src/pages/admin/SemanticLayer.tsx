@@ -261,12 +261,12 @@ export const SemanticLayer = () => {
   };
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <BookOpen className="text-primary" size={24} /> Semantic Layer
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 600, margin: 0 }}>
+            Semantic Layer
           </h1>
           <p style={{ color: 'var(--text-muted)', margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>
             Deterministic candidate semantic objects extracted from database catalog (Draft State).

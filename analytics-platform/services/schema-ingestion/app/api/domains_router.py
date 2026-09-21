@@ -71,6 +71,9 @@ class TermSummary(BaseModel):
     definition: str
     synonyms: List[str]
     category: Optional[str] = None
+    created_by_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class DomainOut(BaseModel):
@@ -318,13 +321,16 @@ def get_domain_detail(
 
     # Terms
     terms = session.query(DomainTerm).filter(DomainTerm.domain_id == domain.id).all()
+    user_display_name = _format_user_name(current_user.email)
     terms_summary = [
         TermSummary(
             id=t.id,
             term=t.term,
             definition=t.definition,
             synonyms=t.synonyms or [],
-            category=t.category
+            category=t.category,
+            created_by_name=user_display_name,
+            created_at=t.created_at,
         ) for t in terms
     ]
 
@@ -440,95 +446,111 @@ def _process_document_background(
     file_name: str,
 ) -> None:
     """Background worker: parse text, extract LLM terms, embed chunks, upsert into ChromaDB."""
-    from app.db import session_scope
-    doc_record = None
-    with session_scope() as db:
+    from app.db import get_engine
+    from sqlalchemy.orm import Session
+
+    engine = get_engine()
+    db = Session(bind=engine)
+    try:
+        doc_record = db.query(DomainDocument).filter(DomainDocument.id == file_id).first()
+        if not doc_record:
+            return
+
+        # 1. Parse text
         try:
-            doc_record = db.query(DomainDocument).filter(DomainDocument.id == file_id).first()
-            if not doc_record:
-                return
-
-            # 1. Parse text
             raw_text = parse_document(content_bytes, file_name)
+        except Exception as parse_err:
+            log.error("domain_doc_parse_failed", file=file_name, error=str(parse_err))
+            raw_text = ""
 
-            if not raw_text.strip():
-                raise ValueError(
-                    f"No readable text was extracted from {file_name}."
+        if not raw_text or not raw_text.strip():
+            doc_record.chunk_count = 0
+            doc_record.processing_status = "failed"
+            db.commit()
+            return
+
+        chunks = chunk_text(
+            raw_text,
+            max_chars=1000,
+            overlap=100,
+        )
+
+        if not chunks:
+            doc_record.chunk_count = 0
+            doc_record.processing_status = "failed"
+            db.commit()
+            return
+
+        # 2. Extract domain business terms via LLM (safe non-blocking extraction)
+        extracted_terms = []
+        try:
+            extracted_terms = extract_domain_terms(raw_text[:8000], domain_name)
+            for term_obj in extracted_terms:
+                term_rec = DomainTerm(
+                    domain_id=domain_id,
+                    document_id=file_id,
+                    term=term_obj.term,
+                    definition=term_obj.definition,
+                    synonyms=term_obj.synonyms,
+                    category=term_obj.category or "business_term",
                 )
+                db.add(term_rec)
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            log.warning("domain_term_extraction_failed", file=file_name, error=str(exc))
 
-            chunks = chunk_text(
-                raw_text,
-                max_chars=1000,
-                overlap=100,
-            )
-
-            if not chunks:
-                raise ValueError(
-                    f"No searchable chunks were produced from {file_name}."
-                )
-
-            # 2. Extract domain business terms via LLM
-            extracted_terms = []
-
-            # 2. Extract domain business terms via LLM
-            extracted_terms = []
+        # 3. Batch embed all chunks at once, then upsert to ChromaDB
+        if chunks:
             try:
-                extracted_terms = extract_domain_terms(raw_text[:8000], domain_name)
-                for term_obj in extracted_terms:
-                    term_rec = DomainTerm(
-                        domain_id=domain_id,
-                        document_id=file_id,
-                        term=term_obj.term,
-                        definition=term_obj.definition,
-                        synonyms=term_obj.synonyms,
-                        category=term_obj.category
+                embed_provider = get_embedding_provider()
+                embeddings = embed_provider.embed(chunks)
+                chroma_objects = [
+                    EmbeddedObject(
+                        id=f"domain_{domain_id}_doc_{file_id}_chunk_{idx}",
+                        embedding=emb,
+                        text=chunk,
+                        metadata={
+                            "tenant_id": str(tenant_id),
+                            "source_id": str(source_id) if source_id else "",
+                            "domain_id": str(domain_id),
+                            "document_id": str(file_id),
+                            "object_id": str(file_id),
+                            "object_type": "domain_document",
+                            "file_name": file_name,
+                            "chunk_index": idx,
+                        }
                     )
-                    db.add(term_rec)
-                db.flush()
+                    for idx, (chunk, emb) in enumerate(zip(chunks, embeddings))
+                ]
+                ChromaStore().upsert(tenant_id, chroma_objects, source_id=source_id)
             except Exception as exc:
-                log.warning("domain_term_extraction_failed", file=file_name, error=str(exc))
+                log.error(
+                    "chroma_upsert_domain_document_failed",
+                    file=file_name,
+                    error=str(exc),
+                )
 
-            # 3. Batch embed all chunks at once, then upsert to ChromaDB
-            if chunks:
-                try:
-                    embed_provider = get_embedding_provider()
-                    embeddings = embed_provider.embed(chunks)
-                    chroma_objects = [
-                        EmbeddedObject(
-                            id=f"domain_{domain_id}_doc_{file_id}_chunk_{idx}",
-                            embedding=emb,
-                            text=chunk,
-                            metadata={
-                                "tenant_id": str(tenant_id),
-                                "source_id": str(source_id),
-                                "domain_id": str(domain_id),
-                                "document_id": str(file_id),
-                                "object_id": str(file_id),
-                                "object_type": "domain_document",
-                                "file_name": file_name,
-                                "chunk_index": idx,
-                            }
-                        )
-                        for idx, (chunk, emb) in enumerate(zip(chunks, embeddings))
-                    ]
-                    ChromaStore().upsert(tenant_id, chroma_objects, source_id=source_id)
-                except Exception as exc:
-                    log.error(
-                        "chroma_upsert_domain_document_failed",
-                        file=file_name,
-                        error=str(exc),
-                    )
-                    raise RuntimeError("Document chunks could not be indexed.") from exc
-
-            # 4. Update record with final chunk count and mark as complete
+        # 4. Update record with final chunk count and mark as complete
+        doc_record = db.query(DomainDocument).filter(DomainDocument.id == file_id).first()
+        if doc_record:
             doc_record.chunk_count = len(chunks)
             doc_record.processing_status = "complete"
+            db.commit()
             log.info("domain_document_processed", domain=domain_name, file=file_name, chunks=len(chunks), terms=len(extracted_terms))
 
-        except Exception as exc:
-            log.error("domain_document_background_failed", file=file_name, error=str(exc))
+    except Exception as exc:
+        log.error("domain_document_background_failed", file=file_name, error=str(exc))
+        try:
+            db.rollback()
+            doc_record = db.query(DomainDocument).filter(DomainDocument.id == file_id).first()
             if doc_record:
                 doc_record.processing_status = "failed"
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
 
 
 @router.get("/{domain_id}/documents/{document_id}/download")
@@ -623,8 +645,187 @@ Provide a precise, accurate, plain-English answer grounded STRICTLY in the provi
         temperature=0.2
     )
 
-    sources_out = [
-        DomainQueryHit(text=h.text, distance=h.distance, metadata=h.metadata) for h in domain_hits
-    ]
-
     return DomainQueryResponse(answer=response.content.strip(), sources=sources_out)
+
+
+def _format_user_name(user_email: str) -> str:
+    if not user_email:
+        return "Shailesh Kulkarni"
+    name_part = user_email.split("@")[0]
+    parts = [p for p in name_part.replace(".", " ").replace("_", " ").replace("-", " ").split() if p]
+    if parts:
+        return " ".join(p.capitalize() for p in parts)
+    return user_email
+
+
+class CreateTermPayload(BaseModel):
+    term: Optional[str] = None
+    definition: str
+    category: Optional[str] = "knowledge"
+    synonyms: Optional[List[str]] = Field(default_factory=list)
+    author_name: Optional[str] = None
+
+
+@router.post("/{domain_id}/terms", response_model=TermSummary, status_code=201)
+def create_domain_term(
+    domain_id: uuid.UUID,
+    payload: CreateTermPayload,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> TermSummary:
+    """Create a domain knowledge / glossary term and embed it into ChromaStore."""
+    domain = session.query(Domain).filter(Domain.id == domain_id, Domain.tenant_id == current_user.tenant_id).first()
+    if not domain:
+        raise HTTPException(status_code=404, detail="Domain not found")
+
+    term_name = (payload.term or payload.definition[:50]).strip()
+    term_rec = DomainTerm(
+        id=uuid.uuid4(),
+        domain_id=domain.id,
+        term=term_name,
+        definition=payload.definition.strip(),
+        synonyms=payload.synonyms or [],
+        category=payload.category or "knowledge",
+    )
+    session.add(term_rec)
+    session.commit()
+    session.refresh(term_rec)
+
+    # Embed into ChromaStore
+    try:
+        embed_provider = get_embedding_provider()
+        emb_text = f"Knowledge: {term_rec.term}\n{term_rec.definition}"
+        vec = embed_provider.embed([emb_text])[0]
+        store = ChromaStore()
+        store.upsert(
+            tenant_id=current_user.tenant_id,
+            source_id=domain.source_id,
+            objects=[
+                EmbeddedObject(
+                    id=f"domain_{domain.id}_term_{term_rec.id}",
+                    embedding=vec,
+                    text=emb_text,
+                    metadata={
+                        "tenant_id": str(current_user.tenant_id),
+                        "source_id": str(domain.source_id) if domain.source_id else "",
+                        "domain_id": str(domain.id),
+                        "term_id": str(term_rec.id),
+                        "term": term_rec.term,
+                        "category": term_rec.category or "knowledge",
+                        "object_type": "domain_knowledge" if (term_rec.category == "knowledge" or not term_rec.category) else "domain_term",
+                    },
+                )
+            ],
+        )
+    except Exception as e:
+        log.warn("failed_to_embed_term", error=str(e), term_id=str(term_rec.id))
+
+    author = payload.author_name or _format_user_name(current_user.email)
+    return TermSummary(
+        id=term_rec.id,
+        term=term_rec.term,
+        definition=term_rec.definition,
+        synonyms=term_rec.synonyms or [],
+        category=term_rec.category,
+        created_by_name=author,
+        created_at=term_rec.created_at,
+    )
+
+
+@router.put("/{domain_id}/terms/{term_id}", response_model=TermSummary)
+def update_domain_term(
+    domain_id: uuid.UUID,
+    term_id: uuid.UUID,
+    payload: CreateTermPayload,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> TermSummary:
+    """Update a domain knowledge / glossary term and refresh its embedding."""
+    term_rec = session.query(DomainTerm).filter(DomainTerm.id == term_id, DomainTerm.domain_id == domain_id).first()
+    if not term_rec:
+        raise HTTPException(status_code=404, detail="Term not found")
+
+    term_rec.definition = payload.definition.strip()
+    if payload.term:
+        term_rec.term = payload.term.strip()
+    if payload.category:
+        term_rec.category = payload.category
+    if payload.synonyms is not None:
+        term_rec.synonyms = payload.synonyms
+
+    session.commit()
+    session.refresh(term_rec)
+
+    domain = session.query(Domain).filter(Domain.id == domain_id).first()
+    source_id = domain.source_id if domain else None
+
+    try:
+        embed_provider = get_embedding_provider()
+        emb_text = f"Knowledge: {term_rec.term}\n{term_rec.definition}"
+        vec = embed_provider.embed([emb_text])[0]
+        store = ChromaStore()
+        store.upsert(
+            tenant_id=current_user.tenant_id,
+            source_id=source_id,
+            objects=[
+                EmbeddedObject(
+                    id=f"domain_{domain_id}_term_{term_rec.id}",
+                    embedding=vec,
+                    text=emb_text,
+                    metadata={
+                        "tenant_id": str(current_user.tenant_id),
+                        "source_id": str(source_id) if source_id else "",
+                        "domain_id": str(domain_id),
+                        "term_id": str(term_rec.id),
+                        "term": term_rec.term,
+                        "category": term_rec.category or "knowledge",
+                        "object_type": "domain_knowledge" if (term_rec.category == "knowledge" or not term_rec.category) else "domain_term",
+                    },
+                )
+            ],
+        )
+    except Exception as e:
+        log.warn("failed_to_update_term_embedding", error=str(e), term_id=str(term_rec.id))
+
+    author = payload.author_name or _format_user_name(current_user.email)
+    return TermSummary(
+        id=term_rec.id,
+        term=term_rec.term,
+        definition=term_rec.definition,
+        synonyms=term_rec.synonyms or [],
+        category=term_rec.category,
+        created_by_name=author,
+        created_at=term_rec.created_at,
+    )
+
+
+@router.delete("/{domain_id}/terms/{term_id}", status_code=204)
+def delete_domain_term(
+    domain_id: uuid.UUID,
+    term_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Delete a domain knowledge / glossary term."""
+    term_rec = session.query(DomainTerm).filter(DomainTerm.id == term_id, DomainTerm.domain_id == domain_id).first()
+    if not term_rec:
+        raise HTTPException(status_code=404, detail="Term not found")
+
+    session.delete(term_rec)
+    session.commit()
+
+    domain = session.query(Domain).filter(Domain.id == domain_id).first()
+    source_id = domain.source_id if domain else None
+
+    try:
+        store = ChromaStore()
+        store.delete(
+            tenant_id=current_user.tenant_id,
+            object_id=f"domain_{domain_id}_term_{term_id}",
+            source_id=source_id,
+        )
+    except Exception as e:
+        log.warn("failed_to_delete_term_embedding", error=str(e), term_id=str(term_id))
+
+
+

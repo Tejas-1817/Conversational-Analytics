@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { fetchApi } from '../../services/api';
 import { LayoutDashboard, Plus, Bookmark, Settings, Maximize2, Minimize2, RefreshCw, Download, MoreVertical, LayoutGrid, AlertCircle, X, Trash2, FileJson, Table2 } from 'lucide-react';
-import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
+import * as RGL from 'react-grid-layout';
 // @ts-ignore
-import { ResponsiveGridLayout } from 'react-grid-layout';
-import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
+const ResponsiveGridLayout = (RGL as any).ResponsiveGridLayout || (RGL as any).Responsive || (RGL as any).default?.Responsive || (RGL as any).default || 'div';
+
 
 export const Dashboards = () => {
   const [dashboards, setDashboards] = useState<any[]>([]);
@@ -158,7 +157,7 @@ export const Dashboards = () => {
       <div style={{ width: '280px', display: 'flex', flexDirection: 'column', gap: '1.5rem', flexShrink: 0 }}>
         <div>
           <h2 className="title" style={{ margin: 0, fontSize: '1.25rem' }}>
-            <LayoutDashboard size={20} style={{ color: 'var(--primary)' }} /> Dashboards
+            Dashboards
           </h2>
         </div>
 

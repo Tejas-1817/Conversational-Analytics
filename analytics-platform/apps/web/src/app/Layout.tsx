@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Database, Activity, Search, LogOut, BookOpen, MessageSquare, Users, LayoutDashboard, BarChart2, Menu, Bell, User as UserIcon, Settings, ChevronLeft, ChevronRight, Moon, Building2, Boxes } from 'lucide-react';
+import { Database, Activity, Search, LogOut, MessageSquare, Users, LayoutDashboard, BarChart2, Menu, Bell, User as UserIcon, Settings, ChevronLeft, ChevronRight, ChevronDown, Moon, Boxes } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { fetchApi } from '../services/api';
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [allDomains, setAllDomains] = useState<any[]>([]);
+  const [isDomainDropdownOpen, setIsDomainDropdownOpen] = useState(false);
+  const domainDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const handleLogout = () => {
     logout();
@@ -15,6 +19,33 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   };
 
   const isAdmin = user?.role === 'ADMIN';
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (domainDropdownRef.current && !domainDropdownRef.current.contains(event.target as Node)) {
+        setIsDomainDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Fetch domains when navigating to domain routes
+  useEffect(() => {
+    if (location.pathname.startsWith('/domains')) {
+      fetchApi('/domains')
+        .then((data) => {
+          if (Array.isArray(data)) setAllDomains(data);
+        })
+        .catch(() => {});
+    }
+  }, [location.pathname]);
+
+  // Derive active domain name if on a domain detail page
+  const domainIdMatch = location.pathname.match(/^\/domains\/([^/]+)/);
+  const activeDomainId = domainIdMatch ? domainIdMatch[1] : null;
+  const activeDomain = activeDomainId ? allDomains.find((d) => d.id === activeDomainId) : null;
 
   return (
     <div className="app-container">
@@ -59,12 +90,6 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
               <Link to="/jobs" className={`sidebar-link ${location.pathname === '/jobs' ? 'active' : ''}`} title="Jobs">
                 <Activity size={18} /> {!isCollapsed && "Jobs"}
               </Link>
-              <Link to="/explorer" className={`sidebar-link ${location.pathname === '/explorer' ? 'active' : ''}`} title="Schema Explorer">
-                <Search size={18} /> {!isCollapsed && "Schema Explorer"}
-              </Link>
-              <Link to="/semantic" className={`sidebar-link ${location.pathname === '/semantic' ? 'active' : ''}`} title="Semantic Layer">
-                <BookOpen size={18} /> {!isCollapsed && "Semantic Layer"}
-              </Link>
               <Link to="/users" className={`sidebar-link ${location.pathname === '/users' ? 'active' : ''}`} title="Users & Roles">
                 <Users size={18} /> {!isCollapsed && "Users & Roles"}
               </Link>
@@ -89,11 +114,127 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
         {/* Top Navigation */}
         <header className="top-nav">
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
-              <Building2 size={18} />
-              <span className="text-sm font-medium">Acme Corp</span>
-              <span className="badge badge-default" style={{ marginLeft: '8px' }}>Enterprise</span>
-            </div>
+            {/* Page Navigation in Place of Acme Corp */}
+            {activeDomainId ? (
+              <div className="flex items-center gap-2 text-sm" ref={domainDropdownRef} style={{ position: 'relative' }}>
+                <Link
+                  to="/domains"
+                  style={{
+                    color: 'var(--text-muted)',
+                    textDecoration: 'none',
+                    fontWeight: 500,
+                    transition: 'color 0.15s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--primary)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted)')}
+                >
+                  Domains
+                </Link>
+                <span style={{ color: 'var(--text-faint)', fontSize: '13px' }}>/</span>
+                <button
+                  onClick={() => setIsDomainDropdownOpen(!isDomainDropdownOpen)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: 'transparent',
+                    border: 'none',
+                    padding: '2px 4px',
+                    borderRadius: '4px',
+                    fontSize: '13.5px',
+                    fontWeight: 600,
+                    color: 'var(--text-main)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span>{activeDomain?.name || 'Test'}</span>
+                  <ChevronDown size={13} style={{ color: 'var(--text-muted)' }} />
+                </button>
+
+                {isDomainDropdownOpen && allDomains.length > 0 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 6px)',
+                      left: '60px',
+                      background: '#FFFFFF',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+                      zIndex: 1000,
+                      minWidth: '200px',
+                      maxHeight: '260px',
+                      overflowY: 'auto',
+                      padding: '4px 0',
+                    }}
+                  >
+                    {allDomains.map((d) => (
+                      <button
+                        key={d.id}
+                        onClick={() => {
+                          setIsDomainDropdownOpen(false);
+                          navigate(`/domains/${d.id}`);
+                        }}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '8px 14px',
+                          fontSize: '13px',
+                          background: d.id === activeDomainId ? 'var(--primary-light)' : 'transparent',
+                          color: d.id === activeDomainId ? 'var(--primary)' : 'var(--text-main)',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontWeight: d.id === activeDomainId ? 600 : 400,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (d.id !== activeDomainId) e.currentTarget.style.background = '#F8FAFC';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (d.id !== activeDomainId) e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        {d.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : location.pathname === '/domains' ? (
+              <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
+                <Boxes size={18} style={{ color: 'var(--primary)' }} />
+                <span>Domains</span>
+              </div>
+            ) : location.pathname === '/chat' ? (
+              <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
+                <MessageSquare size={18} style={{ color: 'var(--primary)' }} />
+                <span>Ask AI</span>
+              </div>
+            ) : location.pathname === '/dashboards' ? (
+              <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
+                <LayoutDashboard size={18} style={{ color: 'var(--primary)' }} />
+                <span>Dashboards</span>
+              </div>
+            ) : location.pathname === '/sources' ? (
+              <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
+                <Database size={18} style={{ color: 'var(--primary)' }} />
+                <span>Data Sources</span>
+              </div>
+            ) : location.pathname === '/jobs' ? (
+              <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
+                <Activity size={18} style={{ color: 'var(--primary)' }} />
+                <span>Jobs</span>
+              </div>
+            ) : location.pathname === '/users' ? (
+              <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
+                <Users size={18} style={{ color: 'var(--primary)' }} />
+                <span>Users & Roles</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--text-main)' }}>
+                <span>Conversational Analytics</span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4">

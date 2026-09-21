@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fetchApi } from '../../services/api';
-import { Shield, UserPlus, Trash2, Mail, Lock, ShieldCheck, MoreVertical } from 'lucide-react';
+import { UserPlus, Trash2, Mail, Lock, ShieldCheck, MoreVertical } from 'lucide-react';
 
 export const Users = () => {
   const [users, setUsers] = useState<any[]>([]);
@@ -52,7 +52,7 @@ export const Users = () => {
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="title" style={{ margin: 0 }}>
-            <Shield size={24} style={{ color: 'var(--primary)' }} /> Users & Roles
+            Users & Roles
           </h2>
           <p className="subtitle" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
             Manage organization members and their access levels.
