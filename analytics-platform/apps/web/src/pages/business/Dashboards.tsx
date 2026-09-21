@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fetchApi } from '../../services/api';
+import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
 import { LayoutDashboard, Plus, Bookmark, Settings, Maximize2, Minimize2, RefreshCw, Download, MoreVertical, LayoutGrid, AlertCircle, X, Trash2, FileJson, Table2 } from 'lucide-react';
 import * as RGL from 'react-grid-layout';
 // @ts-ignore
@@ -14,7 +15,7 @@ export const Dashboards = () => {
   const [newDashName, setNewDashName] = useState('');
   const [newDashDesc, setNewDashDesc] = useState('');
   const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null);
-  
+
   const [isEditMode, setIsEditMode] = useState(false);
   const [fullScreenWidgetId, setFullScreenWidgetId] = useState<string | null>(null);
   const [showMenuForWidget, setShowMenuForWidget] = useState<string | null>(null);
@@ -74,11 +75,11 @@ export const Dashboards = () => {
       const updatedWidgets = [...activeDashboard.widgets, newWidget];
       await fetchApi(`/dashboards/${activeDashboard.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           widgets: updatedWidgets.map((w: any) => ({
             insight_id: w.insight_id || (w.insight && w.insight.id),
             x: w.x, y: w.y, w: w.w, h: w.h
-          })) 
+          }))
         })
       });
       await loadData();
@@ -93,11 +94,11 @@ export const Dashboards = () => {
       const updatedWidgets = activeDashboard.widgets.filter((w: any) => w.id !== widgetId && w.insight_id !== widgetId);
       await fetchApi(`/dashboards/${activeDashboard.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           widgets: updatedWidgets.map((w: any) => ({
             insight_id: w.insight_id || (w.insight && w.insight.id),
             x: w.x, y: w.y, w: w.w, h: w.h
-          })) 
+          }))
         })
       });
       await loadData();
@@ -113,7 +114,7 @@ export const Dashboards = () => {
       keys.join(','),
       ...data.map(row => keys.map(k => JSON.stringify(row[k] || '')).join(','))
     ].join('\n');
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -137,11 +138,11 @@ export const Dashboards = () => {
       });
       await fetchApi(`/dashboards/${activeDashboard.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           widgets: updatedWidgets.map((w: any) => ({
             insight_id: w.insight_id || (w.insight && w.insight.id),
             x: w.x, y: w.y, w: w.w, h: w.h
-          })) 
+          }))
         })
       });
       // Updating local state to avoid flicker before API fetch completes
@@ -183,12 +184,12 @@ export const Dashboards = () => {
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
               {dashboards.map(d => (
-                <div 
-                  key={d.id} 
+                <div
+                  key={d.id}
                   onClick={() => setActiveDashboardId(d.id)}
-                  style={{ 
-                    padding: '0.5rem 0.75rem', 
-                    borderRadius: 'var(--radius-sm)', 
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
                     cursor: 'pointer',
                     background: activeDashboardId === d.id ? 'rgba(79, 70, 229, 0.1)' : 'transparent',
                     color: activeDashboardId === d.id ? 'var(--primary)' : 'var(--text-main)',
@@ -219,18 +220,18 @@ export const Dashboards = () => {
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {insights.map(i => (
-                <div 
-                  key={i.id} 
+                <div
+                  key={i.id}
                   onClick={() => handleAddInsightToDashboard(i.id)}
-                  style={{ 
-                    padding: '0.75rem', 
-                    background: 'var(--bg-card)', 
-                    borderRadius: 'var(--radius-sm)', 
-                    border: '1px solid var(--border-color)', 
+                  style={{
+                    padding: '0.75rem',
+                    background: 'var(--bg-card)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-color)',
                     position: 'relative',
                     cursor: activeDashboard ? 'pointer' : 'default',
                     transition: 'all 0.2s'
-                  }} 
+                  }}
                   className="group hover-bg-light"
                 >
                   <div style={{ fontWeight: 500, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -240,8 +241,8 @@ export const Dashboards = () => {
                     {i.query}
                   </div>
                   {activeDashboard && (
-                    <button 
-                      className="btn-ghost" 
+                    <button
+                      className="btn-ghost"
                       style={{ position: 'absolute', right: '0.25rem', top: '0.25rem', padding: '0.25rem', opacity: 0.5 }}
                       title="Add to active dashboard"
                     >
@@ -286,7 +287,7 @@ export const Dashboards = () => {
                 <button className="btn-ghost" title="Settings"><Settings size={18} /></button>
               </div>
             </div>
-            
+
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {activeDashboard.widgets.length === 0 ? (
                 <div className="flex items-center justify-center text-muted" style={{ height: '300px', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius)', background: 'var(--bg-card)' }}>
@@ -298,12 +299,12 @@ export const Dashboards = () => {
                 </div>
               ) : (
                 /* @ts-ignore */
-                <ResponsiveGridLayout 
-                  className="layout" 
-                  layouts={{ lg: activeDashboard.widgets.map((w: any) => ({ i: w.id || w.insight_id, x: w.x, y: w.y, w: w.w, h: w.h })) }} 
+                <ResponsiveGridLayout
+                  className="layout"
+                  layouts={{ lg: activeDashboard.widgets.map((w: any) => ({ i: w.id || w.insight_id, x: w.x, y: w.y, w: w.w, h: w.h })) }}
                   breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                   cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
-                  rowHeight={80} 
+                  rowHeight={80}
                   // @ts-ignore
                   isDraggable={isEditMode}
                   // @ts-ignore
@@ -316,17 +317,17 @@ export const Dashboards = () => {
                     const wid = w.id || w.insight_id;
                     const ins = insights.find(i => i.id === w.insight_id) || w.insight;
                     if (!ins) return <div key={wid} />;
-                    
+
                     const isFullScreen = fullScreenWidgetId === wid;
-                    
+
                     return (
-                      <div 
-                        key={wid} 
-                        className="card" 
-                        style={{ 
-                          padding: 0, 
-                          display: 'flex', 
-                          flexDirection: 'column', 
+                      <div
+                        key={wid}
+                        className="card"
+                        style={{
+                          padding: 0,
+                          display: 'flex',
+                          flexDirection: 'column',
                           border: isEditMode ? '1px dashed var(--primary)' : '1px solid var(--border-color)',
                           boxShadow: isEditMode ? '0 0 0 1px rgba(79, 70, 229, 0.2)' : undefined,
                           ...(isFullScreen ? {
@@ -362,10 +363,10 @@ export const Dashboards = () => {
                                   <button className="btn-ghost" style={{ width: '100%', justifyContent: 'flex-start', padding: '0.5rem 1rem', borderRadius: 0, fontSize: '0.85rem' }} onClick={() => { exportToCSV(ins.chart_config?.data, ins.name); setShowMenuForWidget(null); }}>
                                     <Table2 size={14} style={{ marginRight: '0.5rem' }} /> Export CSV
                                   </button>
-                                  <button className="btn-ghost" style={{ width: '100%', justifyContent: 'flex-start', padding: '0.5rem 1rem', borderRadius: 0, fontSize: '0.85rem' }} onClick={() => { 
+                                  <button className="btn-ghost" style={{ width: '100%', justifyContent: 'flex-start', padding: '0.5rem 1rem', borderRadius: 0, fontSize: '0.85rem' }} onClick={() => {
                                     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(ins.chart_config));
-                                    const a = document.createElement('a'); a.href = dataStr; a.download = `${ins.name}.json`; a.click(); 
-                                    setShowMenuForWidget(null); 
+                                    const a = document.createElement('a'); a.href = dataStr; a.download = `${ins.name}.json`; a.click();
+                                    setShowMenuForWidget(null);
                                   }}>
                                     <FileJson size={14} style={{ marginRight: '0.5rem' }} /> Export JSON
                                   </button>
@@ -376,9 +377,9 @@ export const Dashboards = () => {
                         </div>
                         <div style={{ flex: 1, padding: '1rem', overflow: 'hidden', minHeight: 0 }}>
                           {ins.chart_config ? (
-                            <ChartRenderer 
-                              data={ins.chart_config.data} 
-                              chartType={ins.chart_config.chartType} 
+                            <ChartRenderer
+                              data={ins.chart_config.data}
+                              chartType={ins.chart_config.chartType}
                               columns={ins.chart_config.columns}
                               columnTypes={ins.chart_config.columnTypes}
                             />
@@ -392,7 +393,7 @@ export const Dashboards = () => {
                 </ResponsiveGridLayout>
               )}
             </div>
-            
+
             {/* Fullscreen Overlay Backdrop */}
             {fullScreenWidgetId && (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9998 }} onClick={() => setFullScreenWidgetId(null)} />

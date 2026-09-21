@@ -32,6 +32,7 @@ export interface Domain {
   description: string;
   status: string;
   document_count: number;
+  table_count?: number;
   source_id?: string | null;
   source_name?: string | null;
   data_sources?: string[];

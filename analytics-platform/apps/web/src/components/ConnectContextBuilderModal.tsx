@@ -44,6 +44,8 @@ export const ConnectContextBuilderModal: React.FC<ConnectContextBuilderModalProp
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [repoUrl, setRepoUrl] = useState('');
+
 
   // Staged Files list — empty by default so Step 1 displays initially
   const [stagedFiles, setStagedFiles] = useState<StagedFileItem[]>([]);
@@ -240,7 +242,7 @@ export const ConnectContextBuilderModal: React.FC<ConnectContextBuilderModalProp
         setErrorMessage('Please select at least one file to build context.');
         return;
       }
-      
+
       setUploading(true);
       try {
         const token = localStorage.getItem('token');
@@ -1172,8 +1174,8 @@ export const ConnectContextBuilderModal: React.FC<ConnectContextBuilderModalProp
                         }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = '#F8FAFC')}
                         onMouseLeave={(e) =>
-                          (e.currentTarget.style.background =
-                            repoAcceptanceStrategy === 'do_not_auto_accept' ? '#F1F5F9' : 'transparent')
+                        (e.currentTarget.style.background =
+                          repoAcceptanceStrategy === 'do_not_auto_accept' ? '#F1F5F9' : 'transparent')
                         }
                       >
                         Do Not Auto Accept
@@ -1192,8 +1194,8 @@ export const ConnectContextBuilderModal: React.FC<ConnectContextBuilderModalProp
                         }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = '#F8FAFC')}
                         onMouseLeave={(e) =>
-                          (e.currentTarget.style.background =
-                            repoAcceptanceStrategy === 'auto_accept_all' ? '#F1F5F9' : 'transparent')
+                        (e.currentTarget.style.background =
+                          repoAcceptanceStrategy === 'auto_accept_all' ? '#F1F5F9' : 'transparent')
                         }
                       >
                         Auto Accept All
@@ -1360,7 +1362,7 @@ export const ConnectContextBuilderModal: React.FC<ConnectContextBuilderModalProp
                         <input
                           type="checkbox"
                           checked={isChecked}
-                          onChange={() => {}}
+                          onChange={() => { }}
                           style={{
                             width: '15px',
                             height: '15px',
@@ -1421,8 +1423,8 @@ export const ConnectContextBuilderModal: React.FC<ConnectContextBuilderModalProp
                     uploading
                       ? '#93C5FD'
                       : sourceType === 'connect_repo' && !repoDataSource
-                      ? '#F1F5F9'
-                      : '#4F46E5',
+                        ? '#F1F5F9'
+                        : '#4F46E5',
                   color:
                     sourceType === 'connect_repo' && !repoDataSource && !uploading
                       ? '#94A3B8'

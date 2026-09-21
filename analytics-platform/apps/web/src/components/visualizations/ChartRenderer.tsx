@@ -610,8 +610,8 @@ export const ChartRenderer: React.FC<ChartProps> = ({
   const yAxisKeys = hasColumnTypes
     ? columns.filter(col => col !== xAxisKey && (columnTypes[col] === 'NUMERIC' || columnTypes[col] === 'PERCENTAGE'))
     : columns.slice(1).filter(col =>
-        rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))))
-      );
+      rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))))
+    );
 
   const activeYKeys = yAxisKeys.length > 0 ? yAxisKeys : [secondCol];
 
@@ -889,7 +889,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
   };
 
   // Resolve active chart option
-  let selectedOption = barOption;
+  let selectedOption: any = barOption;
   if (activeType === 'line_chart') selectedOption = lineOption;
   else if (activeType === 'area_chart') selectedOption = areaOption;
   else if (activeType === 'pie_chart') selectedOption = pieOption;
