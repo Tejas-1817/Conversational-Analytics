@@ -170,9 +170,18 @@ def export_schema_snapshot(
     # Fetch relationships for these tables
     relationships_data = []
     if table_ids:
-        rels = session.query(Relationship).join(
-            ColumnMeta, Relationship.from_column_id == ColumnMeta.id
-        ).filter(ColumnMeta.table_id.in_(table_ids)).all()
+        rels = (
+            session.query(Relationship)
+            .join(
+                ColumnMeta,
+                Relationship.from_column_id == ColumnMeta.id,
+            )
+            .filter(
+                ColumnMeta.table_id.in_(table_ids),
+                Relationship.status == "approved",
+            )
+            .all()
+        )
 
         for r in rels:
             relationships_data.append({
@@ -261,9 +270,18 @@ def export_human_readable_schema(
     # Fetch relationships & map column metadata
     rels = []
     if table_ids:
-        rels = session.query(Relationship).join(
-            ColumnMeta, Relationship.from_column_id == ColumnMeta.id
-        ).filter(ColumnMeta.table_id.in_(table_ids)).all()
+        rels = (
+            session.query(Relationship)
+            .join(
+                ColumnMeta,
+                Relationship.from_column_id == ColumnMeta.id,
+            )
+            .filter(
+                ColumnMeta.table_id.in_(table_ids),
+                Relationship.status == "approved",
+            )
+            .all()
+        )
 
     col_id_to_meta: Dict[uuid.UUID, tuple[str, str]] = {}
     for t in tables:
@@ -363,10 +381,25 @@ def export_human_readable_schema(
                 chunks.append(c)
 
         provider = get_embedding_provider()
-
-
-        provider = get_embedding_provider()
         vectors = provider.embed(chunks)
+
+        if not chunks:
+            raise RuntimeError("Generated schema contains no embeddable chunks")
+
+        if len(vectors) != len(chunks):
+            raise RuntimeError(
+                f"Embedding count mismatch: {len(chunks)} chunks, "
+                f"{len(vectors)} vectors"
+            )
+
+        expected_dimension = provider.dimension
+
+        for index, vector in enumerate(vectors):
+            if len(vector) != expected_dimension:
+                raise RuntimeError(
+                    f"Vector {index} has dimension {len(vector)}, "
+                    f"expected {expected_dimension}"
+                )
         records = [
             {
                 "id": f"chunk_{i}",
@@ -395,10 +428,31 @@ def export_human_readable_schema(
             ]
             upserted_count = ChromaStore().upsert(source.tenant_id, chroma_objects, source_id=source.id)
             log.info("automatic_chromadb_vectors_stored", tenant_id=tenant_str, upserted_count=upserted_count)
+            if upserted_count != len(chroma_objects):
+                raise RuntimeError(
+                    f"Chroma upsert mismatch: expected {len(chroma_objects)}, "
+                    f"stored {upserted_count}"
+                )
+
+            source.embedding_status = "succeeded"
+            session.flush()
+
         except Exception as chroma_exc:
             log.warning("automatic_chromadb_store_warning", error=str(chroma_exc))
     except Exception as exc:
-        log.warning("automatic_embeddings_json_failed", error=str(exc))
+        source.embedding_status = "failed"
+        session.flush()
+
+        log.exception(
+            "automatic_embeddings_generation_failed",
+            source_id=str(source.id),
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
+        raise RuntimeError(
+            f"Schema embedding generation failed for source {source.id}: {exc}"
+        ) from exc
     
     # 4. Update Schema Registry (Deactivate previous, Activate newest)
     previous_entries = session.query(SchemaRegistry).filter_by(source_id=source.id, is_active=True).all()

@@ -65,6 +65,52 @@ def test_sql_validator_dialects():
     mssql_res = SQLValidator.validate_sql(mssql_sql, catalog=catalog, dialect="mssql")
     assert mssql_res != "UNANSWERABLE"
 
+def test_sql_validator_accepts_cte_and_derived_table_alias():
+    sql = """
+    WITH monthly_sales AS (
+        SELECT
+            d.calendar_year,
+            d.month_number,
+            SUM(i.net_amount) AS monthly_revenue
+        FROM fact_sales AS s
+        JOIN fact_sales_item AS i
+            ON i.sale_id = s.sale_id
+        JOIN dim_date AS d
+            ON d.date_key = s.date_key
+        GROUP BY
+            d.calendar_year,
+            d.month_number
+    )
+    SELECT
+        ms.month_number,
+        ms.monthly_revenue
+    FROM monthly_sales AS ms;
+    """
+
+    catalog = {
+        "fact_sales": {
+            "sale_id",
+            "date_key",
+        },
+        "fact_sales_item": {
+            "sale_id",
+            "net_amount",
+        },
+        "dim_date": {
+            "date_key",
+            "calendar_year",
+            "month_number",
+        },
+    }
+
+    result = SQLValidator.validate_sql(
+        sql,
+        catalog=catalog,
+        dialect="mssql",
+    )
+
+    assert result != "UNANSWERABLE"
+
     # Destructive queries blocked across all dialects
     bad_sql = "DROP TABLE orders;"
     assert SQLValidator.validate_sql(bad_sql, catalog=catalog, dialect="mysql") == "UNANSWERABLE"

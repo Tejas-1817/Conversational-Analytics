@@ -173,7 +173,9 @@ def build_engine(source: DataSource) -> Engine:
             query={
                 "driver": "ODBC Driver 18 for SQL Server",
                 "Encrypt": "yes",
-                "TrustServerCertificate": "no",
+                "TrustServerCertificate": (
+                    "yes" if settings.mssql_trust_server_certificate else "no"
+                ),
             },
         )
         engine = _build_engine_with_retry(

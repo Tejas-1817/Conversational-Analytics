@@ -97,6 +97,9 @@ class Settings(BaseSettings):
     database_allow_loopback: bool = False
     database_allowed_private_cidrs: str = ""
 
+    # Microsoft SQL Server TLS settings
+    mssql_trust_server_certificate: bool = False
+
     overlap_sample_values: int = 1_000
     overlap_min_confidence: float = 0.90
 
