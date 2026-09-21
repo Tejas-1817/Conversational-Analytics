@@ -7,6 +7,7 @@ pymssql>=2.2.8              # mssql sources
 pyodbc>=5.0                 # optional odbc driver
 pydantic>=2.7
 pydantic-settings>=2.3
+pytest
 cryptography>=42.0          # Fernet + AES-GCM credential encryption
 rq>=1.16                    # async job queue
 redis>=5.0

@@ -853,6 +853,7 @@ USER QUESTION:
             raw_sql = self.llm_provider.generate_sql(
                 prompt=prompt,
                 question=question,
+                dialect=source_dialect,
             )
 
         except (LLMTimeoutError, LLMUnavailableError):
@@ -869,11 +870,13 @@ USER QUESTION:
             ) from exc
 
         # 5. Deterministically validate the generated SQL.
-        draft_sql = self.sql_validator.validate_sql(
+        validation = self.sql_validator.validate_sql_detailed(
             raw_sql,
             catalog=catalog,
             dialect=source_dialect,
         )
+        draft_sql = validation.sql if validation.valid else "UNANSWERABLE"
+
 
         # Attempt correction when Ollama returned SQL but static validation
         # rejected it. Do not correct an intentional UNANSWERABLE response.
@@ -885,11 +888,11 @@ USER QUESTION:
                 question=question,
                 failed_sql=raw_sql,
                 error_message=(
-                    f"Static validation rejected the query. Use {source_dialect.upper()} "
-                    "syntax and only physical tables and columns declared "
-                    "in DATABASE SCHEMA."
+                    f"Validation error [{validation.code}]: "
+                    f"{validation.message}"
                 ),
                 schema_text=schema_text,
+                dialect=source_dialect,
             )
 
             draft_sql = self.sql_validator.validate_sql(
@@ -908,6 +911,7 @@ USER QUESTION:
                 candidate_sql=validated_sql,
                 schema_text=schema_text,
                 domain_context=domain_context_str,
+                dialect=source_dialect,
             )
 
             reviewed_validated_sql = self.sql_validator.validate_sql(
@@ -955,6 +959,7 @@ USER QUESTION:
                         + "\n---\n".join(attempted_sql)
                     ),
                     schema_text=schema_text,
+                    dialect=source_dialect,
                 )
 
                 candidate_sql = self.sql_validator.validate_sql(
@@ -979,10 +984,11 @@ USER QUESTION:
         if validated_sql == "UNANSWERABLE":
             generated_at = datetime.now(timezone.utc).isoformat()
             clarification_answer = (
-                "I could not produce a reliable query for this question. "
-                "Please specify which type of unusual behavior you want to "
-                "analyze: fraud alerts, failed payments, high-value orders, "
-                "refunds, or login activity."
+                "I could not generate a query that passed schema and "
+                f"{source_dialect.upper()} validation. "
+                "The question appears answerable, but the generated query "
+                "used an invalid column, join, grouping expression, or "
+                "database-specific function."
             )
 
             clarification_questions = [
@@ -1064,10 +1070,12 @@ USER QUESTION:
                 failed_sql=validated_sql,
                 error_message=execution_error,
                 schema_text=schema_text,
+                dialect=source_dialect,
             )
             refined_sql = self.sql_validator.validate_sql(
                 refined_raw_sql,
                 catalog=catalog,
+                dialect=source_dialect,
             )
             if refined_sql == "UNANSWERABLE":
                 raise RuntimeError(

@@ -69,7 +69,10 @@ GROUP BY DATE_FORMAT(o.placed_at, '%Y-%m-01')
 ORDER BY order_month;"""
         elif dialect_lower == "mssql":
             dialect_title = "Microsoft SQL Server (T-SQL)"
-            time_trunc_rule = "- For MSSQL time grouping, use DATETRUNC(month, alias.timestamp_column) or DATEFROMPARTS(YEAR(alias.timestamp_column), MONTH(alias.timestamp_column), 1)."
+            time_trunc_rule = (
+                "- For MSSQL time grouping, use DATEFROMPARTS(YEAR(alias.timestamp_column), MONTH(alias.timestamp_column), 1) or DATEADD(month, DATEDIFF(month, 0, alias.timestamp_column), 0).\n"
+                "- STRICT RULE: SQL Server does NOT support PostgreSQL DATE_TRUNC('month', ...). NEVER use DATE_TRUNC in T-SQL."
+            )
             limit_rule = "- For limiting rows, use SELECT TOP (N) ... OR ORDER BY ... OFFSET 0 ROWS FETCH NEXT N ROWS ONLY. STRICT RULE: NEVER use LIMIT keyword in MSSQL."
             identifier_rule = "- Use schema-qualified brackets [dbo].[table_name] or standard table names."
             ref_example = """Example question:
@@ -77,10 +80,10 @@ How many orders were placed each month?
 
 Example SQL:
 SELECT
-    DATETRUNC(month, o.placed_at) AS order_month,
+    DATEFROMPARTS(YEAR(o.placed_at), MONTH(o.placed_at), 1) AS order_month,
     COUNT(DISTINCT o.order_id) AS total_orders
 FROM [dbo].[orders] AS o
-GROUP BY DATETRUNC(month, o.placed_at)
+GROUP BY DATEFROMPARTS(YEAR(o.placed_at), MONTH(o.placed_at), 1)
 ORDER BY order_month;"""
         else:
             dialect_title = "PostgreSQL"
