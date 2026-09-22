@@ -96,6 +96,12 @@ def generate_sql_from_question(
             detail="The AI model is currently unavailable.",
         ) from exc
 
+    except LLMUnavailableError as exc:
+        raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="The AI model is currently unavailable.",
+    ) from exc
+
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

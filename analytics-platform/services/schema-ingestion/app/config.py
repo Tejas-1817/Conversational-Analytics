@@ -26,8 +26,19 @@ class Settings(BaseSettings):
     refresh_token_expire_minutes: int = 1440  # 24 hours
 
     # LLM Settings
-    llm_provider: str = "ollama"  # options: "gemini", "mock", "none", "huggingface", "ollama"
+    # Options: "ollama", "gemini", "mock", "none", "huggingface"
+    llm_provider: str = "ollama"
+
+    # Gemini Settings
     gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_timeout_seconds: int = 60
+    gemini_sql_max_output_tokens: int = 768
+    gemini_text_max_output_tokens: int = 1500
+    gemini_fallback_models: str = ""
+
+    # Shared SQL-generation setting
+    sql_review_enabled: bool = True
     
     # Ollama Settings
     ollama_base_url: str = "http://localhost:11434"

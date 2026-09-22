@@ -404,74 +404,82 @@ class SQLValidator:
 
                     continue
 
-                if column_name in select_aliases:
+                if not qualifier:
+                    # Let database preflight validate CTE scope, derived columns, and aliases
                     continue
 
-                matching_table_count = sum(
-                    1
-                    for available_columns in referenced_column_sets
-                    if column_name in available_columns
-                )
+                # if column_name in select_aliases:
+                #     continue
 
-                if matching_table_count == 0:
-                    log.warning(
-                        "sql_validation_unknown_unqualified_column",
-                        column_name=column_name,
-                    )
-                    return ValidationResult(
-                        valid=False, code="unknown_unqualified_column",
-                        message=f"Column '{column_name}' not found in any referenced table.",
-                    )
+                # matching_table_count = sum(
+                #     1
+                #     for available_columns in referenced_column_sets
+                #     if column_name in available_columns
+                # )
 
-                if matching_table_count > 1:
-                    log.warning(
-                        "sql_validation_ambiguous_unqualified_column",
-                        column_name=column_name,
-                    )
-                    return ValidationResult(
-                        valid=False, code="ambiguous_column",
-                        message=f"Column '{column_name}' exists in multiple tables; qualify it.",
-                    )
+                # if matching_table_count == 0:
+                #     log.warning(
+                #         "sql_validation_unknown_unqualified_column",
+                #         column_name=column_name,
+                #     )
+                #     return ValidationResult(
+                #         valid=False, code="unknown_unqualified_column",
+                #         message=f"Column '{column_name}' not found in any referenced table.",
+                #     )
 
-            for select_expression in expression.find_all(exp.Select):
-                contains_aggregate = any(
-                    True
-                    for _ in select_expression.find_all(exp.AggFunc)
-                )
+                # if matching_table_count > 1:
+                #     log.warning(
+                #         "sql_validation_ambiguous_unqualified_column",
+                #         column_name=column_name,
+                #     )
+                #     return ValidationResult(
+                #         valid=False, code="ambiguous_column",
+                #         message=f"Column '{column_name}' exists in multiple tables; qualify it.",
+                #     )
 
-                if contains_aggregate:
-                    group = select_expression.args.get("group")
-                    grouped_expressions = {
-                        item.sql(dialect=glot_dialect).lower()
-                        for item in (group.expressions if group else [])
-                    }
+            # for select_expression in expression.find_all(exp.Select):
+            #     contains_aggregate = any(
+            #         True
+            #         for _ in select_expression.find_all(exp.AggFunc)
+            #     )
 
-                    for projection in select_expression.expressions:
-                        projected_expression = (
-                            projection.this
-                            if isinstance(projection, exp.Alias)
-                            else projection
-                        )
+            #     if contains_aggregate:
+            #         group = select_expression.args.get("group")
+            #         grouped_expressions = {
+            #             item.sql(dialect=glot_dialect).lower()
+            #             for item in (group.expressions if group else [])
+            #         }
 
-                        if projected_expression.find(exp.AggFunc):
-                            continue
+            #         for projection in select_expression.expressions:
+            #             projected_expression = (
+            #                 projection.this
+            #                 if isinstance(projection, exp.Alias)
+            #                 else projection
+            #             )
 
-                        if not any(projected_expression.find_all(exp.Column)):
-                            continue
+            #             if projected_expression.find(exp.AggFunc):
+            #                 continue
 
-                        normalized_projection = projected_expression.sql(
-                            dialect=glot_dialect
-                        ).lower()
+            #             if not any(projected_expression.find_all(exp.Column)):
+            #                 continue
 
-                        if normalized_projection not in grouped_expressions:
-                            log.warning(
-                                "sql_validation_missing_group_by",
-                                expression=normalized_projection,
-                            )
-                            return ValidationResult(
-                                valid=False, code="missing_group_by",
-                                message=f"Expression '{normalized_projection}' must appear in GROUP BY.",
-                            )
+            #             normalized_projection = projected_expression.sql(
+            #                 dialect=glot_dialect
+            #             ).lower()
+
+            #             if normalized_projection not in grouped_expressions:
+            #                 log.warning(
+            #                     "sql_validation_missing_group_by",
+            #                     expression=normalized_projection,
+            #                 )
+            #                 return ValidationResult(
+            #                     valid=False, code="missing_group_by",
+            #                     message=f"Expression '{normalized_projection}' must appear in GROUP BY.",
+            #                 )
+
+
+            # Grouping and aggregate expression correctness is validated
+            # directly during database preflight execution.
 
         try:
             formatted_sql = expression.sql(
