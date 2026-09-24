@@ -597,3 +597,28 @@ CORRECTED SQL:"""
             raise LLMUnavailableError("Unable to connect to Ollama.") from last_error
 
         raise LLMProviderError(f"Text generation failed for all models: {last_error}") from last_error
+
+    def plan_multi_queries(
+        self,
+        question: str,
+        schema_text: str,
+        dialect: str = "postgres",
+    ) -> list[dict[str, str]]:
+        """Decomposes a broad question into 2-3 sub-queries using Gemini."""
+        from app.chat_sql.prompt_builder import PromptBuilder
+
+        prompt = PromptBuilder.build_multi_query_plan_prompt(
+            question=question,
+            schema_text=schema_text,
+            dialect=dialect,
+        )
+        try:
+            raw_response = self.generate_text(prompt=prompt)
+            # Clean possible markdown fence code blocks
+            cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_response.strip(), flags=re.MULTILINE)
+            plan = json.loads(cleaned)
+            if isinstance(plan, list):
+                return [q for q in plan if isinstance(q, dict) and "sql" in q]
+        except Exception as exc:
+            log.warning("multi_query_planning_failed", error=str(exc))
+        return []

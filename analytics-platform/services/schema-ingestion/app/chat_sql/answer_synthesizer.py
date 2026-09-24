@@ -465,3 +465,31 @@ Validate which sales, product, customer, pricing, and margin fields are availabl
 ## Long-Term Tips
 
 Define approved KPI definitions, establish reliable historical tracking, and treat every recommendation as a hypothesis until verified against measured results."""
+
+    def synthesize_multi_query_answer(
+        self,
+        question: str,
+        multi_results: dict[str, list[dict]],
+        domain_context: str | None = None,
+    ) -> str:
+        """Synthesizes real datasets from multiple queries into a cohesive Executive Anomaly & Intelligence Report."""
+        import json
+        formatted_results = "\n\n".join(
+            f"### Domain: {title}\nData Rows (first 10):\n" + json.dumps(rows[:10], indent=2, default=str)
+            for title, rows in multi_results.items()
+        )
+        
+        prompt = (
+            "You are a Principal Business Intelligence Analyst & Analytics Advisor.\n"
+            f"The user asked: \"{question}\"\n\n"
+            f"We executed targeted queries across relevant database tables and gathered this data:\n"
+            f"{formatted_results}\n\n"
+            f"DOMAIN CONTEXT:\n{domain_context or 'Standard enterprise analytics.'}\n\n"
+            "REQUIREMENTS:\n"
+            "1. Deliver an Executive Summary synthesizing trends, patterns, or outliers found in the real data.\n"
+            "2. Break down Key Findings per domain with concrete numbers from the data above.\n"
+            "3. Provide 3-4 high-impact Strategic Recommendations.\n"
+            "4. Format in clean, beautiful Markdown with bold metrics and clear bullet points."
+        )
+
+        return self.llm_provider.generate_text(prompt)

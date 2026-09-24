@@ -287,3 +287,26 @@ USER QUESTION:
 {question}
 
 FINAL MARKDOWN:"""
+
+    @classmethod
+    def build_multi_query_plan_prompt(
+        cls,
+        question: str,
+        schema_text: str,
+        dialect: str = "Microsoft SQL Server (T-SQL)",
+    ) -> str:
+        """Prompt to decompose broad cross-domain questions into 2-3 focused SQL queries."""
+        return (
+            f"You are a Lead Data Architect analyzing a database with dialect: {dialect}.\n"
+            f"The user is asking a broad cross-domain question:\n"
+            f"\"{question}\"\n\n"
+            f"DATABASE SCHEMA:\n{schema_text}\n\n"
+            f"INSTRUCTIONS:\n"
+            f"1. Decompose the question into 2 to 3 targeted, concrete SQL queries that investigate different aspects.\n"
+            f"2. Each query MUST be valid {dialect} SELECT query and use only existing tables/columns.\n"
+            f"3. Limit each query to TOP 10 or LIMIT 10 to keep results concise.\n"
+            f"4. Output MUST be valid JSON array with objects containing 'title', 'sql', and 'metric_goal'.\n"
+            f"Example JSON:\n"
+            f'[\n  {{"title": "High Return Rate Products", "sql": "SELECT TOP 10 product_id, COUNT(*) AS return_count FROM returns GROUP BY product_id ORDER BY return_count DESC", "metric_goal": "Identify return hotspots"}}\n]\n'
+            f"Return JSON ONLY. No markdown wrapping."
+    )

@@ -1771,6 +1771,91 @@ USER QUESTION:
 
         source_dialect = (active_source.type or "postgres").lower()
 
+        # Check if question is a multi-domain pattern question
+        pattern_triggers = ["unusual pattern", "patterns", "outliers across", "cross-domain", "anomalies across", "overview across"]
+        is_pattern_question = any(term in question.lower() for term in pattern_triggers) or decision.intent == "hybrid"
+
+        if is_pattern_question:
+            multi_plan = self.llm_provider.plan_multi_queries(
+                question=question,
+                schema_text=schema_text,
+                dialect=source_dialect,
+            )
+            if multi_plan:
+                multi_results = {}
+                for item in multi_plan:
+                    sub_title = item.get("title", "Analysis")
+                    sub_sql = item.get("sql", "")
+                    sub_val = self.sql_validator.validate_sql(sub_sql, catalog=catalog, dialect=source_dialect)
+                    if sub_val != "UNANSWERABLE":
+                        r_data, _, _, _, r_err, _ = self.sql_executor.execute_query(sub_val, source=active_source)
+                        if not r_err and r_data:
+                            multi_results[sub_title] = r_data
+
+                if multi_results:
+                    multi_answer = self.answer_synthesizer.synthesize_multi_query_answer(
+                        question=question,
+                        multi_results=multi_results,
+                        domain_context=domain_context_str,
+                    )
+                    rec_follow_ups = ChatRecommender.recommend(
+                        intent="hybrid",
+                        question=question,
+                        columns=[],
+                        schema_inventory=schema_inventory,
+                    )
+                    generated_at = datetime.now(timezone.utc).isoformat()
+                    first_table_rows = list(multi_results.values())[0] if multi_results else []
+                    first_table_cols = list(first_table_rows[0].keys()) if first_table_rows else []
+
+                    res_conv_id = self._persist_exchange(
+                        db_session=db_session,
+                        user=user,
+                        conversation_id=conversation_id,
+                        source_id=source_id,
+                        domain_id=domain_id,
+                        question=question,
+                        answer=multi_answer,
+                        title="Multi-Domain Pattern Analysis",
+                        intent="hybrid",
+                        sql=";\n\n".join([item["sql"] for item in multi_plan if "sql" in item]),
+                        rows=first_table_rows,
+                        columns=first_table_cols,
+                        column_types={},
+                        visualization="table",
+                        follow_up_questions=rec_follow_ups,
+                        row_count=sum(len(v) for v in multi_results.values()),
+                        data_truncated=False,
+                        execution_time_ms=0.0,
+                    )
+                    return {
+                        "success": True,
+                        "intent": "hybrid",
+                        "conversation_id": str(res_conv_id),
+                        "question": question,
+                        "summary": multi_answer,
+                        "answer": multi_answer,
+                        "answer_markdown": multi_answer,
+                        "data": first_table_rows,
+                        "result_data": first_table_rows,
+                        "rows": first_table_rows,
+                        "columns": first_table_cols,
+                        "column_types": {},
+                        "row_count": sum(len(v) for v in multi_results.values()),
+                        "column_count": len(first_table_cols),
+                        "visualization": "table",
+                        "title": "Multi-Domain Pattern Analysis",
+                        "recommended_visualization": {
+                            "visualization": "table",
+                            "title": "Multi-Domain Pattern Analysis",
+                        },
+                        "follow_up_questions": rec_follow_ups,
+                        "sql": ";\n\n".join([item["sql"] for item in multi_plan if "sql" in item]),
+                        "execution_time_ms": 0.0,
+                        "generated_at": generated_at,
+                        "database": db_name,
+                    }
+
         # 4b. Build a SQL prompt only when the question requires SQL.
         prompt = self.prompt_builder.build_prompt(
             question=question,
@@ -1907,23 +1992,25 @@ USER QUESTION:
                     attempted_sql_count=len(attempted_sql),
                 )
 
-        # Return a controlled response instead of sending UNANSWERABLE to the database executor.
+                # Graceful Strategy Fallback: When SQL is UNANSWERABLE, synthesize high-level strategy and recommendations
         if validated_sql == "UNANSWERABLE":
-            generated_at = datetime.now(timezone.utc).isoformat()
-            clarification_answer = (
-                "I could not generate a query that passed schema and "
-                f"{source_dialect.upper()} validation. "
-                "The question appears answerable, but the generated query "
-                "used an invalid column, join, grouping expression, or "
-                "database-specific function."
+            log.info("sql_unanswerable_fallback_to_strategy", question=question)
+
+            fallback_answer = self.answer_synthesizer.synthesize_strategy(
+                question=question,
+                schema_inventory=schema_inventory,
+                domain_context=domain_context_str,
+                conversation_context=conversation_context,
             )
 
-            clarification_questions = [
-                "Which customers have the most high-risk fraud alerts?",
-                "Which customers have unusually frequent failed payments?",
-                "Which orders have unusually high values?",
-            ]
+            rec_follow_ups = ChatRecommender.recommend(
+                intent="strategy",
+                question=question,
+                columns=[],
+                schema_inventory=schema_inventory,
+            )
 
+            generated_at = datetime.now(timezone.utc).isoformat()
             res_conv_id = self._persist_exchange(
                 db_session=db_session,
                 user=user,
@@ -1931,29 +2018,29 @@ USER QUESTION:
                 source_id=source_id,
                 domain_id=domain_id,
                 question=question,
-                answer=clarification_answer,
-                title="Clarification required",
-                intent=decision.intent,
-                sql="UNANSWERABLE",
+                answer=fallback_answer,
+                title="Strategic Analysis & Guidance",
+                intent="strategy",
+                sql=None,
                 rows=[],
                 columns=[],
                 column_types={},
                 visualization="text",
-                follow_up_questions=clarification_questions,
+                follow_up_questions=rec_follow_ups,
                 row_count=0,
                 data_truncated=False,
                 execution_time_ms=0.0,
             )
 
             return {
-                "success": False,
-                "intent": decision.intent,
+                "success": True,
+                "intent": "strategy",
                 "conversation_id": res_conv_id,
                 "question": question,
-                "summary": clarification_answer,
-                "answer": clarification_answer,
-                "answer_markdown": clarification_answer,
-                "sql": "UNANSWERABLE",
+                "summary": fallback_answer,
+                "answer": fallback_answer,
+                "answer_markdown": fallback_answer,
+                "sql": None,
                 "rows": [],
                 "result_data": [],
                 "columns": [],
@@ -1962,16 +2049,17 @@ USER QUESTION:
                 "column_count": 0,
                 "data_truncated": False,
                 "visualization": "text",
-                "title": "Clarification required",
+                "title": "Strategic Analysis & Guidance",
                 "recommended_visualization": {
                     "visualization": "text",
-                    "title": "Clarification required",
+                    "title": "Strategic Analysis & Guidance",
                 },
-                "follow_up_questions": clarification_questions,
+                "follow_up_questions": rec_follow_ups,
                 "execution_time_ms": 0.0,
                 "generated_at": generated_at,
                 "database": db_name,
             }
+
 
         # 6. Execute reviewed and validated SQL
         (
