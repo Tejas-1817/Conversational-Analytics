@@ -448,23 +448,86 @@ FINAL ANSWER:"""
 
     @staticmethod
     def _strategy_fallback() -> str:
-        """Return safe advice when the strategy LLM call fails."""
+        """Return safe, deterministic business advice when the strategy LLM call fails."""
 
         return """## Executive Summary
 
-No row-level database results were executed, so specific performance findings cannot be verified.
+No verified row-level database results were available for this response, so specific
+business performance, product performance, revenue trends, or growth conclusions
+cannot be confirmed.
+
+The immediate priority is to validate the business signals that have the greatest
+potential impact on revenue, profitability, customer retention, and operational
+efficiency. Product, customer, sales, pricing, margin, inventory, and time-based
+performance should be evaluated before making major business decisions.
 
 ## Operational Advice
 
-Identify measurable operational KPIs supported by the connected schema, then analyze their current values and changes over time.
+Prioritize analysis of the following areas, where supported by the connected schema:
+
+- **Product Performance:** Identify products with declining sales, low demand,
+  high returns, weak margins, or strong demand but insufficient availability.
+- **Inventory & Operations:** Check stock levels, stockouts, slow-moving products,
+  inventory turnover, fulfillment performance, and demand patterns.
+- **Customer Performance:** Analyze repeat purchases, customer retention,
+  purchase frequency, high-value customers, and inactive customer segments.
+- **Profitability:** Compare revenue, cost, discounts, returns, and margins where
+  the required financial fields are available.
+- **Time Trends:** Compare product, revenue, customer, and operational KPIs across
+  appropriate daily, monthly, quarterly, or yearly periods.
+
+Before changing a product, pricing strategy, inventory policy, or operational
+process, validate the relevant KPI against historical and segment-level data.
 
 ## Sales Strategies
 
-Validate which sales, product, customer, pricing, and margin fields are available before selecting a sales strategy.
+Once verified results are available, prioritize strategies based on measurable
+business opportunities:
+
+- **Improve declining products:** Investigate pricing, discounts, availability,
+  returns, seasonality, and customer demand before changing the product strategy.
+- **Grow strong products:** Identify products with sustained demand and evaluate
+  cross-selling, upselling, bundling, and complementary-product opportunities.
+- **Improve product mix:** Compare product revenue, quantity, margin, and customer
+  demand to determine which products deserve greater commercial focus.
+- **Increase customer value:** Analyze repeat-purchase behavior and identify
+  opportunities for retention, personalized offers, cross-selling, and upselling.
+- **Optimize pricing and promotions:** Where pricing and discount data exists,
+  evaluate whether discounts are increasing demand sufficiently while protecting
+  profitability.
+- **Expand successful segments:** Compare products, customers, regions, and
+  channels to identify areas with consistently strong performance that may justify
+  additional investment.
+
+Do not assume that a low-selling product should be discontinued. Validate
+profitability, strategic importance, customer demand, seasonality, and inventory
+behavior first.
 
 ## Long-Term Tips
 
-Define approved KPI definitions, establish reliable historical tracking, and treat every recommendation as a hypothesis until verified against measured results."""
+Build a continuous data-driven improvement cycle:
+
+1. Establish consistent definitions for revenue, profit, margin, orders,
+   customers, returns, and other business KPIs.
+2. Track product, customer, sales, inventory, and profitability metrics over time.
+3. Create alerts for meaningful changes such as declining product demand,
+   increasing returns, stockout risk, or customer inactivity.
+4. Regularly identify high-performing products and determine what factors are
+   contributing to their success.
+5. Investigate underperforming products before making pricing, inventory, or
+   assortment decisions.
+6. Measure every business initiative using clearly defined success KPIs.
+7. Validate hypotheses with actual database results before treating them as
+   business facts.
+
+The recommended decision cycle is:
+
+**Measure → Identify Opportunity → Investigate Root Cause → Take Action →
+Monitor KPI → Evaluate Result → Improve Strategy**
+
+Until verified database results are available, all product, sales, profitability,
+and growth recommendations should be treated as hypotheses rather than confirmed
+business findings."""
 
     def synthesize_multi_query_answer(
         self,

@@ -698,19 +698,64 @@ class ChatService:
         )
 
         if decision.intent == "strategy":
-            answer = self.answer_synthesizer.synthesize_strategy(
-                question=question,
-                schema_inventory=schema_inventory,
-                domain_context=domain_context_str,
-                conversation_context=conversation_context,
-            )
+            source_dialect = (active_source.type or "postgres").lower()
+            multi_results = {}
+            executed_sqls = []
+
+            # 1. Attempt Multi-Query Data Execution for Strategy & Opportunity Questions
+            try:
+                multi_plan = self.llm_provider.plan_multi_queries(
+                    question=question,
+                    schema_text=schema_text,
+                    dialect=source_dialect,
+                )
+                if multi_plan:
+                    for item in multi_plan:
+                        sub_title = item.get("title", "Analysis")
+                        sub_sql = item.get("sql", "")
+                        sub_val = self.sql_validator.validate_sql(sub_sql, dialect=source_dialect)
+                        if sub_val != "UNANSWERABLE":
+                            r_data, _, _, _, r_err, _ = self.sql_executor.execute_query(sub_val, source=active_source)
+                            if not r_err and r_data:
+                                multi_results[sub_title] = r_data
+                                executed_sqls.append(sub_val)
+            except Exception as plan_err:
+                log.warning("strategy_multi_query_execution_failed", error=str(plan_err))
+
+            # 2. If real data was gathered from the database, synthesize an Evidence-Backed Executive Report
+            if multi_results:
+                answer = self.answer_synthesizer.synthesize_multi_query_answer(
+                    question=question,
+                    multi_results=multi_results,
+                    domain_context=domain_context_str,
+                )
+                title = "Executive Strategic Analysis"
+                vis_type = "table"
+                first_rows = list(multi_results.values())[0]
+                first_cols = list(first_rows[0].keys()) if first_rows else []
+                combined_sql = ";\n\n".join(executed_sqls)
+            else:
+                # 3. Fallback to schema-level strategic advice if queries could not be executed
+                answer = self.answer_synthesizer.synthesize_strategy(
+                    question=question,
+                    schema_inventory=schema_inventory,
+                    domain_context=domain_context_str,
+                    conversation_context=conversation_context,
+                )
+                title = "Business Strategy & Roadmap"
+                vis_type = "text"
+                first_rows = []
+                first_cols = []
+                combined_sql = None
 
             follow_ups = ChatRecommender.recommend(
                 intent="strategy",
                 question=question,
-                columns=[],
+                columns=first_cols,
                 schema_inventory=schema_inventory,
             )
+
+            generated_at = datetime.now(timezone.utc).isoformat()
             res_conv_id = self._persist_exchange(
                 db_session=db_session,
                 user=user,
@@ -719,15 +764,15 @@ class ChatService:
                 domain_id=domain_id,
                 question=question,
                 answer=answer,
-                title="Business Strategy",
+                title=title,
                 intent="strategy",
-                sql=None,
-                rows=[],
-                columns=[],
+                sql=combined_sql,
+                rows=first_rows,
+                columns=first_cols,
                 column_types={},
-                visualization="text",
+                visualization=vis_type,
                 follow_up_questions=follow_ups,
-                row_count=0,
+                row_count=sum(len(v) for v in multi_results.values()) if multi_results else 0,
                 data_truncated=False,
                 execution_time_ms=0.0,
             )
@@ -740,25 +785,27 @@ class ChatService:
                 "answer": answer,
                 "answer_markdown": answer,
                 "summary": answer,
-                "sql": None,
-                "rows": [],
-                "result_data": [],
-                "columns": [],
+                "sql": combined_sql,
+                "data": first_rows,
+                "rows": first_rows,
+                "result_data": first_rows,
+                "columns": first_cols,
                 "column_types": {},
-                "row_count": 0,
-                "column_count": 0,
+                "row_count": sum(len(v) for v in multi_results.values()) if multi_results else 0,
+                "column_count": len(first_cols),
                 "data_truncated": False,
-                "visualization": "text",
-                "title": "Business Strategy",
+                "visualization": vis_type,
+                "title": title,
                 "recommended_visualization": {
-                    "visualization": "text",
-                    "title": "Business Strategy",
+                    "visualization": vis_type,
+                    "title": title,
                 },
                 "follow_up_questions": follow_ups,
                 "execution_time_ms": 0.0,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
-                "database": active_source.database_name,
+                "generated_at": generated_at,
+                "database": db_name,
             }
+
 
         # 4. Route broad overview, strategy, and schema-gap questions
         # directly to grounded text analysis instead of Text-to-SQL.
