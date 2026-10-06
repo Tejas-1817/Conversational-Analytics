@@ -10,36 +10,76 @@ export const DataSources = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-  const loadSources = () => {
-    setLoading(true);
-    fetchApi('/sources')
-      .then(data => {
-        setSources(Array.isArray(data) ? data : []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+  const loadSources = async (isSilent = false) => {
+    // Only show the skeleton loader on initial page mount, never during background auto-refresh
+    if (!isSilent) setLoading(true);
+
+    try {
+      const [sourcesRes, reposRes] = await Promise.allSettled([
+        fetchApi('/sources'),
+        fetchApi('/code-repos'),
+      ]);
+
+      const regularSources = sourcesRes.status === 'fulfilled' && Array.isArray(sourcesRes.value) ? sourcesRes.value : [];
+      const codeRepos = reposRes.status === 'fulfilled' && Array.isArray(reposRes.value) ? reposRes.value : [];
+
+      const formattedRepos = codeRepos.map((r: any) => ({
+        id: r.repo_id,
+        name: r.name || r.url.split('/').pop()?.replace('.git', '') || 'Git Repository',
+        database_name: r.url,
+        type: 'github',
+        // Dynamic status: shows 'cloning' / 'indexing' / 'connected'
+        status: r.status || (r.last_ingested_at ? 'connected' : 'indexing'),
+        last_ingested_at: r.last_ingested_at,
+        is_code_repo: true,
+      }));
+
+      setSources([...regularSources, ...formattedRepos]);
+    } catch {
+      if (!isSilent) setSources([]);
+    } finally {
+      if (!isSilent) setLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadSources();
+    // 1. Initial load (shows skeleton loader)
+    loadSources(false);
+
+    // 2. Background polling every 3 seconds (silent refresh without flickering)
+    const interval = setInterval(() => {
+      loadSources(true);
+    }, 3000);
+    return () => clearInterval(interval);
   }, []);
 
-  const triggerIngest = async (id: string) => {
+
+  const triggerIngest = async (source: any) => {
     try {
-      await fetchApi(`/jobs/ingest/${id}`, { method: 'POST' });
-      alert('Ingestion triggered successfully!');
+      if (source.is_code_repo) {
+        await fetchApi(`/code-repos/${source.id}/sync`, { method: 'POST' });
+        alert(`Repository sync & re-indexing queued for ${source.name}!`);
+      } else {
+        await fetchApi(`/jobs/ingest/${source.id}`, { method: 'POST' });
+        alert('Ingestion triggered successfully!');
+      }
+      loadSources();
     } catch (e: any) {
       alert(`Failed to trigger ingestion: ${e.message}`);
     }
   };
 
-  const deleteSource = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this data source?')) return;
+  const deleteSource = async (source: any) => {
+    if (!window.confirm(`Are you sure you want to delete ${source.name}?`)) return;
     try {
-      await fetchApi(`/sources/${id}`, { method: 'DELETE' });
+      if (source.is_code_repo) {
+        await fetchApi(`/code-repos/${source.id}`, { method: 'DELETE' });
+      } else {
+        await fetchApi(`/sources/${source.id}`, { method: 'DELETE' });
+      }
       loadSources();
     } catch (e: any) {
-      alert(`Failed to delete data source: ${e.message}`);
+      alert(`Failed to delete: ${e.message}`);
     }
   };
 
@@ -56,7 +96,7 @@ export const DataSources = () => {
             Data Sources
           </h2>
           <p className="subtitle" style={{ marginTop: '0.25rem', marginBottom: 0 }}>
-            Manage connections to your data warehouses and databases.
+            Manage connections to your data warehouses, databases, and code repositories.
           </p>
         </div>
         <button onClick={() => setIsModalOpen(true)}><Plus size={18} /> Connect Data Source</button>
@@ -68,8 +108,8 @@ export const DataSources = () => {
             <thead>
               <tr>
                 <th>Source Name</th>
-                <th>Database Name</th>
-                <th>Database Type</th>
+                <th>Database / Repo URL</th>
+                <th>Source Type</th>
                 <th>Connection Status</th>
                 <th>Last Ingested</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -90,7 +130,7 @@ export const DataSources = () => {
                       <Server size={48} style={{ opacity: 0.2 }} />
                       <div>
                         <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>No Data Sources Connected</div>
-                        <div>Connect your first data source to begin profiling metadata.</div>
+                        <div>Connect your first data source or Git repository to begin profiling metadata.</div>
                       </div>
                       <button className="btn-secondary mt-2" onClick={() => setIsModalOpen(true)}><Plus size={18} /> Connect Data Source</button>
                     </div>
@@ -107,13 +147,29 @@ export const DataSources = () => {
                         <span style={{ fontWeight: 600 }}>{s.name}</span>
                       </div>
                     </td>
-                    <td>
-                      <span style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '13px', color: 'var(--text-main)' }}>
-                        {s.database_name || (s.type === 'excel' ? (s.file_path ? s.file_path.split(/[/\\]/).pop() : 'Excel File') : '-')}
+                    <td style={{ maxWidth: '280px' }}>
+                      <span
+                        title={s.is_code_repo ? s.database_name : undefined}
+                        style={{
+                          fontFamily: 'var(--font-mono, monospace)',
+                          fontSize: '13px',
+                          color: 'var(--text-main)',
+                          display: 'block',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {s.is_code_repo
+                          ? s.database_name
+                          : s.database_name || (s.type === 'excel' ? (s.file_path ? s.file_path.split(/[/\\]/).pop() : 'Excel File') : '-')}
                       </span>
                     </td>
+
                     <td>
-                      <span className="badge badge-default" style={{ textTransform: 'capitalize' }}>{s.type}</span>
+                      <span className="badge badge-default" style={{ textTransform: 'capitalize' }}>
+                        {s.is_code_repo ? 'GitHub (GraphRAG)' : s.type}
+                      </span>
                     </td>
                     <td>
                       <span className={`badge ${s.status === 'connected' || s.status === 'registered' ? 'badge-success' : 'badge-warning'}`}>
@@ -128,7 +184,12 @@ export const DataSources = () => {
                     </td>
                     <td>
                       <div className="flex items-center justify-end gap-2 relative">
-                        <button className="btn-ghost" title="Run Ingestion" onClick={() => triggerIngest(s.id)} style={{ padding: '0.5rem' }}>
+                        <button
+                          className="btn-ghost"
+                          title={s.is_code_repo ? 'Sync & Re-index Repository' : 'Run Ingestion'}
+                          onClick={() => triggerIngest(s)}
+                          style={{ padding: '0.5rem' }}
+                        >
                           <Play size={16} />
                         </button>
                         <button
@@ -137,7 +198,7 @@ export const DataSources = () => {
                           style={{ padding: '0.5rem', color: '#ef4444' }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            deleteSource(s.id);
+                            deleteSource(s);
                           }}
                         >
                           <Trash2 size={16} />

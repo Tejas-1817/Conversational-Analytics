@@ -165,6 +165,7 @@ _setup_rate_limiter(app)
 from app.api import (
     api_keys,
     auth,
+    code_repos,
     dashboards,
     domains_router,
     engine,
@@ -194,6 +195,7 @@ app.include_router(eval.router)
 app.include_router(schema.router)
 app.include_router(deterministic_semantic.router)
 app.include_router(chat_sql.router)
+app.include_router(code_repos.router)
 
 
 # ---------------------------------------------------------------------------

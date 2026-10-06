@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
-import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight, GitBranch, FileCode2, FolderGit2 } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -73,6 +73,206 @@ function SqlAccordion({ sql }: { sql: string }) {
         >
           <code>{sql}</code>
         </pre>
+      )}
+    </div>
+  );
+}
+
+function CodeSnippetAccordion({ chunks }: { chunks: any[] }) {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [copiedIndex, setCopiedIndex] = React.useState<number | null>(null);
+
+  if (!chunks || chunks.length === 0) return null;
+
+  const handleCopyChunk = (code: string, idx: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(code);
+    setCopiedIndex(idx);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  return (
+    <div style={{ border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden', fontSize: '0.85rem' }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.55rem 1rem',
+          cursor: 'pointer',
+          background: 'var(--bg-card)',
+          borderBottom: isOpen ? '1px solid var(--border-color)' : 'none',
+          userSelect: 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <FileCode2 size={15} style={{ color: '#ec4899' }} />
+          <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.85rem' }}>
+            Retrieved Code Snippets ({chunks.length} blocks from Vector Search)
+          </span>
+        </div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          {isOpen ? '▾ Hide Snippets' : '▸ Show Snippets'}
+        </span>
+      </div>
+
+      {isOpen && (
+        <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', background: 'var(--bg-main, #0F172A)' }}>
+          {chunks.map((chunk, idx) => {
+            const meta = chunk.metadata || {};
+            const code = chunk.text || chunk.code || '';
+            const fp = meta.file_path || chunk.file_path || 'Unknown file';
+            const sym = meta.name || chunk.symbol_name || '';
+            const lStart = meta.line_start || chunk.start_line;
+            const lEnd = meta.line_end || chunk.end_line;
+            const lineInfo = lStart && lEnd ? `L${lStart}-${lEnd}` : '';
+            const score = chunk.similarity ? `${Math.round(chunk.similarity * 100)}% match` : null;
+
+            return (
+              <div
+                key={idx}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  background: 'var(--bg-card, #1E293B)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.4rem 0.75rem',
+                    background: 'rgba(255,255,255,0.04)',
+                    borderBottom: '1px solid rgba(255,255,255,0.06)',
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#94A3B8', fontFamily: 'monospace' }}>
+                    <span style={{ color: 'var(--text-main, #F1F5F9)', fontWeight: 600 }}>{fp}</span>
+                    {lineInfo && <span style={{ color: '#64748B' }}>({lineInfo})</span>}
+                    {sym && (
+                      <span style={{ background: 'rgba(236,72,153,0.15)', color: '#F472B6', padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.72rem' }}>
+                        {sym}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {score && (
+                      <span style={{ color: '#10B981', fontSize: '0.72rem', fontWeight: 600 }}>
+                        {score}
+                      </span>
+                    )}
+                    <button
+                      onClick={(e) => handleCopyChunk(code, idx, e)}
+                      title="Copy snippet"
+                      style={{
+                        padding: '0.2rem 0.4rem',
+                        borderRadius: '4px',
+                        background: 'transparent',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        color: 'var(--text-muted, #94A3B8)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      {copiedIndex === idx ? <Check size={12} style={{ color: '#22c55e' }} /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: '0.75rem',
+                    background: '#0F172A',
+                    fontSize: '0.8rem',
+                    color: '#E2E8F0',
+                    fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                    overflowX: 'auto',
+                    whiteSpace: 'pre',
+                    lineHeight: 1.45,
+                    maxHeight: '260px',
+                    overflowY: 'auto',
+                  }}
+                >
+                  <code>{code}</code>
+                </pre>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GraphFactsAccordion({ facts }: { facts: string[] }) {
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  if (!facts || facts.length === 0) return null;
+
+  return (
+    <div style={{ border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden', fontSize: '0.85rem' }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.55rem 1rem',
+          cursor: 'pointer',
+          background: 'var(--bg-card)',
+          borderBottom: isOpen ? '1px solid var(--border-color)' : 'none',
+          userSelect: 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <GitBranch size={15} style={{ color: '#6366f1' }} />
+          <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.85rem' }}>
+            Graph Architecture Relationships ({facts.length} Neo4j relations)
+          </span>
+        </div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          {isOpen ? '▾ Hide Relations' : '▸ Show Relations'}
+        </span>
+      </div>
+
+      {isOpen && (
+        <div style={{ padding: '0.75rem 1rem', background: 'var(--bg-card)', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          {facts.map((fact, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.5rem',
+                fontSize: '0.82rem',
+                color: 'var(--text-main)',
+                lineHeight: 1.5,
+              }}
+            >
+              <span style={{ color: '#6366f1', marginTop: '2px' }}>•</span>
+              <div>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    p: ({ children }) => <span>{children}</span>,
+                    code: ({ children }) => (
+                      <code style={{ background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', padding: '0.1rem 0.35rem', borderRadius: '4px', fontSize: '0.78rem', fontFamily: 'monospace' }}>
+                        {children}
+                      </code>
+                    ),
+                  }}
+                >
+                  {fact}
+                </ReactMarkdown>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -187,7 +387,7 @@ export const ChatInterface = () => {
         fetchApi(`/engine/conversations/${data.id}`, {
           method: 'PATCH',
           body: JSON.stringify({ source_id: effectiveSourceId }),
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       if (effectiveSourceId) {
@@ -223,8 +423,16 @@ export const ChatInterface = () => {
           answer: m.role === 'assistant' ? m.content : undefined,
           answer_markdown: m.role === 'assistant' ? m.content : undefined,
 
-          sql: m.generated_sql,
+          // Code Intelligence Metadata
+          isCodeIntel: parsedData?.is_code_intel || Boolean(m.route === 'code_intel'),
+          repo_id: parsedData?.repo_id,
+          repo_name: parsedData?.repo_name || 'Git Repo',
+          referenced_files: parsedData?.referenced_files || [],
+          referenced_symbols: parsedData?.referenced_symbols || [],
+          graph_facts: parsedData?.graph_facts || [],
+          retrieved_chunks: parsedData?.retrieved_chunks || [],
 
+          sql: m.generated_sql,
           result_data: rows,
           rows: rows,
           columns: cols,
@@ -306,30 +514,44 @@ export const ChatInterface = () => {
   const [selectedSourceId, setSelectedSourceId] = useState<string>(() => localStorage.getItem('active_chat_source_id') || '');
   const [showSourcePicker, setShowSourcePicker] = useState(false);
 
+  // Code repositories (Git repos for GraphRAG querying)
+  const [codeRepos, setCodeRepos] = useState<any[]>([]);
+  const isCodeRepoSelected = codeRepos.some((r: any) => r.repo_id === selectedSourceId);
+
 
 
   useEffect(() => {
     fetchApi('/domains')
       .then((data: any) => setDomains(Array.isArray(data) ? data : []))
       .catch(() => setDomains([]));
-    fetchApi('/sources')
-      .then((data: any) => {
-        const list = Array.isArray(data) ? data : [];
-        setSources(list);
-        if (list.length > 0) {
-          setSelectedSourceId(prev => {
-            if (prev && list.some((s: any) => s.id === prev)) {
-              return prev;
-            }
-            const saved = localStorage.getItem('active_chat_source_id');
-            const exists = list.some((s: any) => s.id === saved);
-            const fallbackId = exists ? saved! : list[0].id;
-            localStorage.setItem('active_chat_source_id', fallbackId);
-            return fallbackId;
-          });
-        }
-      })
-      .catch(() => setSources([]));
+
+    Promise.allSettled([
+      fetchApi('/sources'),
+      fetchApi('/code-repos')
+    ]).then(([sourcesRes, reposRes]) => {
+      const srcList = sourcesRes.status === 'fulfilled' && Array.isArray(sourcesRes.value) ? sourcesRes.value : [];
+      const repoList = reposRes.status === 'fulfilled' && Array.isArray(reposRes.value) ? reposRes.value : [];
+
+      setSources(srcList);
+      setCodeRepos(repoList);
+
+      const saved = localStorage.getItem('active_chat_source_id');
+      const hasSavedSource = srcList.some((s: any) => s.id === saved);
+      const hasSavedRepo = repoList.some((r: any) => r.repo_id === saved);
+
+      if (hasSavedSource || hasSavedRepo) {
+        setSelectedSourceId(saved!);
+      } else if (srcList.length > 0) {
+        setSelectedSourceId(srcList[0].id);
+        localStorage.setItem('active_chat_source_id', srcList[0].id);
+      } else if (repoList.length > 0) {
+        setSelectedSourceId(repoList[0].repo_id);
+        localStorage.setItem('active_chat_source_id', repoList[0].repo_id);
+      }
+    }).catch(() => {
+      setSources([]);
+      setCodeRepos([]);
+    });
   }, []);
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -342,7 +564,7 @@ export const ChatInterface = () => {
         {
           id: Date.now(),
           role: 'assistant',
-          content: 'Please select a connected data source first.',
+          content: 'Please select a connected data source or git repository first.',
           isError: true,
         },
       ]);
@@ -355,55 +577,98 @@ export const ChatInterface = () => {
     setInput('');
     setLoading(true);
 
+    // Check if a code repository is selected
+    const matchedRepo = codeRepos.find((r: any) => r.repo_id === selectedSourceId);
+    const isRepoQuery = Boolean(matchedRepo);
+
     try {
-      const data = await fetchApi('/api/v1/chat/sql', {
-        method: 'POST',
-        body: JSON.stringify({
+      if (isRepoQuery) {
+        const startTime = Date.now();
+        // Route to GraphRAG code intelligence endpoint
+        const data = await fetchApi(`/code-repos/${selectedSourceId}/query`, {
+          method: 'POST',
+          body: JSON.stringify({
+            question: questionText,
+            conversation_id: convId || undefined,
+            n_chunks: 6,
+          })
+        });
+
+        if (data.conversation_id && data.conversation_id !== convId) {
+          setConvId(data.conversation_id);
+          localStorage.setItem('active_conversation_id', data.conversation_id);
+        }
+
+        const repoName = matchedRepo?.name || matchedRepo?.url?.split('/').pop()?.replace('.git', '') || 'Git Repo';
+
+        const botMsg = {
+          id: Date.now() + 1,
+          role: 'assistant',
+          content: data.answer || '',
+          answer_markdown: data.answer || '',
+          isCodeIntel: true,
           question: questionText,
-          conversation_id: convId,
-          domain_id: selectedDomainId || null,
-          source_id: selectedSourceId,
-          mode: 'auto'
-        })
-      });
+          repo_name: repoName,
+          repo_id: selectedSourceId,
+          referenced_files: data.referenced_files || [],
+          referenced_symbols: data.referenced_symbols || [],
+          graph_facts: data.graph_facts || [],
+          retrieved_chunks: data.retrieved_chunks || [],
+          execution_time_ms: Date.now() - startTime,
+          generated_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages(prev => [...prev, botMsg]);
+      } else {
+        // Route to SQL chat endpoint
+        const data = await fetchApi('/api/v1/chat/sql', {
+          method: 'POST',
+          body: JSON.stringify({
+            question: questionText,
+            conversation_id: convId,
+            domain_id: selectedDomainId || null,
+            source_id: selectedSourceId,
+            mode: 'auto'
+          })
+        });
 
-      if (data.conversation_id && data.conversation_id !== convId) {
-        setConvId(data.conversation_id);
-        localStorage.setItem('active_conversation_id', data.conversation_id);
+        if (data.conversation_id && data.conversation_id !== convId) {
+          setConvId(data.conversation_id);
+          localStorage.setItem('active_conversation_id', data.conversation_id);
+        }
+
+        const recVis = data.recommended_visualization || data.chart_recommendation;
+        const chartTypeRes = typeof recVis === 'object' && recVis !== null ? recVis.chart_type : (typeof recVis === 'string' ? recVis : undefined);
+
+        const botMsg = {
+          id: Date.now() + 1,
+          role: 'assistant',
+          content: data.answer_markdown || data.answer || '',
+          intent: data.intent,
+          question: data.question,
+          answer: data.answer,
+          answer_markdown: data.answer_markdown || data.answer,
+          sql: data.sql,
+          result_data: Array.isArray(data.rows) ? data.rows : [],
+          rows: Array.isArray(data.rows) ? data.rows : [],
+          columns: data.columns || [],
+          column_types: data.column_types || {},
+          row_count: data.row_count || 0,
+          data_truncated: Boolean(data.data_truncated),
+          follow_up_questions: Array.isArray(data.follow_up_questions)
+            ? data.follow_up_questions
+            : [],
+          recommended_visualization: data.recommended_visualization,
+          visualization: data.visualization,
+          title: data.title,
+          execution_time_ms: data.execution_time_ms,
+          generated_at: data.generated_at,
+          database: data.database,
+        };
+        setMessages(prev => [...prev, botMsg]);
       }
-
-      const recVis = data.recommended_visualization || data.chart_recommendation;
-      const chartTypeRes = typeof recVis === 'object' && recVis !== null ? recVis.chart_type : (typeof recVis === 'string' ? recVis : undefined);
-
-      const botMsg = {
-        id: Date.now() + 1,
-        role: 'assistant',
-        content: data.answer_markdown || data.answer || '',
-        intent: data.intent,
-        question: data.question,
-        answer: data.answer,
-        answer_markdown: data.answer_markdown || data.answer,
-        sql: data.sql,
-        result_data: Array.isArray(data.rows) ? data.rows : [],
-        rows: Array.isArray(data.rows) ? data.rows : [],
-        columns: data.columns || [],
-        column_types: data.column_types || {},
-        row_count: data.row_count || 0,
-        data_truncated: Boolean(data.data_truncated),
-        follow_up_questions: Array.isArray(data.follow_up_questions)
-          ? data.follow_up_questions
-          : [],
-        recommended_visualization: data.recommended_visualization,
-        visualization: data.visualization,
-        title: data.title,
-        execution_time_ms: data.execution_time_ms,
-        generated_at: data.generated_at,
-        database: data.database,
-      };
-      setMessages(prev => [...prev, botMsg]);
       await loadConversationsList();
     } catch (err: any) {
-      setMessages(prev => [...prev, { role: 'assistant', content: err.message || 'Failed to generate SQL query.', isError: true }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: err.message || 'Failed to process query.', isError: true }]);
     } finally {
       setLoading(false);
     }
@@ -591,20 +856,55 @@ export const ChatInterface = () => {
 
         <div className="chat-messages" style={{ padding: '0 1rem', flex: 1 }}>
           {messages.length === 0 && (
-            <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.6, maxWidth: '500px' }}>
-              <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(79, 70, 229, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
-                <Bot size={32} />
+            <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.85, maxWidth: '560px' }}>
+              <div style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: isCodeRepoSelected ? 'rgba(236, 72, 153, 0.12)' : 'rgba(79, 70, 229, 0.1)',
+                color: isCodeRepoSelected ? '#ec4899' : 'var(--primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.5rem',
+              }}>
+                {isCodeRepoSelected ? <FolderGit2 size={32} /> : <Bot size={32} />}
               </div>
-              <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>How can I help you today?</h2>
-              <p>Ask a question about your business data in plain English to generate SQL & view live results.</p>
+              <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>
+                {isCodeRepoSelected ? 'Ask Code Intelligence' : 'How can I help you today?'}
+              </h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                {isCodeRepoSelected
+                  ? 'Ask questions about repository architecture, call hierarchies, AST functions, and API logic.'
+                  : 'Ask a question about your business data in plain English to generate SQL & view live results.'}
+              </p>
 
-              <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left', opacity: 0.8 }}>
-                <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
-                  <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
-                </div>
-                <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me top 5 users by created_at date")}>
-                  <span className="text-sm">"Show me top 5 users by created_at date"</span>
-                </div>
+              <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left' }}>
+                {isCodeRepoSelected ? (
+                  <>
+                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("How does request authentication and token verification work?")}>
+                      <span className="text-sm">"How does request authentication and token verification work?"</span>
+                    </div>
+                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("What are the main API routes and their handler functions?")}>
+                      <span className="text-sm">"What are the main API routes and their handler functions?"</span>
+                    </div>
+                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Explain the core data models and database connections used.")}>
+                      <span className="text-sm">"Explain the core data models and database connections used."</span>
+                    </div>
+                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Which functions execute background tasks or jobs?")}>
+                      <span className="text-sm">"Which functions execute background tasks or jobs?"</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
+                      <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
+                    </div>
+                    <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me top 5 users by created_at date")}>
+                      <span className="text-sm">"Show me top 5 users by created_at date"</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -808,6 +1108,67 @@ export const ChatInterface = () => {
                             </details>
                           );
                         })()}
+
+                        {/* Code Intelligence: Referenced Files & Symbols */}
+                        {((m.referenced_files && m.referenced_files.length > 0) || (m.referenced_symbols && m.referenced_symbols.length > 0)) && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
+                            {m.referenced_files?.map((fp: string) => (
+                              <span
+                                key={fp}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  padding: '0.2rem 0.55rem',
+                                  background: 'rgba(236,72,153,0.08)',
+                                  border: '1px solid rgba(236,72,153,0.25)',
+                                  borderRadius: '6px',
+                                  fontSize: '0.75rem',
+                                  color: '#ec4899',
+                                  fontFamily: 'monospace',
+                                }}
+                                title={`Referenced File: ${fp}`}
+                              >
+                                <FileCode2 size={12} />
+                                {fp}
+                              </span>
+                            ))}
+                            {m.referenced_symbols?.map((sym: string) => (
+                              <span
+                                key={sym}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  padding: '0.2rem 0.55rem',
+                                  background: 'rgba(99,102,241,0.08)',
+                                  border: '1px solid rgba(99,102,241,0.25)',
+                                  borderRadius: '6px',
+                                  fontSize: '0.75rem',
+                                  color: 'var(--primary)',
+                                  fontFamily: 'monospace',
+                                  cursor: 'pointer',
+                                }}
+                                onClick={() => setInput(`Explain how ${sym} is implemented and where it is called`)}
+                                title={`Click to ask about ${sym}`}
+                              >
+                                <Code size={12} />
+                                {sym}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Code Intelligence: Neo4j Graph Architecture Facts */}
+                        {m.graph_facts && m.graph_facts.length > 0 && (
+                          <GraphFactsAccordion facts={m.graph_facts} />
+                        )}
+
+                        {/* Code Intelligence: ChromaDB Retrieved Code Chunks */}
+                        {m.retrieved_chunks && m.retrieved_chunks.length > 0 && (
+                          <CodeSnippetAccordion chunks={m.retrieved_chunks} />
+                        )}
+
                         {/* 5. Suggested follow-up questions */}
                         {m.follow_up_questions?.length > 0 && (
                           <div
@@ -913,9 +1274,15 @@ export const ChatInterface = () => {
           <div style={{ margin: '0 auto', maxWidth: '800px' }}>
             {/* Database & Domain Selection Bar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem', paddingLeft: '0.25rem', flexWrap: 'wrap' }}>
-              {/* Connected Database Selector */}
+              {/* Connected Database / Git Repo Selector */}
               {(() => {
                 const src = sources.find((s: any) => s.id === selectedSourceId);
+                const repo = codeRepos.find((r: any) => r.repo_id === selectedSourceId);
+                const isRepo = Boolean(repo);
+                const displayName = repo
+                  ? (repo.name || repo.url?.split('/').pop()?.replace('.git', '') || 'Git Repo')
+                  : (src ? src.name : (sources.length > 0 ? sources[0].name : (codeRepos.length > 0 ? (codeRepos[0].name || codeRepos[0].url?.split('/').pop()?.replace('.git', '')) : 'No Source')));
+
                 return (
                   <div style={{ position: 'relative' }}>
                     <button
@@ -925,7 +1292,7 @@ export const ChatInterface = () => {
                         display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
                         padding: '0.25rem 0.65rem',
                         background: 'var(--bg-card)',
-                        border: '1px solid var(--border-color)',
+                        border: isRepo ? '1px solid rgba(236, 72, 153, 0.4)' : '1px solid var(--border-color)',
                         borderRadius: '99px',
                         fontSize: '0.8rem',
                         fontWeight: 600,
@@ -933,10 +1300,14 @@ export const ChatInterface = () => {
                         cursor: 'pointer',
                         transition: 'all 0.15s ease',
                       }}
-                      title="Switch connected database"
+                      title="Switch connected database or git repository"
                     >
-                      <Database size={13} style={{ color: 'var(--primary)' }} />
-                      <span>{src ? src.name : (sources.length > 0 ? sources[0].name : 'No Database')}</span>
+                      {isRepo ? (
+                        <FolderGit2 size={13} style={{ color: '#ec4899' }} />
+                      ) : (
+                        <Database size={13} style={{ color: 'var(--primary)' }} />
+                      )}
+                      <span>{isRepo ? `Repo: ${displayName}` : displayName}</span>
                       <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>▾</span>
                     </button>
 
@@ -948,14 +1319,17 @@ export const ChatInterface = () => {
                           background: 'var(--bg-card)',
                           border: '1px solid var(--border-color)',
                           borderRadius: '12px',
-                          boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
                           padding: '0.5rem',
-                          minWidth: '240px',
+                          minWidth: '280px',
+                          maxHeight: '380px',
+                          overflowY: 'auto',
                           zIndex: 100,
                         }}
                       >
-                        <div style={{ padding: '0.4rem 0.6rem 0.3rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          Connected Database
+                        {/* Section 1: SQL Databases */}
+                        <div style={{ padding: '0.4rem 0.6rem 0.3rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <Database size={12} style={{ color: 'var(--primary)' }} /> Connected Databases
                         </div>
                         {sources.map((s: any) => (
                           <button
@@ -989,15 +1363,65 @@ export const ChatInterface = () => {
                             }}
                           >
                             <Database size={14} style={{ color: selectedSourceId === s.id ? 'var(--primary)' : 'var(--text-muted)' }} />
-                            <div style={{ flex: 1 }}>
-                              <div>{s.name}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
                               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{s.database_name} ({s.type})</div>
                             </div>
                             {selectedSourceId === s.id && <span style={{ fontSize: '0.75rem', color: 'var(--primary)', fontWeight: 700 }}>✓</span>}
                           </button>
                         ))}
                         {sources.length === 0 && (
-                          <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>No connected databases found.</div>
+                          <div style={{ padding: '0.3rem 0.75rem 0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No databases connected</div>
+                        )}
+
+                        {/* Section 2: Git Repositories */}
+                        <div style={{ padding: '0.6rem 0.6rem 0.3rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '1px solid var(--border-color)', marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <FolderGit2 size={12} style={{ color: '#ec4899' }} /> Git Repositories
+                        </div>
+                        {codeRepos.map((r: any) => {
+                          const rName = r.name || r.url?.split('/').pop()?.replace('.git', '') || 'Repository';
+                          return (
+                            <button
+                              key={r.repo_id}
+                              type="button"
+                              onClick={async () => {
+                                setSelectedSourceId(r.repo_id);
+                                localStorage.setItem('active_chat_source_id', r.repo_id);
+                                setShowSourcePicker(false);
+                                if (convId) {
+                                  setConversations(prev => prev.map(c => c.id === convId ? { ...c, source_id: r.repo_id } : c));
+                                  try {
+                                    await fetchApi(`/engine/conversations/${convId}`, {
+                                      method: 'PATCH',
+                                      body: JSON.stringify({ source_id: r.repo_id }),
+                                    });
+                                    await loadConversationsList();
+                                  } catch (e) {
+                                    console.error('Failed to update conversation source', e);
+                                  }
+                                }
+                              }}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                width: '100%', padding: '0.5rem 0.75rem',
+                                background: selectedSourceId === r.repo_id ? 'rgba(236,72,153,0.1)' : 'transparent',
+                                border: 'none', borderRadius: '8px',
+                                cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500,
+                                color: selectedSourceId === r.repo_id ? '#ec4899' : 'var(--text-main)',
+                                textAlign: 'left',
+                              }}
+                            >
+                              <FolderGit2 size={14} style={{ color: selectedSourceId === r.repo_id ? '#ec4899' : 'var(--text-muted)' }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rName}</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.url}</div>
+                              </div>
+                              {selectedSourceId === r.repo_id && <span style={{ fontSize: '0.75rem', color: '#ec4899', fontWeight: 700 }}>✓</span>}
+                            </button>
+                          );
+                        })}
+                        {codeRepos.length === 0 && (
+                          <div style={{ padding: '0.3rem 0.75rem 0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No git repositories connected</div>
                         )}
                       </div>
                     )}
@@ -1171,7 +1595,7 @@ export const ChatInterface = () => {
                   fontFamily: 'inherit',
                 }}
                 rows={1}
-                placeholder="Ask a question about your data..."
+                placeholder={isCodeRepoSelected ? "Ask about architecture, functions, call hierarchies, endpoints..." : "Ask a question about your business data..."}
                 value={input}
                 onChange={e => {
                   setInput(e.target.value);

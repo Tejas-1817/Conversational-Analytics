@@ -17,14 +17,22 @@ Usage:
 """
 from __future__ import annotations
 
+import math
 import uuid
 from dataclasses import dataclass, field
+from typing import Any
 
-
-import chromadb
-from chromadb import Collection
 import structlog
 from app.config import get_settings
+
+try:
+    import chromadb
+    from chromadb import Collection
+    HAVE_CHROMADB = True
+except Exception as exc:
+    chromadb = None
+    Collection = Any  # type: ignore
+    HAVE_CHROMADB = False
 
 log = structlog.get_logger(__name__)
 
@@ -51,6 +59,16 @@ class RetrievalResult:
     distance: float
 
 
+def _cosine_distance(v1: list[float], v2: list[float]) -> float:
+    dot = sum(a * b for a, b in zip(v1, v2))
+    norm1 = math.sqrt(sum(a * a for a in v1))
+    norm2 = math.sqrt(sum(b * b for b in v2))
+    if norm1 == 0 or norm2 == 0:
+        return 1.0
+    sim = max(-1.0, min(1.0, dot / (norm1 * norm2)))
+    return 1.0 - sim
+
+
 # ---------------------------------------------------------------------------
 # Store
 # ---------------------------------------------------------------------------
@@ -73,6 +91,12 @@ class ChromaStore:
 
     def __init__(self, ephemeral: bool = False) -> None:
         settings = get_settings()
+        self._fallback_store: dict[str, dict[str, dict[str, Any]]] = {}
+
+        if not HAVE_CHROMADB:
+            log.warning("chromadb_unavailable_using_in_memory_fallback")
+            self._client = None
+            return
 
         if ephemeral or settings.chroma_mode == "ephemeral":
             self._client = chromadb.EphemeralClient()
@@ -102,9 +126,13 @@ class ChromaStore:
                     f"Could not connect to Chroma Cloud: {exc}"
                 ) from exc 
         else:
-            self._client = chromadb.PersistentClient(
-                path=settings.chroma_persist_dir
-            )
+            try:
+                self._client = chromadb.PersistentClient(
+                    path=settings.chroma_persist_dir
+                )
+            except Exception as exc:
+                log.warning("chromadb_persistent_client_failed_fallback_to_ephemeral", error=str(exc))
+                self._client = chromadb.EphemeralClient()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -114,7 +142,9 @@ class ChromaStore:
         self,
         tenant_id: str | uuid.UUID,
         source_id: str | uuid.UUID | None = None
-    ) -> Collection:
+    ) -> Collection | None:
+        if self._client is None:
+            return None
         name = _collection_name(tenant_id, source_id=source_id)
         return self._client.get_or_create_collection(
             name=name,
@@ -135,9 +165,26 @@ class ChromaStore:
         if not objects:
             return 0
 
-        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
         tenant_str = str(tenant_id)
+        col_name = _collection_name(tenant_id, source_id=source_id)
 
+        if self._client is None:
+            if col_name not in self._fallback_store:
+                self._fallback_store[col_name] = {}
+            for obj in objects:
+                meta = dict(obj.metadata)
+                meta["tenant_id"] = tenant_str
+                if source_id:
+                    meta["source_id"] = str(source_id)
+                self._fallback_store[col_name][obj.id] = {
+                    "id": obj.id,
+                    "text": obj.text,
+                    "embedding": obj.embedding,
+                    "metadata": meta,
+                }
+            return len(objects)
+
+        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
         ids: list[str] = []
         embeddings: list[list[float]] = []
         documents: list[str] = []
@@ -172,9 +219,37 @@ class ChromaStore:
         object_types: list[str] | None = None,
     ) -> list[RetrievalResult]:
         """Query the tenant's/source's collection."""
-        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
         tenant_str = str(tenant_id)
+        col_name = _collection_name(tenant_id, source_id=source_id)
 
+        if self._client is None:
+            col_data = self._fallback_store.get(col_name, {})
+            if not col_data:
+                return []
+            candidates = []
+            for item in col_data.values():
+                meta = item["metadata"]
+                if meta.get("tenant_id") != tenant_str:
+                    continue
+                if source_id is not None and meta.get("source_id") != str(source_id):
+                    continue
+                if object_types and meta.get("object_type") not in object_types:
+                    continue
+                dist = _cosine_distance(query_embedding, item["embedding"])
+                candidates.append((dist, item))
+
+            candidates.sort(key=lambda x: x[0])
+            hits = []
+            for dist, item in candidates[:n_results]:
+                hits.append(RetrievalResult(
+                    id=item["id"],
+                    text=item["text"],
+                    metadata=item["metadata"],
+                    distance=dist,
+                ))
+            return hits
+
+        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
         count = collection.count()
         if count == 0:
             return []
@@ -224,6 +299,11 @@ class ChromaStore:
         source_id: str | uuid.UUID | None = None
     ) -> None:
         """Remove a single vector by its object ID."""
+        col_name = _collection_name(tenant_id, source_id=source_id)
+        if self._client is None:
+            if col_name in self._fallback_store and object_id in self._fallback_store[col_name]:
+                del self._fallback_store[col_name][object_id]
+            return
         collection = self._get_or_create_collection(tenant_id, source_id=source_id)
         collection.delete(ids=[object_id])
 
@@ -233,5 +313,9 @@ class ChromaStore:
         source_id: str | uuid.UUID | None = None
     ) -> int:
         """Return the number of vectors in the collection."""
+        col_name = _collection_name(tenant_id, source_id=source_id)
+        if self._client is None:
+            return len(self._fallback_store.get(col_name, {}))
         collection = self._get_or_create_collection(tenant_id, source_id=source_id)
         return collection.count()
+

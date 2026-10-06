@@ -21,7 +21,7 @@ import { SourceLogo } from './SourceLogos';
 
 const connectionSchema = z.object({
   name: z.string().min(1, 'Connection Name is required').max(200, 'Name must be 200 characters or less'),
-  type: z.enum(['postgres', 'mysql', 'mssql', 'excel', 'snowflake', 'sqlite']),
+  type: z.enum(['postgres', 'mysql', 'mssql', 'excel', 'snowflake', 'sqlite', 'github']),
   host: z.string().optional(),
   port: z.number().int().positive().optional().or(z.literal('')),
   database_name: z.string().optional(),
@@ -58,7 +58,7 @@ interface ConnectionModalProps {
 interface ConnectorOption {
   id: string;
   name: string;
-  type: 'postgres' | 'mysql' | 'mssql' | 'excel' | 'snowflake' | 'sqlite' | 'coming_soon';
+  type: 'postgres' | 'mysql' | 'mssql' | 'excel' | 'snowflake' | 'sqlite' | 'github' | 'coming_soon';
   category: 'database' | 'warehouse' | 'files' | 'tools';
   description: string;
   isAvailable: boolean;
@@ -82,6 +82,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     username: '',
     password: '',
   });
+
+  // Git Repository State
+  const [repoUrl, setRepoUrl] = useState('');
+  const [repoBranch, setRepoBranch] = useState('main');
 
   // Excel Upload State
   const [excelFile, setExcelFile] = useState<File | null>(null);
@@ -273,10 +277,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     {
       id: 'github',
       name: 'GitHub',
-      type: 'coming_soon',
+      type: 'github',
       category: 'tools',
-      description: 'Repository issues, pull requests, and commit metadata.',
-      isAvailable: false,
+      description: 'Repository code intelligence with AST parsing, Neo4j graph & ChromaDB vectors.',
+      isAvailable: true,
       renderIcon: () => <SourceLogo type="github" size={32} />,
     },
     {
@@ -333,6 +337,8 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
         username: '',
         password: '',
       });
+      setRepoUrl('');
+      setRepoBranch('main');
       setExcelFile(null);
       setTempFileId(null);
       setSheetPreviews([]);
@@ -503,7 +509,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       errs.name = 'Connection Name is required';
     }
 
-    if (formData.type === 'excel') {
+    if (formData.type === 'github') {
+      if (!repoUrl.trim()) {
+        errs.repoUrl = 'Repository Git URL is required (e.g. https://github.com/org/repo.git)';
+      }
+    } else if (formData.type === 'excel') {
       if (!tempFileId || !excelFile) {
         errs.file = 'Please upload an Excel file.';
       }
@@ -533,6 +543,21 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     setBackendError(null);
     setTestSuccess(false);
 
+    if (formData.type === 'github') {
+      try {
+        if (!repoUrl.startsWith('http://') && !repoUrl.startsWith('https://') && !repoUrl.startsWith('git@')) {
+          throw new Error('Repository URL must start with https:// or git@');
+        }
+        setTestSuccess(true);
+        return true;
+      } catch (err: any) {
+        setBackendError(err.message || 'Invalid Git repository URL.');
+        return false;
+      } finally {
+        setIsTesting(false);
+      }
+    }
+
     try {
       await fetchApi('/sources/test', {
         method: 'POST',
@@ -552,7 +577,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
   const handleSave = async () => {
     if (!validateForm()) return;
 
-    if (formData.type !== 'excel') {
+    if (formData.type !== 'excel' && formData.type !== 'github') {
       const testPassed = await handleTestConnection();
       if (!testPassed) return;
     }
@@ -561,7 +586,16 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     setBackendError(null);
 
     try {
-      if (formData.type === 'excel') {
+      if (formData.type === 'github') {
+        await fetchApi('/code-repos/connect', {
+          method: 'POST',
+          body: JSON.stringify({
+            url: repoUrl.trim(),
+            name: formData.name.trim(),
+            branch: repoBranch.trim() || 'main',
+          }),
+        });
+      } else if (formData.type === 'excel') {
         await fetchApi('/sources/excel', {
           method: 'POST',
           body: JSON.stringify({
@@ -970,8 +1004,45 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
                 {errors.name && <div className="form-error">{errors.name}</div>}
               </div>
 
-              {/* EXCEL UPLOAD WORKFLOW */}
-              {formData.type === 'excel' ? (
+              {/* GITHUB / CODE INTELLIGENCE WORKFLOW */}
+              {formData.type === 'github' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+
+
+                  {/* Repository Git URL */}
+                  <div className="form-group">
+                    <label htmlFor="repoUrl">Repository Git URL</label>
+                    <input
+                      id="repoUrl"
+                      name="repoUrl"
+                      value={repoUrl}
+                      onChange={(e) => setRepoUrl(e.target.value)}
+                      placeholder="https://github.com/org/repo.git"
+                      disabled={isTesting || isSaving}
+                    />
+                    {errors.repoUrl && <div className="form-error">{errors.repoUrl}</div>}
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      HTTPS clone URL or SSH repository address.
+                    </div>
+                  </div>
+
+                  {/* Branch */}
+                  <div className="form-group">
+                    <label htmlFor="repoBranch">Git Branch</label>
+                    <input
+                      id="repoBranch"
+                      name="repoBranch"
+                      value={repoBranch}
+                      onChange={(e) => setRepoBranch(e.target.value)}
+                      placeholder="main"
+                      disabled={isTesting || isSaving}
+                    />
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      Default branch to index (usually <code>main</code> or <code>master</code>).
+                    </div>
+                  </div>
+                </div>
+              ) : formData.type === 'excel' ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
                   {/* Dropzone */}
                   <div

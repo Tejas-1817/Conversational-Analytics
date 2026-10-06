@@ -153,6 +153,14 @@ class Settings(BaseSettings):
     # Request size limit (bytes)
     max_request_size_bytes: int = 10 * 1024 * 1024  # 10MB
 
+    # =========================================================================
+    # GraphRAG — Code Intelligence
+    # =========================================================================
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = ""
+    code_repos_clone_dir: str = "./storage/code_repos"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

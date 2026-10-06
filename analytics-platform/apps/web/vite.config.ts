@@ -26,7 +26,8 @@ export default defineConfig({
       '/engine': apiProxy,
       '/dashboards': apiProxy,
       '/domains': apiProxy,
-      '/api': apiProxy
+      '/api': apiProxy,
+      '/code-repos': apiProxy
     }
   },
   test: {
