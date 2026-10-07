@@ -150,6 +150,7 @@ SQL CORRECTNESS RULES:
 - Qualify every base-table column with its table alias (e.g. if 'FROM prescriptions AS p', use 'p.column', NEVER 'prescriptions.column').
 
 - Use declared key relationships for joins.
+- Always SELECT human-readable entity names (e.g. 'product_name', 'customer_name', 'store_name') whenever querying products, customers, stores, etc., rather than selecting only raw SKU or ID codes.
 - Select every requested metric, dimension, filter, and time period.
 - Apply status filters only when requested or defined by business context.
 - Apply date filters only when requested.

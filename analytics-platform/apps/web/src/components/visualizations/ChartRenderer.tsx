@@ -216,6 +216,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
         overflow: 'hidden',
         width: '100%',
         height: '100%',
+        fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)',
         boxSizing: 'border-box'
       }}>
         <div style={{
@@ -277,7 +278,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     const secondaryCols = numericCols.slice(3);
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)' }}>
         <div style={{
           display: 'grid',
           gridTemplateColumns: `repeat(${Math.min(primaryCols.length, 3)}, 1fr)`,
@@ -348,6 +349,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
         borderRadius: '16px',
         background: 'var(--bg-card, #FFFFFF)',
         border: '1px solid var(--border-color, rgba(148, 163, 184, 0.2))',
+        fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)',
         boxShadow: '0 8px 24px -4px rgba(0, 0, 0, 0.08)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
@@ -446,6 +448,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
         border: '1px solid var(--border-color, rgba(148, 163, 184, 0.2))',
         borderRadius: '14px',
         padding: '1rem',
+        fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)',
         boxShadow: '0 4px 20px rgba(0,0,0,0.04)'
       }}>
         {/* Table Header & Controls */}
@@ -603,24 +606,50 @@ export const ChartRenderer: React.FC<ChartProps> = ({
   // ECharts axis key resolution
   const hasColumnTypes = Object.keys(columnTypes).length > 0;
 
-  const xAxisKey = hasColumnTypes
-    ? (columns.find(col => columnTypes[col] === 'CATEGORICAL' || columnTypes[col] === 'TIME_SERIES') || firstCol)
-    : firstCol;
+  const isIdColumn = (col: string) => /(_id|id|_pk|_fk)$/i.test(col.trim());
+  const isCodeOrSkuCol = (col: string) => /(_sku|sku|_code|code|_uuid|uuid|hash)$/i.test(col.trim());
+  const isNameOrTitleCol = (col: string) =>
+    /(name|title|product|item|customer|store|category|label|description|brand|city|country|month|date|day|year|time|period)/i.test(col.trim()) &&
+    !isIdColumn(col) && !isCodeOrSkuCol(col);
+
+  // Intelligently find the best human-readable category column:
+  // 1. Explicit name/title/product column (e.g. product_name, name, title)
+  // 2. Non-ID, non-SKU categorical column
+  // 3. Fallback to first non-ID column
+  const preferredNameCol = columns.find(col => isNameOrTitleCol(col));
+  const categoricalCols = hasColumnTypes
+    ? columns.filter(col => (columnTypes[col] === 'CATEGORICAL' || columnTypes[col] === 'TIME_SERIES') && !isIdColumn(col))
+    : columns.filter(col => !isIdColumn(col) && rows.some(r => typeof r[col] === 'string' && isNaN(Number(r[col]))));
+
+  let resolvedXAxisKey = firstCol;
+  if (preferredNameCol) {
+    resolvedXAxisKey = preferredNameCol;
+  } else if (categoricalCols.length > 0) {
+    const nonSkuCol = categoricalCols.find(col => !isCodeOrSkuCol(col));
+    resolvedXAxisKey = nonSkuCol || categoricalCols[0];
+  } else {
+    resolvedXAxisKey = columns.find(col => !isIdColumn(col) && !isCodeOrSkuCol(col)) || columns.find(col => !isIdColumn(col)) || firstCol;
+  }
+
+  const xAxisKey = resolvedXAxisKey;
 
   const yAxisKeys = hasColumnTypes
-    ? columns.filter(col => col !== xAxisKey && (columnTypes[col] === 'NUMERIC' || columnTypes[col] === 'PERCENTAGE'))
+    ? columns.filter(col => col !== xAxisKey && !isIdColumn(col) && !isCodeOrSkuCol(col) && (columnTypes[col] === 'NUMERIC' || columnTypes[col] === 'PERCENTAGE'))
     : columns.slice(1).filter(col =>
-      rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))))
-    );
+        col !== xAxisKey &&
+        !isIdColumn(col) &&
+        !isCodeOrSkuCol(col) &&
+        rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))))
+      );
 
   const activeYKeys = yAxisKeys.length > 0 ? yAxisKeys : [secondCol];
 
   const formatTitle = (str: string) => str.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-  // Wisdom.ai Theme and Tooltips
+  // Theme and Tooltips
   const commonTheme = {
     color: COLORS,
-    textStyle: { fontFamily: 'Inter, system-ui, -apple-system, sans-serif', color: '#334155' },
+    textStyle: { fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif', color: '#334155' },
     tooltip: {
       trigger: 'axis',
       backgroundColor: 'rgba(15, 23, 42, 0.92)',
@@ -660,7 +689,8 @@ export const ChartRenderer: React.FC<ChartProps> = ({
       show: activeYKeys.length > 1,
       textStyle: { color: '#64748B', fontSize: 12, fontWeight: 500 },
       top: 0,
-      icon: 'circle'
+      icon: 'circle',
+      formatter: (name: string) => formatTitle(name),
     },
     grid: {
       left: 12,
@@ -679,10 +709,11 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     axisLabel: {
       color: '#64748B',
       fontSize: 11,
-      interval: 'auto',
-      hideOverlap: true,
+      interval: 0,
+      hideOverlap: false,
+      rotate: rows.length > 5 ? 20 : 0,
       align: 'center',
-      width: 85,
+      width: 80,
       overflow: 'truncate'
     }
   };
@@ -727,7 +758,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
       const colColor = COLORS[idx % COLORS.length];
       const grad = wisdomSaasTheme.gradients[idx % wisdomSaasTheme.gradients.length];
       return {
-        name: key,
+        name: formatTitle(key),
         type: 'bar',
         data: rows.map(r => r[key]),
         barMaxWidth: 34,
@@ -765,7 +796,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     series: activeYKeys.map((key, idx) => {
       const colColor = COLORS[idx % COLORS.length];
       return {
-        name: key,
+        name: formatTitle(key),
         type: 'line',
         smooth: 0.35,
         symbol: 'circle',
@@ -805,7 +836,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     series: activeYKeys.map((key, idx) => {
       const colColor = COLORS[idx % COLORS.length];
       return {
-        name: key,
+        name: formatTitle(key),
         type: 'line',
         smooth: 0.35,
         symbol: 'circle',
@@ -906,6 +937,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
       borderRadius: '14px',
       border: '1px solid var(--border-color, rgba(148, 163, 184, 0.2))',
       padding: '0.85rem 1rem 0.5rem 1rem',
+      fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)',
       boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
       boxSizing: 'border-box'
     }}>

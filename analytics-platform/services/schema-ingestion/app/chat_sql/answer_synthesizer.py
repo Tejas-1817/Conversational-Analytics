@@ -179,7 +179,7 @@ def _deterministic_answer(
     question: str,
     result_data: List[Dict[str, Any]],
 ) -> str:
-    """Return a useful answer without an additional Ollama call."""
+    """Return a useful answer formatted as clean unordered list items."""
 
     if not result_data:
         return "No matching records were found in the connected database."
@@ -197,33 +197,26 @@ def _deterministic_answer(
         value = first_row[column]
         label = column.replace("_", " ").strip()
 
-        if "how many" in question.lower() or "count" in question.lower():
-            return f"The {label} is {_format_value(value)}."
-
-        return f"{label.title()}: {_format_value(value)}."
+        return f"- **{label.title()}**: {_format_value(value)}"
 
     if row_count == 1:
-        details = ", ".join(
-            f"{column.replace('_', ' ').title()}: {_format_value(value)}"
+        intro = "Based on the verified database results:"
+        bullets = "\n".join(
+            f"- **{column.replace('_', ' ').title()}**: {_format_value(value)}"
             for column, value in first_row.items()
         )
-        return f"The result is: {details}."
+        return f"{intro}\n\n{bullets}"
 
-    preview_rows = result_data[:3]
-    preview_text = "; ".join(
-        ", ".join(
-            f"{column.replace('_', ' ')}: {_format_value(value)}"
-            for column, value in row.items()
-        )
-        for row in preview_rows
-        if isinstance(row, dict)
-    )
+    preview_rows = result_data[:12]
+    intro = f"Based on the verified database results, {row_count} records were retrieved:"
+    preview_items = []
+    for row in preview_rows:
+        if isinstance(row, dict):
+            row_desc = ", ".join(f"**{k.replace('_', ' ').title()}**: {_format_value(v)}" for k, v in row.items())
+            preview_items.append(f"- {row_desc}")
 
-    if preview_text:
-        return (
-            f"The query returned {row_count} matching records. "
-            f"The first results are: {preview_text}."
-        )
+    if preview_items:
+        return f"{intro}\n\n" + "\n".join(preview_items)
 
     return f"The query returned {row_count} matching records."
 
@@ -291,9 +284,7 @@ class AnswerSynthesizer:
         business_context = business_context[:4_000]
 
         if analysis_mode == "standard":
-            response_format = """Return one concise paragraph that directly
-answers the question. Mention only values and rankings supported by the
-result data."""
+            response_format = """Provide an introductory lead-in sentence summarizing the overall finding, followed by an unordered bulleted list (using '- ') where each item, entity, metric, or row from the result data is presented in its own bullet point with entity names and key metrics bolded. Do not return one continuous paragraph block."""
 
         elif analysis_mode in {"strategic", "hybrid"}:
             response_format = """Return exactly these Markdown sections:

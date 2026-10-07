@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
-import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight, GitBranch, FileCode2, FolderGit2 } from 'lucide-react';
+import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight, ChevronDown, GitBranch, FileCode2, FolderGit2, Sparkles, ArrowDown } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
+import { WisdomThoughtSteps } from '../../components/chat/WisdomThoughtSteps';
+import { WisdomMarkdownRenderer } from '../../components/chat/WisdomMarkdownRenderer';
+import { WisdomFollowUps } from '../../components/chat/WisdomFollowUps';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -911,9 +914,23 @@ export const ChatInterface = () => {
 
           {messages.map((m, i) => (
             <div key={i} className={`message-bubble ${m.role}`}>
-              <div className={`message-avatar ${m.role}`}>
-                {m.role === 'user' ? <User size={20} /> : <Bot size={20} />}
-              </div>
+              {m.role === 'assistant' && (
+                <div className="message-avatar assistant">
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #6366F1 0%, #06B6D4 100%)',
+                    color: '#FFFFFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
+                  }}>
+                    <Sparkles size={16} />
+                  </div>
+                </div>
+              )}
 
               <div className="message-content">
                 {m.role === 'user' ? (
@@ -928,46 +945,16 @@ export const ChatInterface = () => {
 
                     {!m.isError && (m.sql || m.content || m.answer) && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
-                        {/* 1. Executive Summary — suppress for pure single-metric KPI cards */}
+                        {/* 0. WisdomAI Expandable Reasoning & Thought Steps */}
+                        <WisdomThoughtSteps
+                          executionTimeMs={m.execution_time_ms}
+                          intentReason={m.question}
+                        />
+
+                        {/* 1. WisdomAI Structured Cards & Markdown Synthesis */}
                         {m.answer_markdown && (
                           <div className="business-answer">
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                h2: ({ children }) => (
-                                  <h2 style={{
-                                    fontSize: '1.05rem',
-                                    margin: '1rem 0 0.4rem',
-                                    color: 'var(--text-main)',
-                                  }}>
-                                    {children}
-                                  </h2>
-                                ),
-                                p: ({ children }) => (
-                                  <p style={{
-                                    margin: '0.35rem 0',
-                                    lineHeight: 1.65,
-                                  }}>
-                                    {children}
-                                  </p>
-                                ),
-                                ul: ({ children }) => (
-                                  <ul style={{
-                                    paddingLeft: '1.25rem',
-                                    margin: '0.4rem 0',
-                                  }}>
-                                    {children}
-                                  </ul>
-                                ),
-                                li: ({ children }) => (
-                                  <li style={{ marginBottom: '0.3rem' }}>
-                                    {children}
-                                  </li>
-                                ),
-                              }}
-                            >
-                              {m.answer_markdown}
-                            </ReactMarkdown>
+                            <WisdomMarkdownRenderer content={m.answer_markdown} />
                           </div>
                         )}
 
@@ -1169,34 +1156,14 @@ export const ChatInterface = () => {
                           <CodeSnippetAccordion chunks={m.retrieved_chunks} />
                         )}
 
-                        {/* 5. Suggested follow-up questions */}
+                        {/* 5. WisdomAI Arrow Suggested Follow-Ups */}
                         {m.follow_up_questions?.length > 0 && (
-                          <div
-                            style={{
-                              display: 'flex',
-                              flexWrap: 'wrap',
-                              gap: '0.5rem',
-                              marginTop: '1rem',
+                          <WisdomFollowUps
+                            questions={m.follow_up_questions}
+                            onSelect={(q) => {
+                              setInput(q);
                             }}
-                          >
-                            {m.follow_up_questions.map(
-                              (question: string) => (
-                                <button
-                                  key={question}
-                                  type="button"
-                                  className="btn-secondary"
-                                  onClick={() => setInput(question)}
-                                  style={{
-                                    whiteSpace: 'normal',
-                                    textAlign: 'left',
-                                    fontSize: '0.8rem',
-                                  }}
-                                >
-                                  {question}
-                                </button>
-                              ),
-                            )}
-                          </div>
+                          />
                         )}
                       </div>
                     )}
@@ -1249,21 +1216,26 @@ export const ChatInterface = () => {
               </div>
             </div>
           ))}
-          {/* Initial loading skeleton for the POST request phase */}
+          {/* Initial live loading state with live WisdomAI thought timer */}
           {loading && !messages.some(m => m.status === 'processing') && (
             <div className="message-bubble assistant">
               <div className="message-avatar assistant">
-                <Bot size={20} />
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #6366F1 0%, #06B6D4 100%)',
+                  color: '#FFFFFF',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
+                }}>
+                  <Sparkles size={16} />
+                </div>
               </div>
               <div className="message-content">
-                <div className="flex items-center gap-2 text-muted mt-2">
-                  <div style={{ display: 'flex', gap: '4px', color: 'var(--primary)' }}>
-                    <span className="skeleton" style={{ width: 8, height: 8, borderRadius: '50%', animationDelay: '0ms' }} />
-                    <span className="skeleton" style={{ width: 8, height: 8, borderRadius: '50%', animationDelay: '150ms' }} />
-                    <span className="skeleton" style={{ width: 8, height: 8, borderRadius: '50%', animationDelay: '300ms' }} />
-                  </div>
-                  <span className="text-sm"></span>
-                </div>
+                <WisdomThoughtSteps isLoading={true} />
               </div>
             </div>
           )}
@@ -1271,7 +1243,42 @@ export const ChatInterface = () => {
         </div>
 
         <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: 0, zIndex: 20, paddingBottom: '1.5rem', paddingTop: '1rem' }}>
-          <div style={{ margin: '0 auto', maxWidth: '800px' }}>
+          <div style={{ margin: '0 auto', maxWidth: '800px', position: 'relative' }}>
+            {/* Floating Scroll to Bottom Arrow Button (WisdomAI style) */}
+            <div style={{ position: 'absolute', top: '-52px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
+              <button
+                type="button"
+                onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '50%',
+                  backgroundColor: '#FFFFFF',
+                  border: '1.5px solid #E2E8F0',
+                  boxShadow: '0 4px 14px rgba(0, 0, 0, 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#2563EB',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#93C5FD';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 18px rgba(37, 99, 235, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#E2E8F0';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 14px rgba(0, 0, 0, 0.12)';
+                }}
+                title="Scroll to latest response"
+              >
+                <ArrowDown size={22} strokeWidth={2.4} style={{ color: '#2563EB' }} />
+              </button>
+            </div>
+
             {/* Database & Domain Selection Bar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem', paddingLeft: '0.25rem', flexWrap: 'wrap' }}>
               {/* Connected Database / Git Repo Selector */}
@@ -1595,7 +1602,7 @@ export const ChatInterface = () => {
                   fontFamily: 'inherit',
                 }}
                 rows={1}
-                placeholder={isCodeRepoSelected ? "Ask about architecture, functions, call hierarchies, endpoints..." : "Ask a question about your business data..."}
+                placeholder={isCodeRepoSelected ? "Ask about architecture, functions, call hierarchies, endpoints..." : "Ask WisdomAI about your data..."}
                 value={input}
                 onChange={e => {
                   setInput(e.target.value);

@@ -37,6 +37,11 @@
   --text-muted: #6B7280;
   --text-faint: #A0A8B4;
 
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-results: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-mono: Consolas, Monaco, 'Courier New', monospace;
+
   /* Borders */
   --border-color: #E5E7EE;
   --border-focus: #3B82F6;
@@ -796,7 +801,26 @@ tr:last-child td {
 
 .message-bubble.assistant .message-content {
   text-align: left;
+  font-family: var(--font-results);
 }
+
+.business-answer,
+.raw-data-accordion table,
+.results-font,
+.wisdom-summary-card {
+  font-family: var(--font-results, 'Helvetica Neue', Helvetica, Arial, sans-serif) !important;
+}
+
+.wisdom-summary-card p,
+.wisdom-summary-card span,
+.wisdom-summary-card strong,
+.wisdom-summary-card li,
+.wisdom-summary-card h1,
+.wisdom-summary-card h2,
+.wisdom-summary-card h3 {
+  font-family: var(--font-results, 'Helvetica Neue', Helvetica, Arial, sans-serif) !important;
+}
+
 
 /* ==========================================================================
    SIDE PANELS & DRAWERS
