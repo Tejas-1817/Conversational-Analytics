@@ -13,6 +13,8 @@ import {
   Layers,
   BarChart2,
   PieChart,
+  CircleDot,
+  Percent,
   FileSpreadsheet,
   Image as ImageIcon,
   Sparkles
@@ -636,11 +638,11 @@ export const ChartRenderer: React.FC<ChartProps> = ({
   const yAxisKeys = hasColumnTypes
     ? columns.filter(col => col !== xAxisKey && !isIdColumn(col) && !isCodeOrSkuCol(col) && (columnTypes[col] === 'NUMERIC' || columnTypes[col] === 'PERCENTAGE'))
     : columns.slice(1).filter(col =>
-        col !== xAxisKey &&
-        !isIdColumn(col) &&
-        !isCodeOrSkuCol(col) &&
-        rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))))
-      );
+      col !== xAxisKey &&
+      !isIdColumn(col) &&
+      !isCodeOrSkuCol(col) &&
+      rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))))
+    );
 
   const activeYKeys = yAxisKeys.length > 0 ? yAxisKeys : [secondCol];
 
@@ -919,11 +921,164 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     }],
   };
 
+  // 5. Scatter Chart Option (X vs Y Correlation)
+  const numColumns = columns.filter(col => {
+    if (columnTypes[col]) return columnTypes[col] === 'NUMERIC' || columnTypes[col] === 'PERCENTAGE';
+    return rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col])) && r[col] !== ''));
+  });
+  const scatterXKey = numColumns[0] || activeYKeys[0] || firstCol;
+  const scatterYKey = numColumns[1] || activeYKeys[1] || numColumns[0] || secondCol;
+  const scatterLabelKey = columns.find(c => c !== scatterXKey && c !== scatterYKey && !isIdColumn(c)) || firstCol;
+
+  const scatterOption = {
+    ...commonTheme,
+    tooltip: {
+      ...commonTheme.tooltip,
+      trigger: 'item',
+      formatter: (params: any) => {
+        const d = params.data || [];
+        const xVal = typeof d[0] === 'number' ? d[0].toLocaleString() : d[0];
+        const yVal = typeof d[1] === 'number' ? d[1].toLocaleString() : d[1];
+        const label = d[2] || '';
+        return `
+          ${label ? `<div style="font-weight:700;margin-bottom:4px;color:#F8FAFC;">${label}</div>` : ''}
+          <div style="display:flex;justify-content:space-between;gap:12px;color:#94A3B8;"><span>${formatTitle(scatterXKey)}:</span><b style="color:#F8FAFC;">${xVal}</b></div>
+          <div style="display:flex;justify-content:space-between;gap:12px;color:#94A3B8;"><span>${formatTitle(scatterYKey)}:</span><b style="color:#38BDF8;">${yVal}</b></div>
+        `;
+      }
+    },
+    xAxis: {
+      type: 'value',
+      name: formatTitle(scatterXKey),
+      nameLocation: 'middle',
+      nameGap: 24,
+      nameTextStyle: { color: '#64748B', fontSize: 11 },
+      axisLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.25)' } },
+      splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.12)', type: 'dashed' } },
+      axisLabel: { color: '#64748B', fontSize: 11, formatter: (v: number) => formatVal(v) }
+    },
+    yAxis: {
+      type: 'value',
+      name: formatTitle(scatterYKey),
+      nameTextStyle: { color: '#64748B', fontSize: 11 },
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.12)', type: 'dashed' } },
+      axisLabel: { color: '#64748B', fontSize: 11, formatter: (v: number) => formatVal(v) }
+    },
+    dataZoom: dataZoomConfig,
+    series: [{
+      name: `${formatTitle(scatterXKey)} vs ${formatTitle(scatterYKey)}`,
+      type: 'scatter',
+      symbolSize: 12,
+      data: rows.map(r => [
+        Number(r[scatterXKey]) || 0,
+        Number(r[scatterYKey]) || 0,
+        String(r[scatterLabelKey] ?? '')
+      ]),
+      itemStyle: {
+        color: '#6366F1',
+        borderColor: 'rgba(255, 255, 255, 0.8)',
+        borderWidth: 1.5,
+        shadowBlur: 10,
+        shadowColor: 'rgba(99, 102, 241, 0.4)'
+      },
+      emphasis: {
+        scale: 1.4,
+        itemStyle: {
+          color: '#EC4899',
+          shadowBlur: 14,
+          shadowColor: 'rgba(236, 72, 153, 0.6)'
+        }
+      }
+    }]
+  };
+
+  // 6. Pareto 80/20 Chart Option (Descending Bars + Cumulative % Curve)
+  const paretoMetric = activeYKeys[0];
+  const sortedParetoRows = [...rows].sort((a, b) => (Number(b[paretoMetric]) || 0) - (Number(a[paretoMetric]) || 0));
+  const totalMetricSum = sortedParetoRows.reduce((sum, r) => sum + (Number(r[paretoMetric]) || 0), 0) || 1;
+  let runningParetoSum = 0;
+  const cumulativePercentages = sortedParetoRows.map(r => {
+    runningParetoSum += (Number(r[paretoMetric]) || 0);
+    return Number(((runningParetoSum / totalMetricSum) * 100).toFixed(1));
+  });
+
+  const paretoOption = {
+    ...commonTheme,
+    xAxis: {
+      ...commonXAxis,
+      data: sortedParetoRows.map(r => r[xAxisKey]),
+    },
+    yAxis: [
+      {
+        ...commonYAxis,
+        name: formatTitle(paretoMetric),
+        nameTextStyle: { color: '#64748B', fontSize: 10 },
+      },
+      {
+        type: 'value',
+        name: 'Cumulative %',
+        min: 0,
+        max: 100,
+        position: 'right',
+        axisLine: { show: false },
+        splitLine: { show: false },
+        axisLabel: { color: '#EC4899', fontSize: 10, formatter: '{value}%' }
+      }
+    ],
+    dataZoom: dataZoomConfig,
+    legend: {
+      show: true,
+      data: [formatTitle(paretoMetric), 'Cumulative %'],
+      textStyle: { color: '#64748B', fontSize: 11 }
+    },
+    series: [
+      {
+        name: formatTitle(paretoMetric),
+        type: 'bar',
+        yAxisIndex: 0,
+        data: sortedParetoRows.map(r => r[paretoMetric]),
+        barMaxWidth: 30,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#6366F1' },
+            { offset: 1, color: '#4F46E5' }
+          ])
+        }
+      },
+      {
+        name: 'Cumulative %',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: 0.2,
+        symbol: 'circle',
+        symbolSize: 6,
+        data: cumulativePercentages,
+        lineStyle: { width: 2.5, color: '#EC4899' },
+        itemStyle: { color: '#EC4899', borderColor: '#FFFFFF', borderWidth: 1.5 },
+        markLine: {
+          symbol: 'none',
+          data: [
+            {
+              yAxis: 80,
+              name: '80% Threshold',
+              lineStyle: { color: '#EF4444', type: 'dashed', width: 1.5 },
+              label: { position: 'start', formatter: '80% Cutoff', color: '#EF4444', fontSize: 10 }
+            }
+          ]
+        }
+      }
+    ]
+  };
+
   // Resolve active chart option
   let selectedOption: any = barOption;
   if (activeType === 'line_chart') selectedOption = lineOption;
   else if (activeType === 'area_chart') selectedOption = areaOption;
   else if (activeType === 'pie_chart') selectedOption = pieOption;
+  else if (activeType === 'scatter_chart' || activeType === 'scatter') selectedOption = scatterOption;
+  else if (activeType === 'pareto_chart' || activeType === 'pareto') selectedOption = paretoOption;
 
   return (
     <div style={{
@@ -1019,6 +1174,38 @@ export const ChartRenderer: React.FC<ChartProps> = ({
               >
                 <PieChart size={13} />
               </button>
+              {/* Scatter Button */}
+              <button
+                className="btn-ghost"
+                onClick={() => setActiveType('scatter_chart')}
+                title="Scatter Plot"
+                style={{
+                  padding: '4px 6px',
+                  borderRadius: '6px',
+                  background: activeType === 'scatter_chart' ? 'var(--bg-card, #FFFFFF)' : 'transparent',
+                  color: activeType === 'scatter_chart' ? 'var(--primary, #6366F1)' : 'var(--text-muted)',
+                  boxShadow: activeType === 'scatter_chart' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none'
+                }}
+              >
+                <CircleDot size={13} />
+              </button>
+
+              {/* Pareto Button */}
+              <button
+                className="btn-ghost"
+                onClick={() => setActiveType('pareto_chart')}
+                title="Pareto 80/20 Chart"
+                style={{
+                  padding: '4px 6px',
+                  borderRadius: '6px',
+                  background: activeType === 'pareto_chart' ? 'var(--bg-card, #FFFFFF)' : 'transparent',
+                  color: activeType === 'pareto_chart' ? 'var(--primary, #6366F1)' : 'var(--text-muted)',
+                  boxShadow: activeType === 'pareto_chart' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none'
+                }}
+              >
+                <Percent size={13} />
+              </button>
+
               <button
                 className="btn-ghost"
                 onClick={() => setActiveType('table')}

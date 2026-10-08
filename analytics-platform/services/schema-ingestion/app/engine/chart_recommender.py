@@ -97,6 +97,20 @@ class ChartRecommender:
             rendered_component = "Leaderboard"
             reason = "Top-N ranked entity breakdown."
 
+                # Rule: Pareto 80/20 Chart
+        elif any(kw in (question or "").lower() for kw in ["pareto", "80/20", "cumulative share", "cumulative percentage", "top contributors"]) and len(num_cols) > 0 and rc >= 3:
+            visualization = "pareto_chart"
+            chart_type = "pareto_chart"
+            rendered_component = "ParetoChart"
+            reason = "80/20 Pareto distribution & cumulative percentage analysis."
+
+        # Rule: Scatter Chart (multi-metric correlation)
+        elif (len(num_cols) >= 2 or any(kw in (question or "").lower() for kw in ["scatter", "correlation", "relationship", "vs", "versus"])) and len(num_cols) >= 2 and rc >= 4:
+            visualization = "scatter_chart"
+            chart_type = "scatter_chart"
+            rendered_component = "ScatterPlot"
+            reason = "Multi-variable numeric correlation & scatter distribution."
+
         # Rule 7: Category + Percentage / Share -> Pie Chart
         elif (len(pct_cols) > 0 or any(kw in (question or "").lower() for kw in ["percentage", "share", "distribution", "breakdown"])) and 2 <= rc <= 10:
             visualization = "pie_chart"

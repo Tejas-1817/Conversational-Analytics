@@ -66,6 +66,7 @@ class CodeQueryResponse(BaseModel):
     referenced_symbols: list[str] = Field(default_factory=list)
     graph_facts: list[str] = Field(default_factory=list)
     retrieved_chunks: list[dict[str, Any]] = Field(default_factory=list)
+    follow_up_questions: list[str] = Field(default_factory=list)
 
 
 class RepoSummary(BaseModel):
@@ -265,6 +266,7 @@ def query_repository_code(
                 "referenced_symbols": result.referenced_symbols,
                 "graph_facts": result.graph_facts,
                 "retrieved_chunks": result.retrieved_chunks,
+                "follow_up_questions": result.follow_up_questions,
             },
         )
         db.add(asst_msg)
@@ -280,6 +282,7 @@ def query_repository_code(
             referenced_symbols=result.referenced_symbols,
             graph_facts=result.graph_facts,
             retrieved_chunks=result.retrieved_chunks,
+            follow_up_questions=result.follow_up_questions,
         )
     except Exception as exc:
         log.error("code_query_failed", repo_id=repo_id, error=str(exc), exc_info=True)

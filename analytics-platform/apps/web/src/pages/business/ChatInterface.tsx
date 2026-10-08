@@ -617,6 +617,7 @@ export const ChatInterface = () => {
           referenced_symbols: data.referenced_symbols || [],
           graph_facts: data.graph_facts || [],
           retrieved_chunks: data.retrieved_chunks || [],
+          follow_up_questions: data.follow_up_questions || [],
           execution_time_ms: Date.now() - startTime,
           generated_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };

@@ -29,6 +29,8 @@ class CodeQueryResult:
     referenced_symbols: list[str] = field(default_factory=list)
     graph_facts: list[str] = field(default_factory=list)
     retrieved_chunks: list[dict[str, Any]] = field(default_factory=list)
+    follow_up_questions: list[str] = field(default_factory=list)  # <-- ADD THIS FIELD
+
 
 
 class GraphRAGQueryEngine:
@@ -242,25 +244,29 @@ class GraphRAGQueryEngine:
                 text = chunk.get("text", "")
                 prompt_parts.append(f"```\n// File: {fp} (lines {l_start}-{l_end}) | {c_type}: {c_name}\n{text}\n```\n")
 
-        prompt_parts.extend([
+            prompt_parts.extend([
             "### Instructions:",
             "1. Provide a direct, crystal-clear, and technically accurate explanation.",
             "2. Always reference exact file paths and line numbers when discussing functions, classes, or logic.",
             "3. Explain call sequences, inheritance chains, and architectural responsibilities clearly.",
             "4. If code examples help explain the flow, use clean markdown code blocks.",
             "5. If the provided context is insufficient to fully answer certain details, state what is known and note any missing parts honestly.",
+            "6. At the very end of your response, provide exactly 3 relevant, highly specific follow-up questions about this code or architecture, formatted strictly as:",
+            "### Suggested Follow-ups:",
+            "- [First follow-up question]",
+            "- [Second follow-up question]",
+            "- [Third follow-up question]"
         ])
 
         full_prompt = "\n".join(prompt_parts)
 
         # Call LLM via GeminiProvider or google.genai fallback
+        raw_answer = ""
         try:
             from app.llm.providers.gemini import GeminiProvider
             provider = GeminiProvider()
-            answer = provider.generate_chat_completion(prompt=full_prompt, temperature=0.1)
-            return answer
+            raw_answer = provider.generate_chat_completion(prompt=full_prompt, temperature=0.1)
         except Exception as exc:
-            log.warning("gemini_provider_error_trying_direct_client", error=str(exc))
             try:
                 from google import genai
                 client = genai.Client(api_key=self.settings.gemini_api_key)
@@ -268,14 +274,26 @@ class GraphRAGQueryEngine:
                     model=getattr(self.settings, "gemini_model", "gemini-2.5-flash") or "gemini-2.5-flash",
                     contents=full_prompt,
                 )
-                return response.text or "Unable to generate code explanation."
+                raw_answer = response.text or "Unable to generate code explanation."
             except Exception as final_exc:
-                log.error("llm_synthesis_failed", error=str(final_exc))
-                return (
-                    f"### Graph Structure Found:\n"
-                    + "\n".join(f"- {f}" for f in graph_facts)
-                    + f"\n\n*(LLM generation error: {str(final_exc)})*"
-                )
+                raw_answer = f"### Graph Structure Found:\n" + "\n".join(f"- {f}" for f in graph_facts)
+
+        # Extract follow-up questions from the LLM output
+        clean_answer = raw_answer
+        follow_ups: list[str] = []
+        if "### Suggested Follow-ups" in raw_answer:
+            parts = re.split(r"### Suggested Follow-ups:?", raw_answer)
+            clean_answer = parts[0].strip()
+            if len(parts) > 1:
+                for line in parts[1].strip().splitlines():
+                    line = line.strip()
+                    if line.startswith(("-", "*")) or (len(line) > 2 and line[0].isdigit() and line[1] in (".", ")")):
+                        q = re.sub(r"^[-*\d.)\s]+", "", line).strip()
+                        if q:
+                            follow_ups.append(q)
+
+        return clean_answer, follow_ups[:4]
+
 
     # ------------------------------------------------------------------
     # Public Query Method
@@ -334,7 +352,7 @@ class GraphRAGQueryEngine:
                 ref_symbols.update(more_symbols)
 
         # 5. Synthesize answer with LLM
-        answer = self._synthesize_answer(
+        answer, follow_ups = self._synthesize_answer(
             query=question,
             graph_facts=graph_facts,
             retrieved_chunks=retrieved_chunks,
@@ -348,6 +366,7 @@ class GraphRAGQueryEngine:
             referenced_symbols=sorted(list(ref_symbols)),
             graph_facts=graph_facts,
             retrieved_chunks=retrieved_chunks,
+            follow_up_questions=follow_ups,
         )
 
         log.info(
