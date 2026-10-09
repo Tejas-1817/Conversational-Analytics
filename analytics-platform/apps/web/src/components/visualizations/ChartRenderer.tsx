@@ -759,6 +759,8 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     series: activeYKeys.map((key, idx) => {
       const colColor = COLORS[idx % COLORS.length];
       const grad = wisdomSaasTheme.gradients[idx % wisdomSaasTheme.gradients.length];
+      const isMultiSeries = activeYKeys.length > 1;
+
       return {
         name: formatTitle(key),
         type: 'bar',
@@ -766,18 +768,31 @@ export const ChartRenderer: React.FC<ChartProps> = ({
         barMaxWidth: 34,
         itemStyle: {
           borderRadius: [6, 6, 0, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: grad[0] },
-            { offset: 1, color: grad[1] }
-          ])
+          color: (params: any) => {
+            // When multi-series (e.g. Sales vs Target), color by series.
+            // When single-series, give EACH bar its own distinct gradient!
+            const chosenGrad = isMultiSeries
+              ? grad
+              : wisdomSaasTheme.gradients[params.dataIndex % wisdomSaasTheme.gradients.length];
+            return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: chosenGrad[0] },
+              { offset: 1, color: chosenGrad[1] }
+            ]);
+          }
         },
         emphasis: {
           focus: 'series',
           itemStyle: {
             shadowBlur: 10,
-            shadowColor: `${colColor}50`
+            shadowColor: (params: any) => {
+              const chosenColor = isMultiSeries
+                ? colColor
+                : COLORS[params.dataIndex % COLORS.length];
+              return `${chosenColor}50`;
+            }
           }
         },
+
         label: {
           show: rows.length <= 10,
           position: 'top',
