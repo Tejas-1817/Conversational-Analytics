@@ -3,9 +3,9 @@ import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
 import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight, ChevronDown, GitBranch, FileCode2, FolderGit2, Sparkles, ArrowDown } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
-import { WisdomThoughtSteps } from '../../components/chat/WisdomThoughtSteps';
-import { WisdomMarkdownRenderer } from '../../components/chat/WisdomMarkdownRenderer';
-import { WisdomFollowUps } from '../../components/chat/WisdomFollowUps';
+import { ThoughtSteps } from '../../components/chat/ThoughtSteps';
+import { MarkdownRenderer } from '../../components/chat/MarkdownRenderer';
+import { FollowUpSuggestions } from '../../components/chat/FollowUpSuggestions';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -946,16 +946,16 @@ export const ChatInterface = () => {
 
                     {!m.isError && (m.sql || m.content || m.answer) && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
-                        {/* 0. WisdomAI Expandable Reasoning & Thought Steps */}
-                        <WisdomThoughtSteps
+                        {/* 0. Expandable Reasoning & Thought Steps */}
+                        <ThoughtSteps
                           executionTimeMs={m.execution_time_ms}
                           intentReason={m.question}
                         />
 
-                        {/* 1. WisdomAI Structured Cards & Markdown Synthesis */}
+                        {/* 1. Structured Cards & Markdown Synthesis */}
                         {m.answer_markdown && (
                           <div className="business-answer">
-                            <WisdomMarkdownRenderer content={m.answer_markdown} />
+                            <MarkdownRenderer content={m.answer_markdown} />
                           </div>
                         )}
 
@@ -1157,9 +1157,9 @@ export const ChatInterface = () => {
                           <CodeSnippetAccordion chunks={m.retrieved_chunks} />
                         )}
 
-                        {/* 5. WisdomAI Arrow Suggested Follow-Ups */}
+                        {/* 5. Arrow Suggested Follow-Ups */}
                         {m.follow_up_questions?.length > 0 && (
-                          <WisdomFollowUps
+                          <FollowUpSuggestions
                             questions={m.follow_up_questions}
                             onSelect={(q) => {
                               setInput(q);
@@ -1217,7 +1217,7 @@ export const ChatInterface = () => {
               </div>
             </div>
           ))}
-          {/* Initial live loading state with live WisdomAI thought timer */}
+          {/* Initial live loading state with live thought timer */}
           {loading && !messages.some(m => m.status === 'processing') && (
             <div className="message-bubble assistant">
               <div className="message-avatar assistant">
@@ -1236,7 +1236,7 @@ export const ChatInterface = () => {
                 </div>
               </div>
               <div className="message-content">
-                <WisdomThoughtSteps isLoading={true} />
+                <ThoughtSteps isLoading={true} />
               </div>
             </div>
           )}
@@ -1245,7 +1245,7 @@ export const ChatInterface = () => {
 
         <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: 0, zIndex: 20, paddingBottom: '1.5rem', paddingTop: '1rem' }}>
           <div style={{ margin: '0 auto', maxWidth: '800px', position: 'relative' }}>
-            {/* Floating Scroll to Bottom Arrow Button (WisdomAI style) */}
+            {/* Floating Scroll to Bottom Arrow Button */}
             <div style={{ position: 'absolute', top: '-52px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
               <button
                 type="button"
@@ -1603,7 +1603,7 @@ export const ChatInterface = () => {
                   fontFamily: 'inherit',
                 }}
                 rows={1}
-                placeholder={isCodeRepoSelected ? "Ask about architecture, functions, call hierarchies, endpoints..." : "Ask WisdomAI about your data..."}
+                placeholder={isCodeRepoSelected ? "Ask about architecture, functions, call hierarchies, endpoints..." : "Ask about your data..."}
                 value={input}
                 onChange={e => {
                   setInput(e.target.value);

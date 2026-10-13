@@ -414,7 +414,7 @@ export const DomainDetail: React.FC = () => {
     return days;
   }, []);
 
-  const sourceName = domain?.source_name || 'wisdom_distribution_demo';
+  const sourceName = domain?.source_name || 'distribution_demo';
   const totalColumns = useMemo(() => {
     return tablesList.reduce((acc, t) => acc + (t.column_count || 0), 0);
   }, [tablesList]);

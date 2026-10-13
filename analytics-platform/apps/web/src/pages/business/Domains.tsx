@@ -62,7 +62,7 @@ export const updateMockDomainDocs = (id: string, countDelta: number) => {
   );
 };
 
-// Format date into WisdomAI standard: "Sep 10, 2026, 6:45 PM"
+// Format date standard: "Sep 10, 2026, 6:45 PM"
 function formatDateTime(dateStr?: string): string {
   if (!dateStr) return 'Never';
   try {
@@ -393,7 +393,6 @@ export const Domains: React.FC = () => {
             >
               <option value="all">Filter by owner</option>
               <option value="admin">Admin</option>
-              <option value="shailesh">Shailesh Kulkarni</option>
               <option value="girish">Girish Ch...</option>
             </select>
             <ChevronDown

@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 
-interface WisdomFollowUpsProps {
+interface FollowUpSuggestionsProps {
   questions: string[];
   onSelect: (question: string) => void;
 }
 
-export const WisdomFollowUps: React.FC<WisdomFollowUpsProps> = ({ questions, onSelect }) => {
+export const FollowUpSuggestions: React.FC<FollowUpSuggestionsProps> = ({ questions, onSelect }) => {
   const [isOpen, setIsOpen] = useState(true);
 
   if (!questions || questions.length === 0) return null;
 
   return (
     <div
-      className="wisdom-followups-container"
+      className="followups-container"
       style={{
         marginTop: '2.5rem',
         marginBottom: '1.5rem',

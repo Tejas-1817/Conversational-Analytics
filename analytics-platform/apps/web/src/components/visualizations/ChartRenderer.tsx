@@ -30,8 +30,8 @@ export interface ChartProps {
   hideToolbar?: boolean;
 }
 
-// Wisdom.ai Signature Vibrant SaaS Palette & Gradients
-export const wisdomSaasTheme = {
+// Signature Vibrant SaaS Palette & Gradients
+export const vibrantSaasTheme = {
   palette: [
     '#6366F1', // Indigo
     '#06B6D4', // Cyan
@@ -59,17 +59,16 @@ export const wisdomSaasTheme = {
   },
 };
 
-// Backwards-compatible export for existing tests/references
 export const vividSaasTheme = {
-  categorical: wisdomSaasTheme.palette,
+  categorical: vibrantSaasTheme.palette,
   sequential: ['#F3E8FF', '#C4B5FD', '#8B5CF6', '#6D28D9', '#4C1D95'],
-  semantic: wisdomSaasTheme.semantic,
+  semantic: vibrantSaasTheme.semantic,
   background: '#FAFAFA',
   text: '#111827',
   grid: '#F0F0F0',
 };
 
-const COLORS = wisdomSaasTheme.palette;
+const COLORS = vibrantSaasTheme.palette;
 
 export const ChartRenderer: React.FC<ChartProps> = ({
   data,
@@ -758,7 +757,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     dataZoom: dataZoomConfig,
     series: activeYKeys.map((key, idx) => {
       const colColor = COLORS[idx % COLORS.length];
-      const grad = wisdomSaasTheme.gradients[idx % wisdomSaasTheme.gradients.length];
+      const grad = vibrantSaasTheme.gradients[idx % vibrantSaasTheme.gradients.length];
       return {
         name: formatTitle(key),
         type: 'bar',

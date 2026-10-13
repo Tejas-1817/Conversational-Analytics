@@ -31,7 +31,7 @@ export const AddKnowledgeModal: React.FC<AddKnowledgeModalProps> = ({
         return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
       }
     }
-    return 'Shailesh Kulkarni';
+    return 'Admin';
   };
 
   useEffect(() => {

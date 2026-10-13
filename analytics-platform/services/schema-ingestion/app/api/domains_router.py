@@ -650,7 +650,7 @@ Provide a precise, accurate, plain-English answer grounded STRICTLY in the provi
 
 def _format_user_name(user_email: str) -> str:
     if not user_email:
-        return "Shailesh Kulkarni"
+        return "Admin"
     name_part = user_email.split("@")[0]
     parts = [p for p in name_part.replace(".", " ").replace("_", " ").replace("-", " ").split() if p]
     if parts:

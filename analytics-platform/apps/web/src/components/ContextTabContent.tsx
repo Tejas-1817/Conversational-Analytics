@@ -155,7 +155,7 @@ export const ContextTabContent: React.FC<ContextTabContentProps> = ({
           return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
         }
       }
-      return 'Shailesh Kulkarni';
+      return 'Admin';
     }
     if (emailOrName.includes('@')) {
       const prefix = emailOrName.split('@')[0];
@@ -319,7 +319,7 @@ export const ContextTabContent: React.FC<ContextTabContentProps> = ({
       id: 'run-1',
       file_name: 'distributor_analytics.docx',
       created_at: 'Apr 17, 2026, 05:52 PM',
-      source_tag: 'Wisdom Internal',
+      source_tag: 'Internal',
       status: 'failed',
       duration: '< 1m',
       files_count: 1,
@@ -329,7 +329,7 @@ export const ContextTabContent: React.FC<ContextTabContentProps> = ({
       id: 'run-2',
       file_name: 'distributor_analytics.docx',
       created_at: 'Apr 17, 2026, 05:50 PM',
-      source_tag: 'Wisdom Internal',
+      source_tag: 'Internal',
       status: 'failed',
       duration: '< 1m',
       files_count: 1,

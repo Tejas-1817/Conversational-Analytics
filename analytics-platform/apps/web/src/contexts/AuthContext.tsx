@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // Fallback user if backend is offline/mocking
       const defaultUser: User = {
         id: 'user-default-1',
-        email: 'shailesh.kulkarni@wisdom.ai',
+        email: 'admin@example.com',
         role: 'ADMIN',
         tenant_id: 'altzor',
       };
@@ -47,7 +47,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       localStorage.setItem('token', 'dev-demo-token');
       const defaultUser: User = {
         id: 'user-default-1',
-        email: 'shailesh.kulkarni@wisdom.ai',
+        email: 'admin@example.com',
         role: 'ADMIN',
         tenant_id: 'altzor',
       };

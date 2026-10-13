@@ -101,7 +101,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
   const [backendError, setBackendError] = useState<string | null>(null);
   const [testSuccess, setTestSuccess] = useState<boolean>(false);
 
-  // Catalog definition matching the WisdomAI / Conversational Analytics connector grid
+  // Catalog definition matching the Conversational Analytics connector grid
   const connectors: ConnectorOption[] = [
     {
       id: 'postgres',

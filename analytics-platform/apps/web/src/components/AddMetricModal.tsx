@@ -234,7 +234,7 @@ export const AddMetricModal: React.FC<AddMetricModalProps> = ({
               display_format: displayFormat,
             }),
             category: 'metric',
-            author_name: user?.email ? user.email.split('@')[0] : 'Shailesh Kulkarni',
+            author_name: user?.email ? user.email.split('@')[0] : 'Admin',
           }),
         });
       } catch (backendErr) {

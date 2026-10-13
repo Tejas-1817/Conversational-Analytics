@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Lightbulb, CheckCircle2, TrendingUp, Layers } from 'lucide-react';
 
-interface WisdomMarkdownRendererProps {
+interface MarkdownRendererProps {
   content: string;
 }
 
@@ -155,14 +155,14 @@ export function formatSummaryContent(content: string): string {
   return transformedBlocks.join('\n\n');
 }
 
-export const WisdomMarkdownRenderer: React.FC<WisdomMarkdownRendererProps> = ({ content }) => {
+export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
   if (!content) return null;
 
   const formattedContent = React.useMemo(() => formatSummaryContent(content), [content]);
 
   return (
     <div
-      className="wisdom-summary-card"
+      className="summary-card"
       style={{
         width: '100%',
         backgroundColor: 'var(--bg-card, #FFFFFF)',

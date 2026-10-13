@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Loader2, Sparkles, Database, BarChart3, CheckCircle2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 
 export interface ThoughtStep {
   title: string;
@@ -7,7 +7,7 @@ export interface ThoughtStep {
   status?: 'complete' | 'in_progress' | 'pending';
 }
 
-interface WisdomThoughtStepsProps {
+interface ThoughtStepsProps {
   isLoading?: boolean;
   activeStage?: string;
   executionTimeMs?: number;
@@ -15,7 +15,7 @@ interface WisdomThoughtStepsProps {
   steps?: ThoughtStep[];
 }
 
-export const WisdomThoughtSteps: React.FC<WisdomThoughtStepsProps> = ({
+export const ThoughtSteps: React.FC<ThoughtStepsProps> = ({
   isLoading = false,
   activeStage,
   executionTimeMs,

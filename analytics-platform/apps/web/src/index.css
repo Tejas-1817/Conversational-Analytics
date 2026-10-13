@@ -807,17 +807,17 @@ tr:last-child td {
 .business-answer,
 .raw-data-accordion table,
 .results-font,
-.wisdom-summary-card {
+.summary-card {
   font-family: var(--font-results, 'Helvetica Neue', Helvetica, Arial, sans-serif) !important;
 }
 
-.wisdom-summary-card p,
-.wisdom-summary-card span,
-.wisdom-summary-card strong,
-.wisdom-summary-card li,
-.wisdom-summary-card h1,
-.wisdom-summary-card h2,
-.wisdom-summary-card h3 {
+.summary-card p,
+.summary-card span,
+.summary-card strong,
+.summary-card li,
+.summary-card h1,
+.summary-card h2,
+.summary-card h3 {
   font-family: var(--font-results, 'Helvetica Neue', Helvetica, Arial, sans-serif) !important;
 }
 
