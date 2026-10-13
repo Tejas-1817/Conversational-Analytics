@@ -240,16 +240,45 @@ export const ChartRenderer: React.FC<ChartProps> = ({
           {shortLabel}
         </div>
 
-        <div style={{
-          fontSize: '3.25rem',
-          fontWeight: 900,
-          color: 'var(--text-main, #0F172A)',
-          letterSpacing: '-0.04em',
-          lineHeight: 1,
-          marginBottom: '0.75rem'
-        }}>
-          {displayVal}
+        {/* Metric Value & Embedded Sparkline */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '0.75rem' }}>
+          <div style={{
+            fontSize: '3.25rem',
+            fontWeight: 900,
+            color: 'var(--text-main, #0F172A)',
+            letterSpacing: '-0.04em',
+            lineHeight: 1
+          }}>
+            {displayVal}
+          </div>
+
+          {/* Embedded Micro-Sparkline */}
+          <div style={{ width: '85px', height: '36px', flexShrink: 0 }}>
+            <ReactECharts
+              option={{
+                grid: { left: 0, right: 0, top: 2, bottom: 2 },
+                xAxis: { type: 'category', show: false },
+                yAxis: { type: 'value', show: false },
+                series: [{
+                  type: 'line',
+                  smooth: 0.45,
+                  showSymbol: false,
+                  lineStyle: { width: 2.2, color: '#10B981' },
+                  areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                      { offset: 0, color: 'rgba(16, 185, 129, 0.35)' },
+                      { offset: 1, color: 'rgba(16, 185, 129, 0.0)' }
+                    ])
+                  },
+                  data: [15, 28, 22, 38, 32, 54, 48, 70]
+                }]
+              }}
+              style={{ width: '100%', height: '100%' }}
+              opts={{ renderer: 'svg' }}
+            />
+          </div>
         </div>
+
 
         <div style={{
           display: 'inline-flex',
@@ -1086,6 +1115,183 @@ export const ChartRenderer: React.FC<ChartProps> = ({
       }
     ]
   };
+  // 7. Funnel Chart Option (Conversion Pipeline)
+  const funnelOption = {
+    ...commonTheme,
+    tooltip: {
+      ...commonTheme.tooltip,
+      trigger: 'item',
+      formatter: '{b}: <b>{c}</b> ({d}%)'
+    },
+    series: [{
+      name: 'Conversion Funnel',
+      type: 'funnel',
+      left: '12%',
+      top: 35,
+      bottom: 25,
+      width: '76%',
+      sort: 'descending',
+      gap: 4,
+      label: { show: true, position: 'inside', formatter: '{b}: {c}' },
+      itemStyle: { borderColor: '#FFFFFF', borderWidth: 2 },
+      data: rows.map((r, i) => ({
+        name: String(r[xAxisKey] ?? `Stage ${i + 1}`),
+        value: Number(r[activeYKeys[0]]) || 0,
+        itemStyle: { color: COLORS[i % COLORS.length] }
+      }))
+    }]
+  };
+
+  // 8. Heatmap Option (2D Matrix Density)
+  const catColumns = columns.filter(col => !numColumns.includes(col));
+  const heatXKey = catColumns[0] || firstCol;
+  const heatYKey = catColumns[1] || secondCol || firstCol;
+  const xCategories = Array.from(new Set(rows.map(r => String(r[heatXKey] ?? ''))));
+  const yCategories = Array.from(new Set(rows.map(r => String(r[heatYKey] ?? ''))));
+  const heatValues = rows.map(r => Number(r[activeYKeys[0]]) || 0);
+  const minHeat = Math.min(...heatValues, 0);
+  const maxHeat = Math.max(...heatValues, 100) || 100;
+
+  const heatmapOption = {
+    ...commonTheme,
+    xAxis: { type: 'category', data: xCategories, splitArea: { show: true } },
+    yAxis: { type: 'category', data: yCategories, splitArea: { show: true } },
+    visualMap: {
+      min: minHeat,
+      max: maxHeat,
+      calculable: true,
+      orient: 'horizontal',
+      left: 'center',
+      bottom: 2,
+      inRange: { color: ['#EEF2FF', '#818CF8', '#4F46E5', '#312E81'] }
+    },
+    series: [{
+      name: formatTitle(activeYKeys[0]),
+      type: 'heatmap',
+      data: rows.map(r => [
+        xCategories.indexOf(String(r[heatXKey] ?? '')),
+        yCategories.indexOf(String(r[heatYKey] ?? '')),
+        Number(r[activeYKeys[0]]) || 0
+      ]),
+      label: { show: rows.length <= 40, color: '#FFFFFF', fontSize: 10 }
+    }]
+  };
+
+  // 9. Treemap Option (Hierarchical Categories)
+  const treemapOption = {
+    ...commonTheme,
+    series: [{
+      name: formatTitle(activeYKeys[0]),
+      type: 'treemap',
+      roam: false,
+      leafDepth: 1,
+      breadcrumb: { show: true },
+      itemStyle: { borderColor: '#FFFFFF', borderWidth: 2, gapWidth: 2 },
+      levels: [
+        { itemStyle: { color: '#6366F1', gapWidth: 3 } },
+        { colorSaturation: [0.35, 0.7], itemStyle: { gapWidth: 1 } }
+      ],
+      data: rows.map((r, i) => ({
+        name: String(r[xAxisKey] ?? `Item ${i + 1}`),
+        value: Number(r[activeYKeys[0]]) || 0,
+        itemStyle: { color: COLORS[i % COLORS.length] }
+      }))
+    }]
+  };
+
+  // 10. Gantt Chart Option (Task Duration Timelines)
+  const taskNames = rows.map(r => String(r[xAxisKey] ?? ''));
+  const startOffsets = rows.map(r => Number(r[numColumns[0]]) || 0);
+  const durations = rows.map(r => Number(r[numColumns[1] || numColumns[0]]) || 1);
+
+  const ganttOption = {
+    ...commonTheme,
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: (params: any) => `${params[1]?.name || ''}: Duration ${params[1]?.value || 0}`
+    },
+    xAxis: { type: 'value', name: 'Timeline' },
+    yAxis: { type: 'category', data: taskNames, inverse: true },
+    series: [
+      {
+        name: 'Start Offset',
+        type: 'bar',
+        stack: 'gantt',
+        itemStyle: { borderColor: 'transparent', color: 'transparent' },
+        data: startOffsets
+      },
+      {
+        name: 'Duration',
+        type: 'bar',
+        stack: 'gantt',
+        itemStyle: {
+          borderRadius: 6,
+          color: (p: any) => wisdomSaasTheme.gradients[p.dataIndex % wisdomSaasTheme.gradients.length][0]
+        },
+        data: durations
+      }
+    ]
+  };
+
+  // 11. Geographic / Regional Map Plot Option
+  const geoLocCol = columns.find(c => /(country|state|city|region|location|territory|province|postal|zip)/i.test(c)) || firstCol;
+  const geoMetricCol = numColumns[0] || activeYKeys[0] || secondCol;
+  const maxGeoVal = Math.max(...rows.map(r => Number(r[geoMetricCol]) || 0), 1);
+
+  const geoOption = {
+    ...commonTheme,
+    tooltip: {
+      ...commonTheme.tooltip,
+      trigger: 'item',
+      formatter: (params: any) => {
+        const d = params.data || [];
+        return `
+          <div style="font-weight:700;margin-bottom:4px;color:#F8FAFC;">📍 ${d[2] || 'Region'}</div>
+          <div style="display:flex;justify-content:space-between;gap:12px;color:#94A3B8;">
+            <span>${formatTitle(geoMetricCol)}:</span>
+            <b style="color:#38BDF8;">${typeof d[1] === 'number' ? d[1].toLocaleString() : d[1]}</b>
+          </div>
+        `;
+      }
+    },
+    xAxis: {
+      type: 'category',
+      name: 'Geographic Region / Location',
+      nameLocation: 'middle',
+      nameGap: 28,
+      data: rows.map(r => String(r[geoLocCol] ?? '')),
+      axisLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.25)' } },
+      axisLabel: { color: '#64748B', fontSize: 11, rotate: rows.length > 6 ? 25 : 0 }
+    },
+    yAxis: {
+      type: 'value',
+      name: formatTitle(geoMetricCol),
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.12)', type: 'dashed' } },
+      axisLabel: { color: '#64748B', fontSize: 11, formatter: (v: number) => formatVal(v) }
+    },
+    series: [{
+      name: formatTitle(geoMetricCol),
+      type: 'scatter',
+      symbolSize: (data: any) => {
+        const val = Number(data[1]) || 0;
+        return Math.max(14, Math.min(48, (val / maxGeoVal) * 44));
+      },
+      data: rows.map((r, i) => [
+        String(r[geoLocCol] ?? ''),
+        Number(r[geoMetricCol]) || 0,
+        String(r[geoLocCol] ?? `Location ${i + 1}`)
+      ]),
+      itemStyle: {
+        color: (params: any) => COLORS[params.dataIndex % COLORS.length],
+        borderColor: '#FFFFFF',
+        borderWidth: 2,
+        shadowBlur: 14,
+        shadowColor: (params: any) => `${COLORS[params.dataIndex % COLORS.length]}55`
+      }
+    }]
+  };
 
   // Resolve active chart option
   let selectedOption: any = barOption;
@@ -1094,6 +1300,11 @@ export const ChartRenderer: React.FC<ChartProps> = ({
   else if (activeType === 'pie_chart') selectedOption = pieOption;
   else if (activeType === 'scatter_chart' || activeType === 'scatter') selectedOption = scatterOption;
   else if (activeType === 'pareto_chart' || activeType === 'pareto') selectedOption = paretoOption;
+  else if (activeType === 'funnel_chart' || activeType === 'funnel') selectedOption = funnelOption;
+  else if (activeType === 'heatmap') selectedOption = heatmapOption;
+  else if (activeType === 'treemap') selectedOption = treemapOption;
+  else if (activeType === 'gantt_chart' || activeType === 'gantt') selectedOption = ganttOption;
+  else if (activeType === 'geo_map' || activeType === 'geo_chart' || activeType === 'map') selectedOption = geoOption;
 
   return (
     <div style={{

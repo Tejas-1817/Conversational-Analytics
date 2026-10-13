@@ -1603,7 +1603,7 @@ export const ChatInterface = () => {
                   fontFamily: 'inherit',
                 }}
                 rows={1}
-                placeholder={isCodeRepoSelected ? "Ask about architecture, functions, call hierarchies, endpoints..." : "Ask WisdomAI about your data..."}
+                placeholder={isCodeRepoSelected ? "Ask about architecture, functions, call hierarchies, endpoints..." : "Ask about your data..."}
                 value={input}
                 onChange={e => {
                   setInput(e.target.value);

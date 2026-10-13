@@ -55,89 +55,133 @@ class ChartRecommender:
         rendered_component = "DataGrid"
         reason = "Tabular dataset default."
 
-        # Rule 9: 0 Rows
+        # 1. Zero rows check
         if rc == 0:
             visualization = "table"
             chart_type = "table"
             rendered_component = "NoData"
             reason = "No matching records found."
 
-        # Rule 8: Wide datasets (>20 rows or >4 columns) -> Table
-        elif rc > 20 or cc > 4:
-            visualization = "table"
-            chart_type = "table"
-            rendered_component = "DataGrid"
-            reason = "Large or wide dataset default to paginated table."
-
-        # Rule 1: 1 Row + 1 Numeric Column -> KPI Card
+        # 2. Single-scalar KPI Card (renders with embedded Sparkline)
         elif rc == 1 and cc == 1:
             visualization = "kpi_card"
             chart_type = "kpi_card"
             rendered_component = "KPICard"
             reason = "Single aggregate metric value."
 
-        # Rule 2: 1 Row + Multiple Numeric Columns -> Multi KPI Cards
+        # 3. Single Row Multi-KPI
         elif rc == 1 and len(num_cols) >= 2 and len(cat_cols) == 0:
             visualization = "multi_kpi"
             chart_type = "multi_kpi"
             rendered_component = "MultiKPICards"
             reason = "Multiple scalar numeric metrics."
 
-        # Rule 3: 1 Row + Multiple Descriptive Columns -> Entity Detail Card
+        # 4. Single Row Detail Card
         elif rc == 1 and cc > 1:
             visualization = "detail_card"
             chart_type = "detail_card"
             rendered_component = "DetailCard"
             reason = "Single entity detail card."
 
-        # Rule 4: Top-N Ranking (ORDER BY + LIMIT) -> Horizontal Leaderboard / Bar
-        elif is_top_n and rc > 1:
-            visualization = "horizontal_bar"
-            chart_type = "horizontal_bar"
-            rendered_component = "Leaderboard"
-            reason = "Top-N ranked entity breakdown."
+        # -------------------------------------------------------------
+        # HIGH PRIORITY: Specialized Semantic Visualizations
+        # -------------------------------------------------------------
 
-                # Rule: Pareto 80/20 Chart
-        elif any(kw in (question or "").lower() for kw in ["pareto", "80/20", "cumulative share", "cumulative percentage", "top contributors"]) and len(num_cols) > 0 and rc >= 3:
+        # 5. Funnel Chart (Conversion, Pipelines, Drop-offs, Stages)
+        elif any(kw in (question or "").lower() for kw in ["funnel", "conversion", "dropoff", "drop-off", "pipeline", "stage", "checkout flow", "step"]) and len(num_cols) > 0 and 2 <= rc <= 15:
+            visualization = "funnel_chart"
+            chart_type = "funnel_chart"
+            rendered_component = "FunnelChart"
+            reason = "Sequential conversion pipeline & drop-off analysis."
+
+        # 6. Heatmap Grid (2D Matrix: Day vs Hour, Category vs Region)
+        elif any(kw in (question or "").lower() for kw in ["heatmap", "density", "matrix", "hour of day", "day of week", "busiest time", "peak hour", "intensity"]) and (len(cat_cols) + len(time_cols) >= 2) and 4 <= rc <= 250:
+            visualization = "heatmap"
+            chart_type = "heatmap"
+            rendered_component = "Heatmap"
+            reason = "Two-dimensional matrix density distribution."
+
+        # 7. Treemap (Hierarchical Category Area Mapping)
+        elif any(kw in (question or "").lower() for kw in ["treemap", "hierarchical", "nested", "allocation", "portfolio", "budget breakdown", "sub-category", "breakdown"]) and len(cat_cols) >= 1 and rc >= 3:
+            visualization = "treemap"
+            chart_type = "treemap"
+            rendered_component = "Treemap"
+            reason = "Hierarchical proportional area distribution."
+
+        # 8. Gantt Chart (Task Schedules & Workflow Durations)
+        elif any(kw in (question or "").lower() for kw in ["gantt", "schedule", "milestone", "timeline", "lead time", "task duration", "roadmap"]) and len(num_cols) > 0 and rc >= 2:
+            visualization = "gantt_chart"
+            chart_type = "gantt_chart"
+            rendered_component = "GanttChart"
+            reason = "Task schedule and milestone duration timeline."
+
+        # 9. Geographic / Regional Map Plot
+        elif (bool(re.search(r"\b(map|maps|geography|regional|country|state|city|location|locations|territory|worldwide)\b", (question or "").lower())) or any(re.search(r"\b(country|state|city|region|territory|zip_code|latitude|longitude)\b", c, re.I) for c in cols)) and len(num_cols) > 0 and 2 <= rc <= 250:
+            visualization = "geo_map"
+            chart_type = "geo_map"
+            rendered_component = "GeoMap"
+            reason = "Geographic regional distribution and spatial concentration."
+
+        # 10. Pareto 80/20 Chart
+        elif any(kw in (question or "").lower() for kw in ["pareto", "80/20", "cumulative share", "cumulative percentage", "top contributor"]) and len(num_cols) > 0 and rc >= 3:
             visualization = "pareto_chart"
             chart_type = "pareto_chart"
             rendered_component = "ParetoChart"
             reason = "80/20 Pareto distribution & cumulative percentage analysis."
 
-        # Rule: Scatter Chart (multi-metric correlation)
+        # 11. Scatter Chart (Multi-metric correlation)
         elif (len(num_cols) >= 2 or any(kw in (question or "").lower() for kw in ["scatter", "correlation", "relationship", "vs", "versus"])) and len(num_cols) >= 2 and rc >= 4:
             visualization = "scatter_chart"
             chart_type = "scatter_chart"
             rendered_component = "ScatterPlot"
             reason = "Multi-variable numeric correlation & scatter distribution."
 
-        # Rule 7: Category + Percentage / Share -> Pie Chart
-        elif (len(pct_cols) > 0 or any(kw in (question or "").lower() for kw in ["percentage", "share", "distribution", "breakdown"])) and 2 <= rc <= 10:
+        # -------------------------------------------------------------
+        # STANDARD VISUALIZATIONS & FALLBACKS
+        # -------------------------------------------------------------
+
+        # 12. Percentage / Share -> Pie Chart
+        elif (len(pct_cols) > 0 or any(kw in (question or "").lower() for kw in ["percentage", "share", "distribution", "proportion"])) and 2 <= rc <= 10:
             visualization = "pie_chart"
             chart_type = "pie_chart"
             rendered_component = "PieChart"
             reason = "Proportional categorical breakdown."
 
-        # Rule 6: Date/Time + Numeric -> Line Chart
+        # 13. Time-Series Trend -> Line Chart
         elif len(time_cols) > 0 and len(num_cols) > 0 and rc > 1:
             visualization = "line_chart"
             chart_type = "line_chart"
             rendered_component = "LineChart"
             reason = "Time-series trend analysis."
 
-        # Rule 5: Category + Numeric -> Bar Chart
+        # 14. Top-N Ranking (ORDER BY + LIMIT) -> Horizontal Leaderboard / Bar
+        elif is_top_n and rc > 1:
+            visualization = "horizontal_bar"
+            chart_type = "horizontal_bar"
+            rendered_component = "Leaderboard"
+            reason = "Top-N ranked entity breakdown."
+
+        # 15. Standard Categorical Comparison -> Bar Chart
         elif len(cat_cols) > 0 and len(num_cols) > 0 and rc > 1:
             visualization = "bar_chart"
             chart_type = "bar_chart"
             rendered_component = "BarChart"
             reason = "Categorical metric comparison."
 
-        # General multi-column fallback
+        # 16. Wide datasets fallback
+        elif rc > 40 or cc > 5:
+            visualization = "table"
+            chart_type = "table"
+            rendered_component = "DataGrid"
+            reason = "Large or wide dataset default to paginated table."
+
+        # 17. General multi-column fallback
         elif rc > 1 and cc >= 2:
             visualization = "bar_chart"
             chart_type = "bar_chart"
             rendered_component = "BarChart"
             reason = "Categorical metric comparison."
+
 
         log.info(
             "visualization_decision",
