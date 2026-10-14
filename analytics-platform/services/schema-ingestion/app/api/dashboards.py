@@ -1,14 +1,16 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db import get_session
-from app.models import Dashboard, DashboardWidget, SavedInsight, User
+from app.models import Dashboard, DashboardWidget, SavedInsight, User, ApprovedSQLExample
+from app.api.engine import _embed_approved_examples_tenant
+
 
 router = APIRouter(prefix="/dashboards", tags=["dashboards"])
 
@@ -70,7 +72,12 @@ class DashboardUpdate(BaseModel):
 # --- Endpoints ---
 
 @router.post("/insights", response_model=InsightOut)
-def create_insight(insight: InsightCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+def create_insight(
+    insight: InsightCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
     db_obj = SavedInsight(
         tenant_id=user.tenant_id,
         user_id=user.id,
@@ -80,9 +87,39 @@ def create_insight(insight: InsightCreate, db: Session = Depends(get_session), u
         chart_config=insight.chart_config
     )
     db.add(db_obj)
-    db.commit()
+
+    # --- Secure Background Auto-Promotion ---
+    cleaned_query = (insight.query or "").strip()
+    is_safe_select = (
+        cleaned_query.upper().startswith("SELECT") or cleaned_query.upper().startswith("WITH")
+    ) and not any(kw in cleaned_query.upper() for kw in ["DROP ", "DELETE ", "UPDATE ", "INSERT ", "ALTER ", "TRUNCATE "])
+
+    if is_safe_select:
+        # Check for duplicate
+        existing = db.scalar(
+            select(ApprovedSQLExample).where(
+                ApprovedSQLExample.tenant_id == user.tenant_id,
+                ApprovedSQLExample.generated_sql == cleaned_query
+            )
+        )
+        if not existing:
+            example = ApprovedSQLExample(
+                tenant_id=user.tenant_id,
+                question=insight.description or insight.name,
+                generated_sql=cleaned_query,
+                approved_by=user.id
+            )
+            db.add(example)
+            db.commit()
+            background_tasks.add_task(_embed_approved_examples_tenant, str(user.tenant_id))
+        else:
+            db.commit()
+    else:
+        db.commit()
+
     db.refresh(db_obj)
     return db_obj
+
 
 @router.get("/insights", response_model=list[InsightOut])
 def get_insights(db: Session = Depends(get_session), user: User = Depends(get_current_user)):

@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.db import get_session
+from app.db import get_session, session_scope
+from app.embeddings.feedback_job import embed_approved_examples
 from app.engine.chart_recommender import ChartRecommender
 from app.engine.compiler_service import CompilerService, SQLSafetyError
 from app.engine.executor_service import ExecutorService
@@ -179,6 +180,7 @@ def submit_feedback(
     conv_id: uuid.UUID,
     msg_id: uuid.UUID,
     feedback: UserFeedbackCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_session),
     user: User = Depends(get_current_user)
 ):
@@ -207,12 +209,60 @@ def submit_feedback(
     )
     db.add(fb)
     db.commit()
+
+    # --- Automated Learning & Self-Healing ---
+    if feedback.is_positive:
+        # Locate corresponding user prompt
+        user_msg = db.scalar(
+            select(ConversationMessage).where(
+                ConversationMessage.conversation_id == conv.id,
+                ConversationMessage.role == "user",
+                ConversationMessage.created_at <= msg.created_at
+            ).order_by(ConversationMessage.created_at.desc())
+        )
+        if user_msg:
+            existing = db.scalar(
+                select(ApprovedSQLExample).where(
+                    ApprovedSQLExample.tenant_id == user.tenant_id,
+                    ApprovedSQLExample.generated_sql == msg.generated_sql
+                )
+            )
+            if not existing:
+                example = ApprovedSQLExample(
+                    tenant_id=user.tenant_id,
+                    question=user_msg.content,
+                    generated_sql=msg.generated_sql,
+                    approved_by=user.id
+                )
+                db.add(example)
+                db.commit()
+                background_tasks.add_task(_embed_approved_examples_tenant, str(user.tenant_id))
+    else:
+        # Negative feedback: If this query was previously learned, delete it so it stops poisoning RAG
+        bad_example = db.scalar(
+            select(ApprovedSQLExample).where(
+                ApprovedSQLExample.tenant_id == user.tenant_id,
+                ApprovedSQLExample.generated_sql == msg.generated_sql
+            )
+        )
+        if bad_example:
+            db.delete(bad_example)
+            db.commit()
+            background_tasks.add_task(_embed_approved_examples_tenant, str(user.tenant_id))
+
     db.refresh(fb)
     return fb
+
+    
+def _embed_approved_examples_tenant(tenant_id: str) -> None:
+    """Safely runs the embedding job in the background with a fresh DB session."""
+    with session_scope() as db:
+        embed_approved_examples(tenant_id, db)
 
 @router.post("/examples/approve", response_model=ApprovedExampleOut)
 def approve_example(
     req: ApprovedExampleCreate,
+    background_tasks: BackgroundTasks,          # <--- 1. ADD THIS PARAMETER
     db: Session = Depends(get_session),
     user: User = Depends(get_current_user)
 ):
@@ -231,9 +281,6 @@ def approve_example(
     if not msg.generated_sql:
         raise HTTPException(status_code=400, detail="Message does not contain SQL")
 
-    # Get the original question (the user message before this assistant message)
-    # Since messages are ordered by created_at, find the most recent user message in this conversation
-    # that is before this message
     user_msg = db.scalar(
         select(ConversationMessage)
         .where(
@@ -266,8 +313,11 @@ def approve_example(
         after={"question": example.question, "generated_sql": example.generated_sql}
     )
     db.commit()
+
+    background_tasks.add_task(_embed_approved_examples_tenant, str(user.tenant_id))
     
     return example
+
 
 @router.post("/{tenant_id}/intelligence/query")
 def query_intelligence(tenant_id: uuid.UUID, req: QueryIntelligenceRequest, db: Session = Depends(get_session)):

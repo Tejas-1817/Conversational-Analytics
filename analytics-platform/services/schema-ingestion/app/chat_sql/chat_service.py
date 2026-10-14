@@ -519,6 +519,8 @@ class ChatService:
                     "table",
                     "schema_chunk",
                     "relationship",
+                    "approved_example",
+                    "metric",
                 ],
                 top_k=settings.chat_sql_rag_top_k,
                 distance_threshold=settings.chat_sql_rag_distance_threshold,
@@ -1902,6 +1904,10 @@ USER QUESTION:
                         "generated_at": generated_at,
                         "database": db_name,
                     }
+        # Extract top matching approved golden queries (if any were retrieved)
+        approved_examples = [
+            ex[0] for ex in getattr(retrieval, "approved_examples", [])[:3]
+        ] if 'retrieval' in locals() else []
 
         # 4b. Build a SQL prompt only when the question requires SQL.
         prompt = self.prompt_builder.build_prompt(
@@ -1911,6 +1917,7 @@ USER QUESTION:
             domain_context=domain_context_str,
             conversation_context=conversation_context,
             dialect=source_dialect,
+            approved_examples=approved_examples,
         )
         # 4b. Generate the initial SQL draft
         try:

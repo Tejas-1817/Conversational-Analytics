@@ -288,6 +288,7 @@ export const ChatInterface = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -678,6 +679,19 @@ export const ChatInterface = () => {
     }
   };
 
+  const handleRejectResponse = async (messageId: string) => {
+    if (!convId) return;
+    try {
+      await fetchApi(`/engine/conversations/${convId}/messages/${messageId}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify({ is_positive: false })
+      });
+      setFeedbackGiven(prev => ({ ...prev, [messageId]: 'rejected' }));
+    } catch (err) {
+      console.error('Failed to submit negative feedback:', err);
+    }
+  };
+
   const handleSaveInsight = async (msg: any) => {
     const name = prompt('Enter a name for this insight:');
     if (!name) return;
@@ -686,7 +700,8 @@ export const ChatInterface = () => {
         method: 'POST',
         body: JSON.stringify({
           name,
-          query: msg.question || msg.intent?.original_query || 'Saved Insight',
+          description: msg.question || msg.intent?.original_query || name,
+          query: msg.sql || msg.generated_sql || '', // Pass verified SQL
           chart_config: {
             chartType: msg.chart_recommendation || (msg.recommended_visualization && msg.recommended_visualization.chart_type) || 'table',
             data: msg.result_data || [],
@@ -695,7 +710,7 @@ export const ChatInterface = () => {
           }
         })
       });
-      alert('Insight saved successfully! You can add it to a Dashboard.');
+      alert('Insight saved! It will automatically guide future AI answers.');
     } catch (e: any) {
       alert(e.message);
     }
@@ -721,6 +736,19 @@ export const ChatInterface = () => {
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
+  };
+
+  const handleApproveResponse = async (messageId: string) => {
+    try {
+      await fetchApi('/engine/examples/approve', {
+        method: 'POST',
+        body: JSON.stringify({ message_id: messageId })
+      });
+      // Show instant green checkmark on the button
+      setFeedbackGiven(prev => ({ ...prev, [messageId]: 'approved' }));
+    } catch (err) {
+      console.error('Failed to approve query example:', err);
+    }
   };
 
   const filteredConversations = conversations.filter(c =>
@@ -1207,8 +1235,35 @@ export const ChatInterface = () => {
                         <div className="flex items-center gap-2">
                           <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={() => handleCopy(m.answer_markdown || m.answer || m.content || '')} title="Copy response"><Copy size={14} /></button>
                           <button className="btn-ghost" style={{ padding: '0.25rem' }} title="Regenerate"><RefreshCcw size={14} /></button>
-                          <button className="btn-ghost" style={{ padding: '0.25rem' }} title="Good response"><ThumbsUp size={14} /></button>
-                          <button className="btn-ghost" style={{ padding: '0.25rem' }} title="Bad response"><ThumbsDown size={14} /></button>
+                          <button
+                            className="btn-ghost"
+                            style={{
+                              padding: '0.25rem',
+                              color: feedbackGiven[m.id] === 'approved' ? '#10B981' : 'inherit',
+                              transition: 'all 0.2s ease',
+                            }}
+                            onClick={() => handleApproveResponse(m.id)}
+                            title={feedbackGiven[m.id] === 'approved' ? "Approved as Golden Query!" : "Approve as Golden Query"}
+                          >
+                            {feedbackGiven[m.id] === 'approved' ? (
+                              <Check size={14} style={{ color: '#10B981' }} />
+                            ) : (
+                              <ThumbsUp size={14} />
+                            )}
+                          </button>
+
+                          <button
+                            className="btn-ghost"
+                            style={{
+                              padding: '0.25rem',
+                              color: feedbackGiven[m.id] === 'rejected' ? '#EF4444' : 'inherit',
+                              transition: 'all 0.2s ease',
+                            }}
+                            onClick={() => handleRejectResponse(m.id)}
+                            title={feedbackGiven[m.id] === 'rejected' ? "Feedback submitted" : "Flag incorrect response"}
+                          >
+                            <ThumbsDown size={14} />
+                          </button>
                         </div>
                       </div>
                     )}

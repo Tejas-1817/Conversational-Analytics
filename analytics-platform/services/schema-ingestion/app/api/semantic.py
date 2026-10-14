@@ -35,13 +35,28 @@ router = APIRouter(prefix="/semantic", tags=["semantic"])
 # --- Metrics ---
 
 @router.post("/metrics", response_model=SemanticMetricOut, dependencies=[Depends(require_analyst)])
-def create_metric(req: SemanticMetricCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    return MetricService.create_metric(db, user.tenant_id, user.email, **req.model_dump())
+def create_metric(
+    req: SemanticMetricCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    metric = MetricService.create_metric(db, user.tenant_id, user.email, **req.model_dump())
+    background_tasks.add_task(_embed_tenant, str(user.tenant_id))
+    return metric
 
 @router.put("/metrics/{metric_id}", response_model=SemanticMetricOut, dependencies=[Depends(require_analyst)])
-def update_metric(metric_id: uuid.UUID, req: SemanticMetricCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+def update_metric(
+    metric_id: uuid.UUID,
+    req: SemanticMetricCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
     try:
-        return MetricService.update_metric(db, user.tenant_id, metric_id, user.email, **req.model_dump())
+        metric = MetricService.update_metric(db, user.tenant_id, metric_id, user.email, **req.model_dump())
+        background_tasks.add_task(_embed_tenant, str(user.tenant_id))
+        return metric
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -169,19 +184,31 @@ def delete_join(join_id: uuid.UUID, db: Session = Depends(get_session), user: Us
 # --- Glossary ---
 
 @router.post("/glossary", response_model=BusinessGlossaryOut, dependencies=[Depends(require_analyst)])
-def create_term(req: BusinessGlossaryCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    return GlossaryService.create_term(db, user.tenant_id, user.email, **req.model_dump())
+def create_term(
+    req: BusinessGlossaryCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    term = GlossaryService.create_term(db, user.tenant_id, user.email, **req.model_dump())
+    background_tasks.add_task(_embed_tenant, str(user.tenant_id))
+    return term
 
 @router.get("/glossary", response_model=list[BusinessGlossaryOut])
 def list_terms(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return GlossaryService.list_terms(db, user.tenant_id)
 
 @router.put("/glossary/{term_id}", response_model=BusinessGlossaryOut, dependencies=[Depends(require_analyst)])
-def update_term(term_id: uuid.UUID, req: BusinessGlossaryCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    try:
-        return GlossaryService.update_term(db, user.tenant_id, term_id, user.email, **req.model_dump())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+def update_term(
+    term_id: uuid.UUID,
+    req: BusinessGlossaryCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    term = GlossaryService.update_term(db, user.tenant_id, term_id, user.email, **req.model_dump())
+    background_tasks.add_task(_embed_tenant, str(user.tenant_id))
+    return term
 
 @router.post(
     "/glossary/{term_id}/approve",
