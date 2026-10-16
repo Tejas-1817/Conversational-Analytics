@@ -196,11 +196,47 @@ def build_engine(source: DataSource) -> Engine:
 
         return engine
 
-    # Snowflake / BigQuery / Databricks: not wired up until a test account is available.
-    raise NotImplementedError(
-        f"Source type '{source.type}' is not implemented yet. "
-        "Add the dialect driver, session guards, and an integration test before enabling it."
-    )
+    if source.type == "snowflake":
+        account = source.host or source.options.get("account", "")
+        warehouse = source.options.get("warehouse")
+        role = source.options.get("role")
+        schema = source.options.get("schema_name", "PUBLIC")
+
+        query_params = {}
+        if warehouse:
+            query_params["warehouse"] = warehouse
+        if role:
+            query_params["role"] = role
+        if schema:
+            query_params["schema"] = schema
+
+        url = URL.create(
+            "snowflake",
+            username=source.username,
+            password=password,
+            host=account,
+            database=source.database_name,
+            query=query_params,
+        )
+
+        engine = _build_engine_with_retry(
+            url,
+            pool_kwargs=POOL_OPTIONS,
+            connect_args={"client_session_keep_alive": False},
+        )
+
+        # Enforce statement timeout at the session level
+        @event.listens_for(engine, "connect")
+        def _snowflake_session_guards(dbapi_conn, _record):
+            cursor = dbapi_conn.cursor()
+            try:
+                timeout_sec = max(1, settings.statement_timeout_ms // 1000)
+                cursor.execute(f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = {timeout_sec};")
+            finally:
+                cursor.close()
+
+        return engine
+
 
 
 def verify_read_only(engine: Engine, source_type: str) -> None:
@@ -241,6 +277,16 @@ def verify_read_only(engine: Engine, source_type: str) -> None:
                 raise PermissionError(
                     f"The supplied user has write privileges ({grant!r}). "
                     "Register a read-only user; the platform must never be able to modify customer data."
+                )
+        return
+
+    if source_type == "snowflake":
+        with engine.connect() as conn:
+            current_role = conn.execute(text("SELECT CURRENT_ROLE();")).scalar()
+            if current_role and current_role.upper() in ("ACCOUNTADMIN", "SECURITYADMIN"):
+                raise PermissionError(
+                    f"Snowflake user is connecting with high-privilege role '{current_role}'. "
+                    "Please assign a restricted read-only role (e.g., ANALYST or custom read-only role)."
                 )
         return
 

@@ -253,6 +253,34 @@ def submit_feedback(
     db.refresh(fb)
     return fb
 
+@router.delete("/conversations/{conv_id}/messages/{msg_id}/feedback")
+def remove_feedback(
+    conv_id: uuid.UUID,
+    msg_id: uuid.UUID,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    # 1. Verify conversation belongs to this tenant
+    conv = db.scalar(
+        select(Conversation).where(
+            Conversation.id == conv_id,
+            Conversation.tenant_id == user.tenant_id
+        )
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # 2. Find and delete existing feedback entries for this message
+    feedbacks = db.scalars(
+        select(UserFeedback).where(UserFeedback.message_id == msg_id)
+    ).all()
+
+    for fb in feedbacks:
+        db.delete(fb)
+    db.commit()
+
+    return {"status": "feedback_removed", "message_id": str(msg_id)}
+
     
 def _embed_approved_examples_tenant(tenant_id: str) -> None:
     """Safely runs the embedding job in the background with a fresh DB session."""
@@ -317,6 +345,51 @@ def approve_example(
     background_tasks.add_task(_embed_approved_examples_tenant, str(user.tenant_id))
     
     return example
+
+@router.post("/examples/unapprove")
+def unapprove_example(
+    req: ApprovedExampleCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    # 1. Verify the message belongs to this tenant
+    msg = db.scalar(
+        select(ConversationMessage)
+        .join(Conversation)
+        .where(
+            ConversationMessage.id == req.message_id,
+            Conversation.tenant_id == user.tenant_id
+        )
+    )
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    # 2. Find the approved example in the database
+    example = db.scalar(
+        select(ApprovedSQLExample).where(
+            ApprovedSQLExample.tenant_id == user.tenant_id,
+            ApprovedSQLExample.generated_sql == msg.generated_sql
+        )
+    )
+    if example:
+        # 3. Log audit event and delete from Postgres
+        audit(
+            db,
+            tenant_id=user.tenant_id,
+            entity_type="approved_sql_example",
+            entity_id=example.id,
+            action="EXAMPLE_UNAPPROVED",
+            actor=user.email,
+            after={"question": example.question, "generated_sql": example.generated_sql}
+        )
+        db.delete(example)
+        db.commit()
+
+        # 4. Re-index ChromaDB in the background without this query
+        background_tasks.add_task(_embed_approved_examples_tenant, str(user.tenant_id))
+
+    return {"status": "unapproved", "message_id": str(req.message_id)}
 
 
 @router.post("/{tenant_id}/intelligence/query")

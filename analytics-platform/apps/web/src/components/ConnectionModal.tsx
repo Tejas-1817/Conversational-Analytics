@@ -87,6 +87,12 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
   const [repoUrl, setRepoUrl] = useState('');
   const [repoBranch, setRepoBranch] = useState('main');
 
+  // Snowflake Configuration State
+  const [warehouse, setWarehouse] = useState('');
+  const [role, setRole] = useState('');
+  const [schemaName, setSchemaName] = useState('PUBLIC');
+
+
   // Excel Upload State
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [tempFileId, setTempFileId] = useState<string | null>(null);
@@ -133,10 +139,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     {
       id: 'snowflake',
       name: 'Snowflake',
-      type: 'coming_soon',
+      type: 'snowflake',
       category: 'warehouse',
       description: 'Query enterprise Snowflake cloud data warehouses securely.',
-      isAvailable: false,
+      isAvailable: true,
       renderIcon: () => <SourceLogo type="snowflake" size={32} />,
     },
     {
@@ -346,6 +352,9 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       setErrors({});
       setBackendError(null);
       setTestSuccess(false);
+      setWarehouse('');
+      setRole('');
+      setSchemaName('PUBLIC');
     }
   }, [isOpen]);
 
@@ -532,9 +541,23 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     return Object.keys(errs).length === 0;
   };
 
-  const buildSourcePayload = () => ({
-    ...formData,
-  });
+  const buildSourcePayload = () => {
+    if (formData.type === 'snowflake') {
+      return {
+        ...formData,
+        port: undefined, // Snowflake connects via HTTPS/443 automatically
+        options: {
+          warehouse: warehouse.trim() || undefined,
+          role: role.trim() || undefined,
+          schema_name: schemaName.trim() || 'PUBLIC',
+        },
+      };
+    }
+    return {
+      ...formData,
+    };
+  };
+
 
   const handleTestConnection = async () => {
     if (!validateForm()) return false;
@@ -1190,6 +1213,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
               ) : (
                 /* RELATIONAL DATABASE / WAREHOUSE WORKFLOW */
                 <>
+                  {/* Row 1: Database Name + Port (or Warehouse for Snowflake) */}
                   <div className="grid grid-cols-2 gap-3" style={{ marginBottom: 'var(--space-3)' }}>
                     <div>
                       <label htmlFor="database_name" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>
@@ -1200,40 +1224,98 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
                         name="database_name"
                         value={formData.database_name}
                         onChange={handleChange}
-                        placeholder={formData.type === 'mysql' ? 'app_db' : 'postgres'}
+                        placeholder={formData.type === 'snowflake' ? 'e.g. ANALYTICS_PROD' : (formData.type === 'mysql' ? 'app_db' : 'postgres')}
                         disabled={isTesting || isSaving}
                       />
                       {errors.database_name && <div className="form-error">{errors.database_name}</div>}
                     </div>
-                    <div>
-                      <label htmlFor="port" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>
-                        Port
-                      </label>
-                      <input
-                        id="port"
-                        name="port"
-                        type="number"
-                        value={formData.port ?? ''}
-                        onChange={handleChange}
-                        disabled={isTesting || isSaving}
-                      />
-                      {errors.port && <div className="form-error">{errors.port}</div>}
-                    </div>
+
+                    {formData.type === 'snowflake' ? (
+                      <div>
+                        <label htmlFor="warehouse" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>
+                          Warehouse
+                        </label>
+                        <input
+                          id="warehouse"
+                          name="warehouse"
+                          value={warehouse}
+                          onChange={(e) => setWarehouse(e.target.value)}
+                          placeholder="e.g. COMPUTE_WH"
+                          disabled={isTesting || isSaving}
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <label htmlFor="port" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>
+                          Port
+                        </label>
+                        <input
+                          id="port"
+                          name="port"
+                          type="number"
+                          value={formData.port ?? ''}
+                          onChange={handleChange}
+                          disabled={isTesting || isSaving}
+                        />
+                        {errors.port && <div className="form-error">{errors.port}</div>}
+                      </div>
+                    )}
                   </div>
 
+                  {/* Row 2: Host / Account Identifier */}
                   <div className="form-group">
-                    <label htmlFor="host">Host / Hostname</label>
+                    <label htmlFor="host">
+                      {formData.type === 'snowflake' ? 'Account Identifier' : 'Host / Hostname'}
+                    </label>
                     <input
                       id="host"
                       name="host"
                       value={formData.host}
                       onChange={handleChange}
-                      placeholder="localhost or db.company.internal"
+                      placeholder={formData.type === 'snowflake' ? 'e.g. xy12345.us-east-2.aws or acme-prod' : 'localhost or db.company.internal'}
                       disabled={isTesting || isSaving}
                     />
                     {errors.host && <div className="form-error">{errors.host}</div>}
+                    {formData.type === 'snowflake' && (
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        Your Snowflake account locator or <code>&lt;orgname&gt;-&lt;account_name&gt;</code> identifier.
+                      </div>
+                    )}
                   </div>
 
+                  {/* Row 3: Snowflake Optional Role & Schema */}
+                  {formData.type === 'snowflake' && (
+                    <div className="grid grid-cols-2 gap-3 form-group" style={{ marginBottom: 'var(--space-3)' }}>
+                      <div>
+                        <label htmlFor="role" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>
+                          Role (Optional)
+                        </label>
+                        <input
+                          id="role"
+                          name="role"
+                          value={role}
+                          onChange={(e) => setRole(e.target.value)}
+                          placeholder="e.g. ANALYST_ROLE"
+                          disabled={isTesting || isSaving}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="schemaName" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>
+                          Default Schema
+                        </label>
+                        <input
+                          id="schemaName"
+                          name="schemaName"
+                          value={schemaName}
+                          onChange={(e) => setSchemaName(e.target.value)}
+                          placeholder="e.g. PUBLIC"
+                          disabled={isTesting || isSaving}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Row 4: Username & Password (Required for all databases) */}
                   <div className="grid grid-cols-2 gap-3 form-group">
                     <div>
                       <label htmlFor="username">Username</label>
@@ -1242,7 +1324,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
                         name="username"
                         value={formData.username}
                         onChange={handleChange}
-                        placeholder={formData.type === 'postgres' ? 'postgres' : 'root'}
+                        placeholder={formData.type === 'snowflake' ? 'e.g. WISDOMAI_USER' : (formData.type === 'postgres' ? 'postgres' : 'root')}
                         disabled={isTesting || isSaving}
                       />
                       {errors.username && <div className="form-error">{errors.username}</div>}

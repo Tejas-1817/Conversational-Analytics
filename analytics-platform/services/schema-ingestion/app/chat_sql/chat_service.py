@@ -852,10 +852,20 @@ class ChatService:
             "data overview",
         )
 
+        data_indicators = (
+            "chart", "graph", "plot", "by", "top", "per", "trend", 
+            "sales", "revenue", "count", "sum", "average", "orders", "breakdown"
+        )
+        has_data_indicator = any(
+            re.search(rf"\b{re.escape(term)}\b", q_lower)
+            for term in data_indicators
+        )
+
+        # Only route to text-only analysis if there are NO specific data or charting requests
         is_direct_analysis = any(
             phrase in q_lower
             for phrase in direct_analysis_phrases
-        )
+        ) and not has_data_indicator
 
         if is_direct_analysis:
             # Include all connected tables in a compact format.
