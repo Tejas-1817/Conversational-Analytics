@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     Numeric,
+    String,
     Text,
     UniqueConstraint,
     text,
@@ -433,6 +434,27 @@ class SemanticSynonym(Base):
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     synonym: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+class BusinessRule(Base):
+    """Institutional knowledge, operational quirks, and business rules."""
+    __tablename__ = "business_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=True)
+    
+    category: Mapped[str] = mapped_column(String(50), nullable=False, server_default="filter_exclusion")
+    # Categories: 'filter_exclusion', 'fiscal_calendar', 'entity_mapping', 'calculation_quirk'
+    
+    rule_title: Mapped[str] = mapped_column(Text, nullable=False)
+    rule_instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    keywords: Mapped[str | None] = mapped_column(Text)  # Comma-separated triggers: e.g. "revenue, sales, orders"
+    applies_to_tables: Mapped[list[str] | None] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
 
 
 class MetricVersion(Base):

@@ -45,7 +45,8 @@ class PromptBuilder:
             else "None"
         )
         business_context = business_context[:MAX_DOMAIN_CONTEXT_CHARS]
-
+        context_layer_text = business_context
+        
         history = (
             conversation_context.strip()[:6_000]
             if conversation_context and conversation_context.strip()
@@ -243,6 +244,9 @@ Dialect: {dialect_title}
 
 BUSINESS CONTEXT:
 {business_context}
+
+CONTEXT LAYER (VERIFIED SOURCE OF TRUTH):
+{context_layer_text}
 
 DATABASE SCHEMA:
 {schema_text}
