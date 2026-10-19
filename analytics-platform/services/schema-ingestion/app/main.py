@@ -214,7 +214,7 @@ def bootstrap_admin():
         from app.models import (
             Base, Tenant, User, RevokedToken, Conversation, ConversationMessage,
             ApiKey, OIDCProvider, DataSource, TableMeta, ColumnMeta, IndexMeta, AuditLog,
-            Domain, DomainTable, DomainDocument, DomainTerm
+            Domain, DomainTable, DomainDocument, DomainTerm, UserDataSourceAccess, UserTableAccess
         )
         engine = get_engine()
         enum_defs = {
@@ -224,7 +224,7 @@ def bootstrap_admin():
             "rel_source": "('declared_fk', 'naming', 'value_overlap', 'llm')",
             "job_status": "('queued', 'running', 'succeeded', 'failed', 'succeeded_with_warnings')",
             "source_type": "('postgres', 'mysql', 'snowflake', 'bigquery')",
-            "user_role": "('ADMIN', 'ANALYST', 'VIEWER')",
+            "user_role": "('ADMIN', 'USER', 'ANALYST', 'VIEWER')",
             "agg_type": "('SUM', 'AVG', 'COUNT', 'COUNT_DISTINCT', 'MIN', 'MAX', 'CUSTOM')",
             "join_type": "('INNER', 'LEFT', 'RIGHT', 'FULL')",
             "entity_type": "('METRIC', 'DIMENSION', 'GLOSSARY')",
@@ -245,7 +245,8 @@ def bootstrap_admin():
             Conversation.__table__, ConversationMessage.__table__, ApiKey.__table__,
             OIDCProvider.__table__, DataSource.__table__, TableMeta.__table__,
             ColumnMeta.__table__, IndexMeta.__table__, AuditLog.__table__,
-            Domain.__table__, DomainTable.__table__, DomainDocument.__table__, DomainTerm.__table__
+            Domain.__table__, DomainTable.__table__, DomainDocument.__table__, DomainTerm.__table__,
+            UserDataSourceAccess.__table__, UserTableAccess.__table__
         ]
         for tbl in infra_tables:
             try:
@@ -257,8 +258,64 @@ def bootstrap_admin():
             try:
                 conn.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS source_id UUID;"))
                 conn.execute(text("ALTER TABLE conversations ADD COLUMN IF NOT EXISTS domain_id UUID;"))
+                conn.execute(text("ALTER TABLE domains ADD COLUMN IF NOT EXISTS source_id UUID;"))
+                conn.execute(text("ALTER TABLE domains ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;"))
+                conn.execute(text("""
+                    UPDATE domains d
+                    SET user_id = u.id
+                    FROM users u
+                    WHERE d.user_id IS NULL AND d.created_by = u.email AND d.tenant_id = u.tenant_id;
+                """))
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS user_data_source_access (
+                        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        source_id uuid NOT NULL REFERENCES data_sources(id) ON DELETE CASCADE,
+                        granted_by text NOT NULL,
+                        created_at timestamptz NOT NULL DEFAULT now(),
+                        UNIQUE (tenant_id, user_id, source_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_user_data_source_access_lookup 
+                        ON user_data_source_access(tenant_id, user_id);
+                    CREATE INDEX IF NOT EXISTS idx_source_user_access_lookup 
+                        ON user_data_source_access(tenant_id, source_id);
+                """))
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS user_table_access (
+                        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                        tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        source_id uuid NOT NULL REFERENCES data_sources(id) ON DELETE CASCADE,
+                        table_id uuid NOT NULL REFERENCES tables_meta(id) ON DELETE CASCADE,
+                        granted_by text NOT NULL,
+                        created_at timestamptz NOT NULL DEFAULT now(),
+                        UNIQUE (tenant_id, user_id, table_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_user_table_access_lookup 
+                        ON user_table_access(tenant_id, user_id, source_id);
+                    CREATE INDEX IF NOT EXISTS idx_table_user_access_lookup 
+                        ON user_table_access(tenant_id, table_id);
+                """))
             except Exception as e:
-                log.warning("conversations_column_migration_warning", error=str(e))
+                log.warning("schema_migration_warning", error=str(e))
+
+        # 1. Add 'USER' enum value outside a transaction block (AUTOCOMMIT)
+        try:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as autocommit_conn:
+                autocommit_conn.execute(text("ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'USER';"))
+        except Exception as e:
+            log.warning("enum_migration_warning", error=str(e))
+
+        # 2. In a separate committed transaction, migrate users and update column default
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    UPDATE users SET role = 'USER'::user_role WHERE role::text IN ('ANALYST', 'VIEWER');
+                    ALTER TABLE users ALTER COLUMN role SET DEFAULT 'USER'::user_role;
+                """))
+        except Exception as e:
+            log.warning("role_data_migration_warning", error=str(e))
     except Exception as exc:
         log.warning("database_table_creation_warning", error=str(exc))
 

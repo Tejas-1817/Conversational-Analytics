@@ -18,13 +18,15 @@ services:
 
   api:
     build: .
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     env_file: .env
     environment:
       METADATA_DB_URL: postgresql+psycopg://ingestion:ingestion@metadata-db:5432/metadata
       REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"   # host port 8080 (8000 was taken on this machine); container still listens on 8000
+    volumes:
+      - ./app:/srv/app
     depends_on:
       - metadata-db
       - redis
@@ -36,6 +38,8 @@ services:
     environment:
       METADATA_DB_URL: postgresql+psycopg://ingestion:ingestion@metadata-db:5432/metadata
       REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./app:/srv/app
     depends_on:
       - metadata-db
       - redis

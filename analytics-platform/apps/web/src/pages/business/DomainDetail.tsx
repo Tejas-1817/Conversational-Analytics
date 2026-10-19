@@ -332,7 +332,14 @@ export const DomainDetail: React.FC = () => {
 
       setTablesList(fetchedTables);
     } catch (err: any) {
-      console.warn('Failed to load domain detail from API, using demo fallback:', err);
+      console.warn('Failed to load domain detail from API:', err);
+      const errMsg = err?.message || '';
+      if (errMsg.toLowerCase().includes('permission') || errMsg.toLowerCase().includes('access') || err?.status === 403) {
+        setError(errMsg || 'You do not have permission to access the data source for this domain.');
+        setDomain(null);
+        setLoading(false);
+        return;
+      }
       // Resilient fallback domain so the UI remains active and never goes blank on hard refresh
       setDomain({
         id: domainId || 'ET_DOMAIN_c29b64106f494ead9dd809ded6bcdb72',

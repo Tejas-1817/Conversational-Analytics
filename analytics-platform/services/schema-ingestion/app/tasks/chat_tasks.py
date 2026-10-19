@@ -4,7 +4,7 @@ import structlog
 from datetime import datetime, timezone
 from rq.timeouts import JobTimeoutException
 from app.db import session_scope
-from app.models import ConversationMessage, Conversation, DataSource, TableMeta
+from app.models import ConversationMessage, Conversation, DataSource, TableMeta, User
 from app.engine.context_manager import ConversationContextManager
 from app.engine.nlu_service import NLUService
 from app.engine.retrieval_service import RetrievalService
@@ -183,6 +183,16 @@ def process_chat_message(tenant_id: uuid.UUID, conv_id: uuid.UUID, msg_id: uuid.
 
             if target_source is None:
                 raise ConnectionError("Could not connect to the data source: No active data source found for this tenant.")
+
+            # Verify user permissions on target source and referenced tables
+            user = db.get(User, conv.user_id)
+            if user and user.role != "ADMIN":
+                from app.api.deps import verify_user_has_source_access, get_user_permitted_table_ids
+                verify_user_has_source_access(db, user, target_source.id)
+                permitted_ids = get_user_permitted_table_ids(db, user, target_source.id)
+                if resolution.metric and resolution.metric.source_table_id:
+                    if resolution.metric.source_table_id not in permitted_ids:
+                        raise PermissionError(f"Access Denied: You do not have permission to query table(s) associated with metric '{resolution.metric.name}'.")
 
             _append_trace(db, asst_msg, active_stage_key, active_stage_label, "complete")
 

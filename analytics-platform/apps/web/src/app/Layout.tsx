@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Database, Activity, Search, LogOut, MessageSquare, Users, LayoutDashboard, BarChart2, Menu, Bell, User as UserIcon, Settings, ChevronLeft, ChevronRight, ChevronDown, Moon, Boxes } from 'lucide-react';
+import { Database, Activity, Search, LogOut, MessageSquare, Users, LayoutDashboard, BarChart2, Menu, Bell, User as UserIcon, Settings, ChevronLeft, ChevronRight, ChevronDown, Moon, Boxes, Building2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchApi } from '../services/api';
 
@@ -92,6 +92,9 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
               </Link>
               <Link to="/users" className={`sidebar-link ${location.pathname === '/users' ? 'active' : ''}`} title="Users & Roles">
                 <Users size={18} /> {!isCollapsed && "Users & Roles"}
+              </Link>
+              <Link to="/enterprises" className={`sidebar-link ${location.pathname === '/enterprises' ? 'active' : ''}`} title="Enterprises">
+                <Building2 size={18} /> {!isCollapsed && "Enterprises"}
               </Link>
             </>
           )}

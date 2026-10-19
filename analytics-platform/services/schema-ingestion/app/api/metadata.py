@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_admin, require_analyst, require_viewer
+from app.api.deps import require_admin, require_analyst, require_viewer, verify_user_has_source_access
 from app.api.jobs import trigger_ingestion
 from app.audit import record
 from app.db import get_session
@@ -39,6 +39,10 @@ def list_columns(table_id: uuid.UUID, session: Session = Depends(get_session), c
 
 @router.get("/sources/{source_id}/relationships", response_model=list[RelationshipOut])
 def list_relationships(source_id: uuid.UUID, session: Session = Depends(get_session), current_user: User = Depends(require_viewer)) -> list[Relationship]:
+    source = session.get(DataSource, source_id)
+    if not source or source.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=404, detail="Source not found")
+    verify_user_has_source_access(session, current_user, source.id)
     return (session.query(Relationship)
             .join(ColumnMeta, Relationship.from_column_id == ColumnMeta.id)
             .join(TableMeta, ColumnMeta.table_id == TableMeta.id)
@@ -137,6 +141,7 @@ def get_schemas(
     source = session.get(DataSource, source_id)
     if not source or source.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=404, detail="Source not found")
+    verify_user_has_source_access(session, current_user, source.id)
 
     schemas = session.query(TableMeta.schema_name).filter(
         TableMeta.source_id == source_id,
@@ -156,6 +161,7 @@ def get_metadata_tables(
     source = session.get(DataSource, source_id)
     if not source or source.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=404, detail="Source not found")
+    verify_user_has_source_access(session, current_user, source.id)
 
     query = session.query(TableMeta).filter(
         TableMeta.source_id == source_id,
@@ -237,6 +243,7 @@ def get_sync_status(
     source = session.get(DataSource, source_id)
     if not source or source.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=404, detail="Source not found")
+    verify_user_has_source_access(session, current_user, source.id)
 
     latest_version = session.query(MetadataVersion).filter_by(source_id=source_id).order_by(desc(MetadataVersion.version_number)).first()
     if not latest_version:

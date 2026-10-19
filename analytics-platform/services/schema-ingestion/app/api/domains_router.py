@@ -16,12 +16,18 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, status, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.db import get_session
 from app.models import User, Domain, DomainTable, DomainDocument, DomainTerm, DataSource, TableMeta, ColumnMeta, Relationship
-from app.api.deps import get_current_user, Permission, require_permission 
-from sqlalchemy.orm import aliased
+from app.api.deps import (
+    get_current_user,
+    Permission,
+    require_permission,
+    verify_user_has_source_access,
+    verify_user_has_table_access,
+    verify_user_has_domain_access,
+)
 from app.audit import AuditEvent, audit
 # from app.security.auth import require_permission, Permission, AuditEvent, audit
 from app.services.domain_parser import parse_document, chunk_text
@@ -165,14 +171,41 @@ def list_domains(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> List[DomainOut]:
-    """List all domains for current tenant with document & table counts."""
+    """List all domains for current tenant with document & table counts, filtered by data source access."""
     try:
-        domains = (
+        query = (
             session.query(Domain)
             .filter(Domain.tenant_id == current_user.tenant_id)
-            .order_by(Domain.created_at.desc())
-            .all()
         )
+        if current_user.role != "ADMIN":
+            query = query.filter(Domain.user_id == current_user.id)
+            from app.models import UserDataSourceAccess
+            user_grants = (
+                session.query(UserDataSourceAccess.source_id)
+                .filter(
+                    UserDataSourceAccess.tenant_id == current_user.tenant_id,
+                    UserDataSourceAccess.user_id == current_user.id,
+                )
+                .all()
+            )
+            if not user_grants:
+                return []
+            allowed_source_ids = [g[0] for g in user_grants]
+            query = query.filter(
+                (Domain.source_id.in_(allowed_source_ids)) | (Domain.source_id.is_(None))
+            )
+
+        domains = query.order_by(Domain.created_at.desc()).all()
+
+        if current_user.role != "ADMIN":
+            filtered = []
+            for d in domains:
+                try:
+                    verify_user_has_domain_access(session, current_user, d)
+                    filtered.append(d)
+                except HTTPException:
+                    continue
+            domains = filtered
         result = []
         for d in domains:
             table_cnt = session.query(DomainTable).filter(DomainTable.domain_id == d.id).count()
@@ -210,8 +243,18 @@ def create_domain(
     current_user: User = Depends(require_permission(Permission.MANAGE_SEMANTIC)),
 ) -> DomainDetailOut:
     """Create a new domain linking connected database source and selected tables."""
+    if payload.source_id:
+        verify_user_has_source_access(session, current_user, payload.source_id)
+
+    if current_user.role != "ADMIN" and payload.table_ids:
+        if not payload.source_id:
+            raise HTTPException(status_code=400, detail="A data source is required when attaching tables.")
+        for t_id in payload.table_ids:
+            verify_user_has_table_access(session, current_user, payload.source_id, t_id)
+
     domain = Domain(
         tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
         source_id=payload.source_id,
         name=payload.name,
         description=payload.description,
@@ -290,6 +333,7 @@ def get_domain_detail(
     domain = session.query(Domain).filter(Domain.id == domain_id, Domain.tenant_id == current_user.tenant_id).first()
     if not domain:
         raise HTTPException(status_code=404, detail="Domain not found")
+    verify_user_has_domain_access(session, current_user, domain)
 
     source_name = None
     if domain.source_id:
@@ -364,6 +408,7 @@ async def upload_domain_document(
     domain = session.query(Domain).filter(Domain.id == domain_id, Domain.tenant_id == current_user.tenant_id).first()
     if not domain:
         raise HTTPException(status_code=404, detail="Domain not found")
+    verify_user_has_domain_access(session, current_user, domain)
 
     content_bytes = await file.read()
     file_name = file.filename or "uploaded_document"
@@ -564,6 +609,7 @@ def download_domain_document(
     domain = session.query(Domain).filter(Domain.id == domain_id, Domain.tenant_id == current_user.tenant_id).first()
     if not domain:
         raise HTTPException(status_code=404, detail="Domain not found")
+    verify_user_has_domain_access(session, current_user, domain)
 
     doc_record = session.query(DomainDocument).filter(DomainDocument.id == document_id, DomainDocument.domain_id == domain.id).first()
     if not doc_record:
@@ -594,6 +640,7 @@ def delete_domain(
     domain = session.query(Domain).filter(Domain.id == domain_id, Domain.tenant_id == current_user.tenant_id).first()
     if not domain:
         raise HTTPException(status_code=404, detail="Domain not found")
+    verify_user_has_domain_access(session, current_user, domain)
 
     session.delete(domain)
     session.commit()
@@ -610,6 +657,7 @@ def query_domain_knowledge(
     domain = session.query(Domain).filter(Domain.id == domain_id, Domain.tenant_id == current_user.tenant_id).first()
     if not domain:
         raise HTTPException(status_code=404, detail="Domain not found")
+    verify_user_has_domain_access(session, current_user, domain)
 
     embed_provider = get_embedding_provider()
     query_vec = embed_provider.embed_query(payload.question)
@@ -677,6 +725,7 @@ def create_domain_term(
     domain = session.query(Domain).filter(Domain.id == domain_id, Domain.tenant_id == current_user.tenant_id).first()
     if not domain:
         raise HTTPException(status_code=404, detail="Domain not found")
+    verify_user_has_domain_access(session, current_user, domain)
 
     term_name = (payload.term or payload.definition[:50]).strip()
     term_rec = DomainTerm(
@@ -741,6 +790,11 @@ def update_domain_term(
     current_user: User = Depends(get_current_user),
 ) -> TermSummary:
     """Update a domain knowledge / glossary term and refresh its embedding."""
+    domain = session.query(Domain).filter(Domain.id == domain_id, Domain.tenant_id == current_user.tenant_id).first()
+    if not domain:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    verify_user_has_domain_access(session, current_user, domain)
+
     term_rec = session.query(DomainTerm).filter(DomainTerm.id == term_id, DomainTerm.domain_id == domain_id).first()
     if not term_rec:
         raise HTTPException(status_code=404, detail="Term not found")
@@ -807,6 +861,11 @@ def delete_domain_term(
     current_user: User = Depends(get_current_user),
 ) -> None:
     """Delete a domain knowledge / glossary term."""
+    domain = session.query(Domain).filter(Domain.id == domain_id, Domain.tenant_id == current_user.tenant_id).first()
+    if not domain:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    verify_user_has_domain_access(session, current_user, domain)
+
     term_rec = session.query(DomainTerm).filter(DomainTerm.id == term_id, DomainTerm.domain_id == domain_id).first()
     if not term_rec:
         raise HTTPException(status_code=404, detail="Term not found")

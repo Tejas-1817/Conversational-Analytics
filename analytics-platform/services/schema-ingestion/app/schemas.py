@@ -34,6 +34,11 @@ class DataSourceCreate(BaseModel):
     options: ConnectionOptions = Field(
         default_factory=ConnectionOptions
     )
+    tenant_id: uuid.UUID | None = None
+
+
+class DataSourceEnterpriseUpdate(BaseModel):
+    tenant_id: uuid.UUID
 
 class ExcelSheetOverride(BaseModel):
     table_name: str | None = None
@@ -70,6 +75,7 @@ class ExcelSourceCreate(BaseModel):
 class DataSourceOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
+    tenant_id: uuid.UUID | None = None
     name: str
     type: str
     host: str | None = None
@@ -191,3 +197,41 @@ class ReviewRequest(BaseModel):
     aggregation: str | None = None
     additivity: Literal["additive", "semi_additive", "non_additive", "not_applicable"] | None = None
     cardinality: str | None = None
+
+
+# --- User Data Source Access Control Schemas ---
+class UserDataSourceAccessUpdate(BaseModel):
+    source_ids: list[uuid.UUID]
+
+
+class UserDataSourceItemOut(BaseModel):
+    source_id: uuid.UUID
+    name: str
+    type: str
+    database_name: str | None = None
+    is_granted: bool
+
+
+class SourceUserAccessItemOut(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    role: str
+    is_granted: bool
+
+
+class SourceUserAccessUpdate(BaseModel):
+    user_ids: list[uuid.UUID]
+
+
+# --- User Table-Level Access Control Schemas ---
+class UserTableAccessItemOut(BaseModel):
+    table_id: uuid.UUID
+    schema_name: str
+    table_name: str
+    is_granted: bool
+
+
+class UserTableAccessUpdate(BaseModel):
+    table_ids: list[uuid.UUID]
+
+

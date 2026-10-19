@@ -32,12 +32,7 @@ DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def _require_super_admin(current_user: User = Depends(require_admin)) -> User:
-    """Ensure the caller is a platform super-admin (member of the default tenant)."""
-    if str(current_user.tenant_id) != DEFAULT_TENANT_ID:
-        raise HTTPException(
-            status_code=403,
-            detail="Platform super-admin access required",
-        )
+    """Ensure the caller is an ADMIN (platform administrator)."""
     return current_user
 
 
@@ -52,6 +47,14 @@ class TenantCreate(BaseModel):
     max_sources: int = 5
 
 
+class TenantUpdate(BaseModel):
+    name: str | None = None
+    display_name: str | None = None
+    plan: str | None = None
+    max_users: int | None = None
+    max_sources: int | None = None
+
+
 class TenantOut(BaseModel):
     id: uuid.UUID
     name: str
@@ -62,6 +65,18 @@ class TenantOut(BaseModel):
     max_users: int
     max_sources: int
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TenantUserOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    role: str
+    is_active: bool
+    created_at: datetime
+    tenant_id: uuid.UUID
 
     class Config:
         from_attributes = True
@@ -93,7 +108,8 @@ class TenantPolicyUpdate(BaseModel):
 
 # --- Endpoints ---
 
-@router.get("/", response_model=list[TenantOut])
+@router.get("", response_model=list[TenantOut])
+@router.get("/", response_model=list[TenantOut], include_in_schema=False)
 def list_tenants(
     db: Session = Depends(get_session),
     _: User = Depends(_require_super_admin),
@@ -102,7 +118,8 @@ def list_tenants(
     return db.query(Tenant).order_by(Tenant.created_at.desc()).all()
 
 
-@router.post("/", response_model=TenantOut, status_code=201)
+@router.post("", response_model=TenantOut, status_code=201)
+@router.post("/", response_model=TenantOut, status_code=201, include_in_schema=False)
 def create_tenant(
     body: TenantCreate,
     request: Request,
@@ -158,6 +175,52 @@ def get_tenant(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return tenant
+
+
+@router.patch("/{tenant_id}", response_model=TenantOut)
+def update_tenant(
+    tenant_id: uuid.UUID,
+    body: TenantUpdate,
+    request: Request,
+    db: Session = Depends(get_session),
+    admin: User = Depends(_require_super_admin),
+):
+    """Update tenant metadata (display name, plan, limits)."""
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    before_data = {"name": tenant.name, "display_name": tenant.display_name, "plan": tenant.plan}
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(tenant, field, value)
+
+    audit(
+        db,
+        tenant_id=admin.tenant_id,
+        entity_type="tenants",
+        entity_id=tenant.id,
+        action="TENANT_UPDATED",
+        actor=admin.email,
+        before=before_data,
+        after=body.model_dump(exclude_none=True),
+        request=request,
+    )
+    db.commit()
+    db.refresh(tenant)
+    return tenant
+
+
+@router.get("/{tenant_id}/users", response_model=list[TenantUserOut])
+def list_tenant_users(
+    tenant_id: uuid.UUID,
+    db: Session = Depends(get_session),
+    _: User = Depends(_require_super_admin),
+):
+    """List all users belonging to a specific enterprise."""
+    tenant = db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return db.query(User).filter(User.tenant_id == tenant_id).order_by(User.created_at.desc()).all()
 
 
 @router.post("/{tenant_id}/suspend", response_model=TenantOut)

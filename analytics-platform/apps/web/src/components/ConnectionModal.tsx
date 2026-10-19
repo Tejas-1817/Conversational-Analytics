@@ -100,6 +100,8 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
   const [isSaving, setIsSaving] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
   const [testSuccess, setTestSuccess] = useState<boolean>(false);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState<string>('');
 
   // Catalog definition matching the Conversational Analytics connector grid
   const connectors: ConnectorOption[] = [
@@ -346,6 +348,17 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       setErrors({});
       setBackendError(null);
       setTestSuccess(false);
+
+      fetchApi('/tenants')
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setTenants(data);
+            if (data.length > 0) {
+              setSelectedTenantId(data[0].id);
+            }
+          }
+        })
+        .catch(() => {});
     }
   }, [isOpen]);
 
@@ -534,6 +547,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
 
   const buildSourcePayload = () => ({
     ...formData,
+    tenant_id: selectedTenantId || undefined,
   });
 
   const handleTestConnection = async () => {
@@ -1003,6 +1017,27 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
                 />
                 {errors.name && <div className="form-error">{errors.name}</div>}
               </div>
+
+              {tenants.length > 0 && (
+                <div className="form-group">
+                  <label htmlFor="sourceTenantId">Enterprise Organization</label>
+                  <select
+                    id="sourceTenantId"
+                    value={selectedTenantId}
+                    onChange={(e) => setSelectedTenantId(e.target.value)}
+                    disabled={isTesting || isSaving || isPreviewing}
+                  >
+                    {tenants.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.display_name || t.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Select the enterprise organization that owns this data source.
+                  </div>
+                </div>
+              )}
 
               {/* GITHUB / CODE INTELLIGENCE WORKFLOW */}
               {formData.type === 'github' ? (

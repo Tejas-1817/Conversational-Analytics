@@ -90,6 +90,16 @@ _ROLE_PERMISSIONS: dict[str, set[str]] = {
         Permission.VIEW_AUDIT_LOG,
         Permission.MANAGE_API_KEYS,
     },
+    "USER": {
+        Permission.VIEW_SOURCES,
+        Permission.MANAGE_SEMANTIC,
+        Permission.VIEW_SEMANTIC,
+        Permission.MANAGE_DASHBOARDS,
+        Permission.VIEW_DASHBOARDS,
+        Permission.SAVE_INSIGHTS,
+        Permission.USE_AI_CHAT,
+        Permission.EXPORT_DATA,
+    },
     "ANALYST": {
         Permission.VIEW_SOURCES,
         Permission.MANAGE_SEMANTIC,
@@ -239,10 +249,175 @@ def require_permission(permission: str) -> Callable:
 def verify_tenant_owns(resource_tenant_id: uuid.UUID, current_user: User) -> None:
     """
     Assert that a resource belongs to the calling user's tenant.
-    Raises 404 (not 403) to avoid leaking existence of resources.
+    Platform admins have platform-wide authority.
+    Raises 404 (not 403) to avoid leaking existence of resources to non-admins.
     """
+    if current_user.role == "ADMIN":
+        return
     if resource_tenant_id != current_user.tenant_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Resource not found",
         )
+
+
+def verify_user_has_source_access(session: Session, current_user: User, source_id: uuid.UUID) -> None:
+    """
+    Assert that the user has been granted access to this data source, or is an ADMIN.
+    Raises 403 Forbidden if not authorized.
+    """
+    if current_user.role == "ADMIN":
+        return
+    from app.models import UserDataSourceAccess
+    from sqlalchemy import select
+    grant = session.scalar(
+        select(UserDataSourceAccess).where(
+            UserDataSourceAccess.tenant_id == current_user.tenant_id,
+            UserDataSourceAccess.user_id == current_user.id,
+            UserDataSourceAccess.source_id == source_id,
+        )
+    )
+    if not grant:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this data source."
+        )
+
+
+def verify_domain_ownership(current_user: User, domain: Any) -> None:
+    """
+    Enforce strict user-level domain privacy.
+    A domain is private to its creator. Even within the same enterprise, other users cannot access it.
+    Raises 404 Not Found (anti-enumeration defense).
+    """
+    if current_user.role == "ADMIN":
+        return
+
+    if getattr(domain, "user_id", None) is not None:
+        if domain.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Domain not found"
+            )
+    else:
+        # Legacy domain fallback: check created_by email
+        if domain.created_by != current_user.email:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Domain not found"
+            )
+
+
+def verify_user_has_domain_access(session: Session, current_user: User, domain: Any) -> None:
+    """
+    Assert that the user has permission to access this domain.
+    1. ADMIN users have unrestricted access.
+    2. Creator ownership is strictly enforced (raises 404 for non-owners).
+    3. User must have access to the domain's data source (raises 404 to prevent enumeration).
+    """
+    if current_user.role == "ADMIN":
+        return
+
+    # 1. Enforce creator privacy (anti-enumeration)
+    verify_domain_ownership(current_user, domain)
+
+    from app.models import UserDataSourceAccess, DomainTable, TableMeta
+    from sqlalchemy import select
+
+    # If the user has not been granted access to any data source at all, they cannot access any domain
+    has_any_grant = session.scalar(
+        select(UserDataSourceAccess.id).where(
+            UserDataSourceAccess.tenant_id == current_user.tenant_id,
+            UserDataSourceAccess.user_id == current_user.id,
+        )
+    )
+    if not has_any_grant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Domain not found"
+        )
+
+    if domain.source_id is not None:
+        try:
+            verify_user_has_source_access(session, current_user, domain.source_id)
+        except HTTPException:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Domain not found"
+            )
+    else:
+        table_sources = (
+            session.query(TableMeta.source_id)
+            .join(DomainTable, DomainTable.table_id == TableMeta.id)
+            .filter(DomainTable.domain_id == domain.id)
+            .distinct()
+            .all()
+        )
+        if not table_sources:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Domain not found"
+            )
+        for (src_id,) in table_sources:
+            if src_id:
+                try:
+                    verify_user_has_source_access(session, current_user, src_id)
+                except HTTPException:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Domain not found"
+                    )
+
+
+def require_user(current_user: User = Depends(get_current_user)) -> User:
+    """Any authenticated active user (ADMIN or USER)."""
+    return current_user
+
+
+def get_user_permitted_table_ids(session: Session, current_user: User, source_id: uuid.UUID) -> set[uuid.UUID]:
+    """
+    Return the set of TableMeta IDs that the user is permitted to access for the given source_id.
+    - ADMIN users: All tables of the data source.
+    - Non-admin users: Only tables explicitly granted in user_table_access.
+    """
+    from app.models import TableMeta, UserTableAccess
+    if current_user.role == "ADMIN":
+        tables = session.query(TableMeta.id).filter(TableMeta.source_id == source_id).all()
+        return {t[0] for t in tables}
+
+    grants = session.query(UserTableAccess.table_id).filter(
+        UserTableAccess.tenant_id == current_user.tenant_id,
+        UserTableAccess.user_id == current_user.id,
+        UserTableAccess.source_id == source_id,
+    ).all()
+    return {g[0] for g in grants}
+
+
+def verify_user_has_table_access(session: Session, current_user: User, source_id: uuid.UUID, table_id: uuid.UUID) -> None:
+    """
+    Assert that the user has been granted access to this specific table.
+    Deny-by-default for ordinary users. Raises 403 Forbidden if not authorized.
+    """
+    if current_user.role == "ADMIN":
+        return
+
+    # First verify parent data source grant
+    verify_user_has_source_access(session, current_user, source_id)
+
+    from app.models import UserTableAccess
+    from sqlalchemy import select
+    grant = session.scalar(
+        select(UserTableAccess.id).where(
+            UserTableAccess.tenant_id == current_user.tenant_id,
+            UserTableAccess.user_id == current_user.id,
+            UserTableAccess.source_id == source_id,
+            UserTableAccess.table_id == table_id,
+        )
+    )
+    if not grant:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this table."
+        )
+
+

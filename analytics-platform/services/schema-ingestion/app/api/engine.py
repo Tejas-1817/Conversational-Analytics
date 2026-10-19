@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, verify_user_has_source_access, verify_user_has_domain_access
 from app.db import get_session
 from app.engine.chart_recommender import ChartRecommender
 from app.engine.compiler_service import CompilerService, SQLSafetyError
@@ -33,6 +33,14 @@ router = APIRouter(prefix="/engine", tags=["engine"])
 
 @router.post("/conversations", response_model=ConversationOut)
 def create_conversation(req: ConversationCreate | None = None, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    if req and req.source_id:
+        verify_user_has_source_access(db, user, req.source_id)
+    if req and req.domain_id:
+        from app.models import Domain
+        domain = db.query(Domain).filter(Domain.id == req.domain_id, Domain.tenant_id == user.tenant_id).first()
+        if not domain:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        verify_user_has_domain_access(db, user, domain)
     conv = Conversation(
         tenant_id=user.tenant_id,
         user_id=user.id,
@@ -53,11 +61,19 @@ def update_conversation(conv_id: uuid.UUID, req: ConversationUpdate, db: Session
     ))
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    if user.role != "ADMIN" and conv.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Conversation not found")
     if req.title is not None:
         conv.title = req.title
     if req.source_id is not None:
+        verify_user_has_source_access(db, user, req.source_id)
         conv.source_id = req.source_id
     if req.domain_id is not None:
+        from app.models import Domain
+        domain = db.query(Domain).filter(Domain.id == req.domain_id, Domain.tenant_id == user.tenant_id).first()
+        if not domain:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        verify_user_has_domain_access(db, user, domain)
         conv.domain_id = req.domain_id
     conv.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -80,6 +96,8 @@ def get_conversation(conv_id: uuid.UUID, db: Session = Depends(get_session), use
     ))
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    if user.role != "ADMIN" and conv.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Conversation not found")
     return conv
 
 @router.delete("/conversations/{conv_id}", status_code=204)
@@ -89,6 +107,8 @@ def delete_conversation(conv_id: uuid.UUID, db: Session = Depends(get_session), 
         Conversation.tenant_id == user.tenant_id
     ))
     if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if user.role != "ADMIN" and conv.user_id != user.id:
         raise HTTPException(status_code=404, detail="Conversation not found")
     db.delete(conv)
     db.commit()
@@ -103,6 +123,16 @@ def ask_question(conv_id: uuid.UUID, req: ChatRequest, db: Session = Depends(get
     ))
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    if user.role != "ADMIN" and conv.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if conv.source_id:
+        verify_user_has_source_access(db, user, conv.source_id)
+    if conv.domain_id:
+        from app.models import Domain
+        domain = db.query(Domain).filter(Domain.id == conv.domain_id, Domain.tenant_id == user.tenant_id).first()
+        if not domain:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        verify_user_has_domain_access(db, user, domain)
 
     # 1. Save user message
     user_msg = ConversationMessage(
@@ -150,6 +180,8 @@ def get_message_status(conv_id: uuid.UUID, msg_id: uuid.UUID, db: Session = Depe
         Conversation.tenant_id == user.tenant_id
     ))
     if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if user.role != "ADMIN" and conv.user_id != user.id:
         raise HTTPException(status_code=404, detail="Conversation not found")
         
     msg = db.scalar(select(ConversationMessage).where(

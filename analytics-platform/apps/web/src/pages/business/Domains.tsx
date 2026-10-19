@@ -25,6 +25,7 @@ import {
 import { fetchApi } from '../../services/api';
 import { DomainModal } from '../../components/DomainModal';
 import { SourceLogo } from '../../components/SourceLogos';
+import { useAuth } from '../../contexts/AuthContext';
 
 export interface Domain {
   id: string;
@@ -83,6 +84,8 @@ function formatDateTime(dateStr?: string): string {
 
 export const Domains: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const [domains, setDomains] = useState<Domain[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -452,26 +455,28 @@ export const Domains: React.FC = () => {
         </div>
 
         {/* Right Side: + Add domain Button */}
-        <button
-          className="btn-primary"
-          onClick={openCreateModal}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '7px 16px',
-            fontSize: '13px',
-            fontWeight: 500,
-            borderRadius: 'var(--radius-sm)',
-            background: '#4F46E5',
-            color: '#FFFFFF',
-            border: 'none',
-            cursor: 'pointer',
-            boxShadow: '0 1px 2px rgba(79, 70, 229, 0.2)',
-          }}
-        >
-          <Plus size={16} /> Add domain
-        </button>
+        {(isAdmin || domains.length > 0) && (
+          <button
+            className="btn-primary"
+            onClick={openCreateModal}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '7px 16px',
+              fontSize: '13px',
+              fontWeight: 500,
+              borderRadius: 'var(--radius-sm)',
+              background: '#4F46E5',
+              color: '#FFFFFF',
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px rgba(79, 70, 229, 0.2)',
+            }}
+          >
+            <Plus size={16} /> Add domain
+          </button>
+        )}
       </div>
 
       {loadError && (
@@ -642,15 +647,21 @@ export const Domains: React.FC = () => {
                   <td colSpan={8} style={{ padding: '48px 16px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
                       <Boxes size={36} style={{ color: 'var(--text-faint)', opacity: 0.5 }} />
-                      <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>
-                        {searchQuery ? 'No domains found matching your search' : 'No domains yet'}
+                      <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '15px' }}>
+                        {searchQuery
+                          ? 'No domains found matching your search'
+                          : isAdmin
+                          ? 'No domains yet'
+                          : 'No domain access'}
                       </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '360px' }}>
+                      <div style={{ fontSize: '13px', color: 'var(--text-muted)', maxWidth: '420px', lineHeight: 1.5 }}>
                         {searchQuery
                           ? 'Try modifying your search or clearing your filters.'
-                          : 'Create context-rich domains to ground your analytics and chat assistant.'}
+                          : isAdmin
+                          ? 'Create context-rich domains to ground your analytics and chat assistant.'
+                          : 'You have not been granted access to any data sources or domains yet. Please contact your administrator to request access.'}
                       </div>
-                      {!searchQuery && (
+                      {!searchQuery && isAdmin && (
                         <button
                           className="btn-primary"
                           onClick={openCreateModal}

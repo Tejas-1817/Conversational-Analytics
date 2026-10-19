@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     Numeric,
@@ -36,7 +37,7 @@ job_status = ENUM("queued", "running", "succeeded", "failed", "succeeded_with_wa
                   name="job_status", create_type=False)
 source_type = ENUM("postgres", "mysql", "mssql","snowflake", "bigquery", "excel",
                    name="source_type", create_type=False)
-user_role = ENUM("ADMIN", "ANALYST", "VIEWER",
+user_role = ENUM("ADMIN", "USER", "ANALYST", "VIEWER",
                  name="user_role", create_type=False)
 agg_type = ENUM("SUM", "AVG", "COUNT", "COUNT_DISTINCT", "MIN", "MAX", "CUSTOM",
                 name="agg_type", create_type=False)
@@ -226,9 +227,11 @@ class SchemaRegistry(Base):
 
 class Domain(Base):
     __tablename__ = "domains"
+    __table_args__ = (Index("idx_domains_tenant_user", "tenant_id", "user_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     source_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("data_sources.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
@@ -517,7 +520,7 @@ class User(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     email: Mapped[str] = mapped_column(Text, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    role: Mapped[str] = mapped_column(user_role, nullable=False, server_default="VIEWER")
+    role: Mapped[str] = mapped_column(user_role, nullable=False, server_default="USER")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
@@ -741,6 +744,41 @@ class ColumnSecurityPolicy(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class UserDataSourceAccess(Base):
+    """Many-to-many junction table granting users access to specific data sources."""
+    __tablename__ = "user_data_source_access"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "source_id"),
+        Index("idx_user_data_source_access_lookup", "tenant_id", "user_id"),
+        Index("idx_source_user_access_lookup", "tenant_id", "source_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=False)
+    granted_by: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class UserTableAccess(Base):
+    """Many-to-many junction table granting users access to specific tables within a data source."""
+    __tablename__ = "user_table_access"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "table_id"),
+        Index("idx_user_table_access_lookup", "tenant_id", "user_id", "source_id"),
+        Index("idx_table_user_access_lookup", "tenant_id", "table_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=False)
+    table_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tables_meta.id", ondelete="CASCADE"), nullable=False)
+    granted_by: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
 
 
 # =============================================================================

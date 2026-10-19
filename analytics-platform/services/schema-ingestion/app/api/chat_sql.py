@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, verify_user_has_source_access, verify_user_has_domain_access
 from app.chat_sql.chat_service import ChatService, SourceNotFoundError
 from app.chat_sql.llm_provider import LLMTimeoutError, LLMUnavailableError
 from app.db import get_session
@@ -67,6 +67,13 @@ def generate_sql_from_question(
     db: Session = Depends(get_session),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
+    verify_user_has_source_access(db, user, req.source_id)
+    if req.domain_id:
+        from app.models import Domain
+        domain = db.query(Domain).filter(Domain.id == req.domain_id, Domain.tenant_id == user.tenant_id).first()
+        if not domain:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Domain not found")
+        verify_user_has_domain_access(db, user, domain)
     try:
         return chat_service.process_text_to_sql(
             question=req.question.strip(),
