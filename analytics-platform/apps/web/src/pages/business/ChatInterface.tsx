@@ -288,6 +288,7 @@ export const ChatInterface = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -436,6 +437,7 @@ export const ChatInterface = () => {
           retrieved_chunks: parsedData?.retrieved_chunks || [],
 
           sql: m.generated_sql,
+          generated_sql: m.generated_sql,
           result_data: rows,
           rows: rows,
           columns: cols,
@@ -668,7 +670,11 @@ export const ChatInterface = () => {
           generated_at: data.generated_at,
           database: data.database,
         };
-        setMessages(prev => [...prev, botMsg]);
+        if (data.conversation_id) {
+          await loadConversation(data.conversation_id);
+        } else {
+          setMessages(prev => [...prev, botMsg]);
+        }
       }
       await loadConversationsList();
     } catch (err: any) {
@@ -678,6 +684,83 @@ export const ChatInterface = () => {
     }
   };
 
+  const handleRegenerateResponse = async (msg: any, index: number) => {
+    const questionText = msg.question || (index > 0 ? messages[index - 1]?.content : '');
+    if (!questionText || loading) return;
+
+    setLoading(true);
+    try {
+      if (isCodeRepoSelected) {
+        const data = await fetchApi(`/code-repos/${selectedSourceId}/query`, {
+          method: 'POST',
+          body: JSON.stringify({
+            question: questionText,
+            conversation_id: convId || undefined,
+            n_chunks: 6,
+          })
+        });
+        const updated = {
+          ...msg,
+          content: data.answer || '',
+          answer: data.answer || '',
+          answer_markdown: data.answer || '',
+          graph_facts: data.graph_facts || [],
+          retrieved_chunks: data.retrieved_chunks || [],
+          follow_up_questions: data.follow_up_questions || [],
+        };
+        setMessages(prev => prev.map((item, idx) => idx === index ? updated : item));
+      } else {
+        const data = await fetchApi('/api/v1/chat/sql', {
+          method: 'POST',
+          body: JSON.stringify({
+            question: questionText,
+            conversation_id: convId,
+            domain_id: selectedDomainId || null,
+            source_id: selectedSourceId,
+            mode: 'auto'
+          })
+        });
+
+        if (data.conversation_id) {
+          await loadConversation(data.conversation_id);
+        }
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to regenerate response.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectResponse = async (messageId: string) => {
+    if (!convId) return;
+    const isCurrentlyRejected = feedbackGiven[messageId] === 'rejected';
+
+    try {
+      if (isCurrentlyRejected) {
+        // UNDO: Delete feedback entry and return to neutral grey
+        await fetchApi(`/engine/conversations/${convId}/messages/${messageId}/feedback`, {
+          method: 'DELETE'
+        });
+        setFeedbackGiven(prev => {
+          const next = { ...prev };
+          delete next[messageId];
+          return next;
+        });
+      } else {
+        // FLAG: Submit negative feedback and turn red
+        await fetchApi(`/engine/conversations/${convId}/messages/${messageId}/feedback`, {
+          method: 'POST',
+          body: JSON.stringify({ is_positive: false })
+        });
+        setFeedbackGiven(prev => ({ ...prev, [messageId]: 'rejected' }));
+      }
+    } catch (err) {
+      console.error('Failed to toggle negative feedback:', err);
+    }
+  };
+
+
   const handleSaveInsight = async (msg: any) => {
     const name = prompt('Enter a name for this insight:');
     if (!name) return;
@@ -686,7 +769,8 @@ export const ChatInterface = () => {
         method: 'POST',
         body: JSON.stringify({
           name,
-          query: msg.question || msg.intent?.original_query || 'Saved Insight',
+          description: msg.question || msg.intent?.original_query || name,
+          query: msg.sql || msg.generated_sql || '', // Pass verified SQL
           chart_config: {
             chartType: msg.chart_recommendation || (msg.recommended_visualization && msg.recommended_visualization.chart_type) || 'table',
             data: msg.result_data || [],
@@ -695,7 +779,7 @@ export const ChatInterface = () => {
           }
         })
       });
-      alert('Insight saved successfully! You can add it to a Dashboard.');
+      alert('Insight saved! It will automatically guide future AI answers.');
     } catch (e: any) {
       alert(e.message);
     }
@@ -722,6 +806,35 @@ export const ChatInterface = () => {
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
   };
+
+  const handleApproveResponse = async (messageId: string) => {
+    const isCurrentlyApproved = feedbackGiven[messageId] === 'approved';
+
+    try {
+      if (isCurrentlyApproved) {
+        // UNDO: Call unapprove endpoint and remove green checkmark
+        await fetchApi('/engine/examples/unapprove', {
+          method: 'POST',
+          body: JSON.stringify({ message_id: messageId })
+        });
+        setFeedbackGiven(prev => {
+          const next = { ...prev };
+          delete next[messageId];
+          return next;
+        });
+      } else {
+        // APPROVE: Call approve endpoint and show green checkmark
+        await fetchApi('/engine/examples/approve', {
+          method: 'POST',
+          body: JSON.stringify({ message_id: messageId })
+        });
+        setFeedbackGiven(prev => ({ ...prev, [messageId]: 'approved' }));
+      }
+    } catch (err) {
+      console.error('Failed to toggle approve status:', err);
+    }
+  };
+
 
   const filteredConversations = conversations.filter(c =>
     c.title?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -1003,12 +1116,26 @@ export const ChatInterface = () => {
                                 resolvedType = m.recommended_visualization;
                               }
 
-                              if (!resolvedType) {
+                              // 1. Explicit prompt override: If user asked for a specific chart, prioritize it
+                              const qLower = (m.question || '').toLowerCase();
+                              if (rows.length > 0 && cols.length >= 2) {
+                                if (qLower.includes('bar chart') || qLower.includes('bar graph') || qLower.includes('horizontal bar')) {
+                                  resolvedType = 'bar_chart';
+                                } else if (qLower.includes('line chart') || qLower.includes('line graph') || qLower.includes('trend') || qLower.includes('over time')) {
+                                  resolvedType = 'line_chart';
+                                } else if (qLower.includes('pie chart') || qLower.includes('donut chart') || qLower.includes('share of') || qLower.includes('percentage distribution')) {
+                                  resolvedType = 'pie_chart';
+                                } else if (qLower.includes('area chart')) {
+                                  resolvedType = 'area_chart';
+                                }
+                              }
+
+                              // 2. Fallback heuristic: Clean comparative datasets (2 to 5 columns, <= 20 rows) render as Bar Chart instead of raw table
+                              if (!resolvedType || resolvedType === 'table') {
                                 if (rows.length === 1 && cols.length === 1) resolvedType = 'kpi_card';
                                 else if (rows.length === 1 && cols.length > 1) resolvedType = 'detail_card';
-                                else if (rows.length > 20) resolvedType = 'table';
-                                else if (rows.length > 1 && cols.length >= 2) resolvedType = 'bar_chart';
-                                else resolvedType = 'table';
+                                else if (rows.length > 1 && rows.length <= 20 && cols.length >= 2 && cols.length <= 5) resolvedType = 'bar_chart';
+                                else resolvedType = resolvedType || 'table';
                               }
 
                               const cardTitle = m.title || (m.result_data && m.result_data.title) || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
@@ -1169,19 +1296,15 @@ export const ChatInterface = () => {
                       </div>
                     )}
 
-                    {m.confidence_score && (
+                    {m.role === 'assistant' && !m.isError && (
                       <div className="flex items-center gap-4 mt-4 text-muted text-sm flex-wrap">
-                        <div className="flex items-center gap-1" title={m.confidence_reason}>
-                          <CheckCircle2 size={14} className="text-success" />
-                          <span>Confidence: {(m.confidence_score * 100).toFixed(0)}%</span>
-                        </div>
-
-                        {m.execution_time_ms !== undefined && (
-                          <div className="flex items-center gap-1">
-                            <Clock size={14} className="text-muted" />
-                            <span>Executed in {m.execution_time_ms}ms</span>
+                        {m.confidence_score && (
+                          <div className="flex items-center gap-1" title={m.confidence_reason}>
+                            <CheckCircle2 size={14} className="text-success" />
+                            <span>Confidence: {(m.confidence_score * 100).toFixed(0)}%</span>
                           </div>
                         )}
+
 
                         <details style={{ cursor: 'pointer', position: 'relative' }} className="group">
                           <summary className="flex items-center gap-1 hover:text-white" style={{ outline: 'none' }}>
@@ -1190,12 +1313,17 @@ export const ChatInterface = () => {
                           <div className="card" style={{ position: 'absolute', bottom: '100%', left: 0, width: '500px', maxWidth: '80vw', zIndex: 50, padding: '1rem', marginBottom: '0.5rem', background: 'var(--bg-dark)' }}>
                             <div className="flex justify-between items-center mb-2">
                               <h4 className="text-sm text-muted m-0">Trace Details</h4>
-                              <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={(e) => { e.preventDefault(); handleCopy(JSON.stringify({ sql: m.generated_sql, plan: m.query_plan, trace: m.trace }, null, 2)); }} title="Copy Trace">
+                              <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={(e) => {
+                                e.preventDefault(); handleCopy(JSON.stringify({ sql: m.sql || m.generated_sql, plan: m.query_plan, trace: m.trace }, null, 2));
+                              }}
+                                title="Copy Trace"
+                              >
                                 <Copy size={12} />
                               </button>
+
                             </div>
                             <pre style={{ background: 'var(--bg-card)', padding: '1rem', borderRadius: 'var(--radius-sm)', overflowX: 'auto', fontSize: '0.75rem', border: '1px solid var(--border-color)', margin: 0, maxHeight: '300px', overflowY: 'auto' }}>
-                              {m.generated_sql && `SQL:\n${m.generated_sql}\n\n`}
+                              {(m.sql || m.generated_sql) && `SQL:\n${m.sql || m.generated_sql}\n\n`}
                               {m.query_plan && `Plan:\n${JSON.stringify(m.query_plan, null, 2)}\n\n`}
                               {m.trace && `Router Trace:\n${JSON.stringify(m.trace, null, 2)}`}
                             </pre>
@@ -1206,9 +1334,44 @@ export const ChatInterface = () => {
 
                         <div className="flex items-center gap-2">
                           <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={() => handleCopy(m.answer_markdown || m.answer || m.content || '')} title="Copy response"><Copy size={14} /></button>
-                          <button className="btn-ghost" style={{ padding: '0.25rem' }} title="Regenerate"><RefreshCcw size={14} /></button>
-                          <button className="btn-ghost" style={{ padding: '0.25rem' }} title="Good response"><ThumbsUp size={14} /></button>
-                          <button className="btn-ghost" style={{ padding: '0.25rem' }} title="Bad response"><ThumbsDown size={14} /></button>
+                          <button
+                            className="btn-ghost"
+                            style={{ padding: '0.25rem' }}
+                            title="Regenerate"
+                            onClick={() => handleRegenerateResponse(m, i)}
+                          >
+                            <RefreshCcw size={14} />
+                          </button>
+
+                          <button
+                            className="btn-ghost"
+                            style={{
+                              padding: '0.25rem',
+                              color: feedbackGiven[m.id] === 'approved' ? '#10B981' : 'inherit',
+                              transition: 'all 0.2s ease',
+                            }}
+                            onClick={() => handleApproveResponse(m.id)}
+                            title={feedbackGiven[m.id] === 'approved' ? "Approved as Golden Query!" : "Approve as Golden Query"}
+                          >
+                            {feedbackGiven[m.id] === 'approved' ? (
+                              <Check size={14} style={{ color: '#10B981' }} />
+                            ) : (
+                              <ThumbsUp size={14} />
+                            )}
+                          </button>
+
+                          <button
+                            className="btn-ghost"
+                            style={{
+                              padding: '0.25rem',
+                              color: feedbackGiven[m.id] === 'rejected' ? '#EF4444' : 'inherit',
+                              transition: 'all 0.2s ease',
+                            }}
+                            onClick={() => handleRejectResponse(m.id)}
+                            title={feedbackGiven[m.id] === 'rejected' ? "Feedback submitted! Click to undo." : "Flag incorrect response"}
+                          >
+                            <ThumbsDown size={14} />
+                          </button>
                         </div>
                       </div>
                     )}

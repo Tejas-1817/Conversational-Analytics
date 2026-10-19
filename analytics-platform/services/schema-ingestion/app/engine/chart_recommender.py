@@ -55,12 +55,37 @@ class ChartRecommender:
         rendered_component = "DataGrid"
         reason = "Tabular dataset default."
 
-        # 1. Zero rows check
+                # 1. Zero rows check
         if rc == 0:
             visualization = "table"
             chart_type = "table"
             rendered_component = "NoData"
             reason = "No matching records found."
+
+        # 1b. Priority 0: Explicit user chart request in the prompt
+        elif any(k in (question or "").lower() for k in ["bar chart", "bar graph", "horizontal bar", "column chart"]):
+            visualization = "bar_chart"
+            chart_type = "bar_chart"
+            rendered_component = "BarChart"
+            reason = "User explicitly requested a bar chart."
+
+        elif any(k in (question or "").lower() for k in ["line chart", "line graph", "trend chart", "timeseries", "over time"]):
+            visualization = "line_chart"
+            chart_type = "line_chart"
+            rendered_component = "LineChart"
+            reason = "User explicitly requested a line chart or trend."
+
+        elif any(k in (question or "").lower() for k in ["pie chart", "donut chart", "pie", "share of", "percentage distribution"]):
+            visualization = "pie_chart"
+            chart_type = "pie_chart"
+            rendered_component = "PieChart"
+            reason = "User explicitly requested a pie/donut chart."
+
+        elif any(k in (question or "").lower() for k in ["area chart"]):
+            visualization = "area_chart"
+            chart_type = "area_chart"
+            rendered_component = "AreaChart"
+            reason = "User explicitly requested an area chart."
 
         # 2. Single-scalar KPI Card (renders with embedded Sparkline)
         elif rc == 1 and cc == 1:

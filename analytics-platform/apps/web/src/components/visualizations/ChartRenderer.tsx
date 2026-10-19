@@ -1114,32 +1114,159 @@ export const ChartRenderer: React.FC<ChartProps> = ({
       }
     ]
   };
-  // 7. Funnel Chart Option (Conversion Pipeline)
+  // 7. Funnel Chart Option (Exact Dual-Layer Comparison Funnel)
+  const funnelPalette = ['#36B0E8', '#FBA564', '#6B84E8', '#BADC58', '#787C95', '#EC4899', '#14B8A6'];
+
+  // Sort rows descending so the pipeline flows naturally from top to bottom
+  const sortedFunnelRows = [...rows].map((r, i) => ({
+    name: String(r[xAxisKey] ?? `Stage ${i + 1}`),
+    value: Math.max(0, Number(r[activeYKeys[0]]) || 0),
+  })).sort((a, b) => b.value - a.value);
+
+  const topValue = sortedFunnelRows[0]?.value || 1;
+  const stageCount = sortedFunnelRows.length;
+
+  // Outer baseline series: creates the solid outer stepped trapezoids
+  const outerExpectedData = sortedFunnelRows.map((item, idx) => {
+    const baselineStep = Math.round(100 - (idx * (75 / Math.max(stageCount - 1, 1))));
+    return {
+      name: item.name,
+      value: baselineStep,
+      realValue: item.value,
+      itemStyle: {
+        color: funnelPalette[idx % funnelPalette.length],
+        borderColor: '#FFFFFF',
+        borderWidth: 1.5,
+      }
+    };
+  });
+
+  // Inner actual series: creates the white contour lines and centered percentages
+  const innerActualData = sortedFunnelRows.map((item, idx) => {
+    const conversionPct = topValue > 0 ? Math.round((item.value / topValue) * 100) : 0;
+    return {
+      name: item.name,
+      value: conversionPct,
+      realValue: item.value,
+      itemStyle: {
+        color: funnelPalette[idx % funnelPalette.length],
+        borderColor: '#FFFFFF',
+        borderWidth: 2,
+      }
+    };
+  });
+
   const funnelOption = {
     ...commonTheme,
-    tooltip: {
-      ...commonTheme.tooltip,
-      trigger: 'item',
-      formatter: '{b}: <b>{c}</b> ({d}%)'
+    title: {
+      text: title || 'Funnel',
+      left: 'center',
+      top: 5,
+      textStyle: {
+        fontSize: 16,
+        fontWeight: 700,
+        color: '#1E293B',
+      }
     },
-    series: [{
-      name: 'Conversion Funnel',
-      type: 'funnel',
-      left: '12%',
-      top: 35,
-      bottom: 25,
-      width: '76%',
-      sort: 'descending',
-      gap: 4,
-      label: { show: true, position: 'inside', formatter: '{b}: {c}' },
-      itemStyle: { borderColor: '#FFFFFF', borderWidth: 2 },
-      data: rows.map((r, i) => ({
-        name: String(r[xAxisKey] ?? `Stage ${i + 1}`),
-        value: Number(r[activeYKeys[0]]) || 0,
-        itemStyle: { color: COLORS[i % COLORS.length] }
-      }))
-    }]
+    toolbox: {
+      show: true,
+      top: 5,
+      right: 15,
+      feature: {
+        dataView: { readOnly: true },
+        restore: {},
+        saveAsImage: {}
+      },
+      iconStyle: {
+        borderColor: '#64748B'
+      }
+    },
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: any) => {
+        const row = sortedFunnelRows.find(r => r.name === params.name);
+        const valStr = row?.value ? row.value.toLocaleString() : params.value;
+        const pct = topValue > 0 && row ? ((row.value / topValue) * 100).toFixed(1) : params.value;
+        return `
+          <div style="font-weight:700;font-size:13px;color:#F8FAFC;margin-bottom:4px;">${params.name}</div>
+          <div style="font-size:12px;color:#94A3B8;">Volume: <b style="color:#38BDF8;">${valStr}</b></div>
+          <div style="font-size:12px;color:#94A3B8;margin-top:2px;">Conversion: <b style="color:#10B981;">${pct}%</b></div>
+        `;
+      }
+    },
+    legend: {
+      orient: 'horizontal',
+      bottom: 10,
+      left: 'center',
+      icon: 'roundRect',
+      itemWidth: 22,
+      itemHeight: 11,
+      itemGap: 14,
+      textStyle: {
+        color: '#475569',
+        fontSize: 12,
+        fontWeight: 500,
+      },
+      data: sortedFunnelRows.map(r => r.name)
+    },
+    series: [
+      // 1. Outer Funnel: Forms the outer shape and displays stage labels on the right
+      {
+        name: 'Expected',
+        type: 'funnel',
+        left: '10%',
+        top: 45,
+        bottom: 50,
+        width: '68%',
+        minSize: '5%',
+        maxSize: '100%',
+        sort: 'descending',
+        gap: 2,
+        label: {
+          show: true,
+          position: 'right',
+          formatter: '{b}',
+          color: '#475569',
+          fontSize: 12,
+          fontWeight: 500,
+        },
+        labelLine: {
+          show: true,
+          length: 18,
+          lineStyle: {
+            width: 1,
+            color: '#CBD5E1',
+            type: 'solid'
+          }
+        },
+        data: outerExpectedData,
+      },
+      // 2. Inner Funnel: Fits inside with white contour border lines and white % labels in center
+      {
+        name: 'Actual',
+        type: 'funnel',
+        left: '10%',
+        top: 45,
+        bottom: 50,
+        width: '68%',
+        maxSize: '80%',
+        minSize: '5%',
+        sort: 'descending',
+        gap: 2,
+        label: {
+          show: true,
+          position: 'inside',
+          formatter: (params: any) => `${params.value}%`,
+          color: '#FFFFFF',
+          fontSize: 13,
+          fontWeight: 600,
+        },
+        data: innerActualData,
+      }
+    ]
   };
+
+
 
   // 8. Heatmap Option (2D Matrix Density)
   const catColumns = columns.filter(col => !numColumns.includes(col));

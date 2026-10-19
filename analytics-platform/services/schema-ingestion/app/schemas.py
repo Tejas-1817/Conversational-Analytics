@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field, SecretStr
 
 
-DatabaseType = Literal["postgres", "mysql", "mssql"]
+DatabaseType = Literal["postgres", "mysql", "mssql", "snowflake"]
 
 
 class ConnectionOptions(BaseModel):
@@ -14,14 +14,16 @@ class ConnectionOptions(BaseModel):
     table_blocklist: list[str] = Field(default_factory=list)
     require_tls: bool = True
     connect_timeout_seconds: int = Field(default=10, ge=1, le=30)
-
+    warehouse: str | None = None
+    role: str | None = None
+    schema_name: str | None = None
 
 class DataSourceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
     type: DatabaseType
     host: str = Field(min_length=1, max_length=253)
-    port: int = Field(ge=1, le=65535)
+    port: int | None = Field(default=None, ge=1, le=65535)
     database_name: str = Field(min_length=1, max_length=128)
     username: str = Field(min_length=1, max_length=128)
     password: SecretStr

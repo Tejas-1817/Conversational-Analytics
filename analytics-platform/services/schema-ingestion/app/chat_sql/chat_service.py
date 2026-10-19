@@ -555,6 +555,8 @@ class ChatService:
                     "table",
                     "schema_chunk",
                     "relationship",
+                    "approved_example",
+                    "metric",
                 ],
                 top_k=settings.chat_sql_rag_top_k,
                 distance_threshold=settings.chat_sql_rag_distance_threshold,
@@ -644,84 +646,62 @@ class ChatService:
 
                 schema_text = "\n\n".join(fallback_blocks)
                 
-        # 3. Load and validate optional domain context
-        domain_context_str = ""
+                # 3. Assemble Unified Context Layer (Data, Business, Governance)
+        context_layer_str = ""
+        try:
+            from app.context_layer.engine import ContextLayerEngine
+            
+            # Extract names of tables retrieved for this query
+            relevant_tbl_names = [t.table_name for t in (source_tables or [])]
 
-        if domain_id:
-            domain_uuid = uuid.UUID(str(domain_id))
-
-            domain = (
-                db_session.query(Domain)
-                .filter(
-                    Domain.id == domain_uuid,
-                    Domain.tenant_id == user.tenant_id,
-                )
-                .one_or_none()
+            ctx_package = ContextLayerEngine.assemble_context(
+                db=db_session,
+                tenant_id=user.tenant_id,
+                source_id=active_source.id,
+                question=question,
+                user_role=getattr(user, "role", "analyst"),
+                relevant_tables=relevant_tbl_names,
             )
+            context_layer_str = ctx_package["formatted_text"]
+            
+        except Exception as ctx_err:
+            # SAFEGUARD: Graceful degradation if Context Layer encounters an unexpected error
+            log.warning("context_layer_assembly_warning", error=str(ctx_err))
+            context_layer_str = "None"
 
-            if domain is None:
-                raise ValueError("Domain was not found.")
 
-            if (
-                domain.source_id is not None
-                and domain.source_id != active_source.id
-            ):
-                raise ValueError(
-                    "The selected domain belongs to a different data source."
-                )
+            # # Semantic RAG retrieval for domain document chunks & embedded knowledge
+            # rag_chunks: list[str] = []
+            # try:
+            #     from app.embeddings.chroma_store import ChromaStore
+            #     from app.embeddings.registry import get_embedding_provider
 
-            terms = (
-                db_session.query(DomainTerm)
-                .filter(DomainTerm.domain_id == domain.id)
-                .order_by(DomainTerm.term)
-                .limit(30)
-                .all()
-            )
+            #     embed_provider = get_embedding_provider()
+            #     query_vec = embed_provider.embed([question])[0]
 
-            context_sections = [
-                f"Domain: {domain.name}",
-                f"Description: {domain.description or 'None'}",
-            ]
+            #     store = ChromaStore()
+            #     domain_hits = store.query(
+            #         tenant_id=user.tenant_id,
+            #         query_embedding=query_vec,
+            #         n_results=6,
+            #         source_id=active_source.id if domain.source_id else None,
+            #         object_types=["domain_document", "domain_knowledge", "domain_term"],
+            #     )
 
-            if terms:
-                context_sections.append("Business Terms & Knowledge Definitions:")
-                context_sections.extend([
-                    f"- {term.term}: {term.definition}"
-                    for term in terms
-                ])
+            #     for hit in domain_hits:
+            #         hit_domain_id = str(hit.metadata.get("domain_id", "")).strip()
+            #         if not hit_domain_id or hit_domain_id == str(domain.id):
+            #             txt = (hit.text or "").strip()
+            #             if txt and txt not in rag_chunks:
+            #                 rag_chunks.append(txt)
+            # except Exception as rag_err:
+            #     log.warning("domain_rag_retrieval_warning", domain_id=str(domain.id), error=str(rag_err))
 
-            # Semantic RAG retrieval for domain document chunks & embedded knowledge
-            rag_chunks: list[str] = []
-            try:
-                from app.embeddings.chroma_store import ChromaStore
-                from app.embeddings.registry import get_embedding_provider
+            # if rag_chunks:
+            #     context_sections.append("Relevant Domain Knowledge & Document Context:")
+            #     context_sections.extend([f"- {chunk}" for chunk in rag_chunks[:5]])
 
-                embed_provider = get_embedding_provider()
-                query_vec = embed_provider.embed([question])[0]
-
-                store = ChromaStore()
-                domain_hits = store.query(
-                    tenant_id=user.tenant_id,
-                    query_embedding=query_vec,
-                    n_results=6,
-                    source_id=active_source.id if domain.source_id else None,
-                    object_types=["domain_document", "domain_knowledge", "domain_term"],
-                )
-
-                for hit in domain_hits:
-                    hit_domain_id = str(hit.metadata.get("domain_id", "")).strip()
-                    if not hit_domain_id or hit_domain_id == str(domain.id):
-                        txt = (hit.text or "").strip()
-                        if txt and txt not in rag_chunks:
-                            rag_chunks.append(txt)
-            except Exception as rag_err:
-                log.warning("domain_rag_retrieval_warning", domain_id=str(domain.id), error=str(rag_err))
-
-            if rag_chunks:
-                context_sections.append("Relevant Domain Knowledge & Document Context:")
-                context_sections.extend([f"- {chunk}" for chunk in rag_chunks[:5]])
-
-            domain_context_str = "\n".join(context_sections)[:6_000]
+        domain_context_str = context_layer_str
         
         schema_inventory = "\n".join(
             f"- {table.schema_name}.{table.table_name}: "
@@ -886,10 +866,20 @@ class ChatService:
             "data overview",
         )
 
+        data_indicators = (
+            "chart", "graph", "plot", "by", "top", "per", "trend", 
+            "sales", "revenue", "count", "sum", "average", "orders", "breakdown"
+        )
+        has_data_indicator = any(
+            re.search(rf"\b{re.escape(term)}\b", q_lower)
+            for term in data_indicators
+        )
+
+        # Only route to text-only analysis if there are NO specific data or charting requests
         is_direct_analysis = any(
             phrase in q_lower
             for phrase in direct_analysis_phrases
-        )
+        ) and not has_data_indicator
 
         if is_direct_analysis:
             # Include all connected tables in a compact format.
@@ -1938,15 +1928,20 @@ USER QUESTION:
                         "generated_at": generated_at,
                         "database": db_name,
                     }
+        # Extract top matching approved golden queries (if any were retrieved)
+        approved_examples = [
+            ex[0] for ex in getattr(retrieval, "approved_examples", [])[:3]
+        ] if 'retrieval' in locals() else []
 
         # 4b. Build a SQL prompt only when the question requires SQL.
         prompt = self.prompt_builder.build_prompt(
             question=question,
             schema_text=schema_text,
             database_name=db_name,
-            domain_context=domain_context_str,
+            domain_context=context_layer_str,
             conversation_context=conversation_context,
             dialect=source_dialect,
+            approved_examples=approved_examples,
         )
         # 4b. Generate the initial SQL draft
         try:
@@ -2048,7 +2043,7 @@ USER QUESTION:
                 question=question,
                 candidate_sql=validated_sql,
                 schema_text=schema_text,
-                domain_context=domain_context_str,
+                domain_context=context_layer_str,
                 dialect=source_dialect,
             )
 

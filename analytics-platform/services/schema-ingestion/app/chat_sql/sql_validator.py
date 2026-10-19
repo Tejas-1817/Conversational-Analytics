@@ -26,6 +26,7 @@ SQLGLOT_DIALECTS = {
     "mysql": "mysql",
     "mssql": "tsql",
     "excel": "sqlite",
+    "snowflake": "snowflake",
 }
 
 BLOCKED_NODE_TYPES = {

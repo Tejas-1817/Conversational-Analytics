@@ -111,6 +111,17 @@ class SQLExecutor:
                         text(f"EXPLAIN QUERY PLAN {exec_sql}")
 
                     )
+                
+                elif source_type == "snowflake":
+                    connection.execute(
+                        text(
+                            f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = "
+                            f"{max(1, int(timeout_ms / 1000))}"
+                        )
+                    )
+                    connection.execute(
+                        text(f"EXPLAIN USING TEXT {clean_sql}")
+                    )
 
                 else:
                     return f"Unsupported source type: {source.type}"
@@ -249,6 +260,22 @@ class SQLExecutor:
                     database_name = source.name
                     schema_name = "main"
 
+                elif source_type == "snowflake":
+                    connection.execute(
+                        text(
+                            f"ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = "
+                            f"{max(1, int(timeout_ms / 1000))}"
+                        )
+                    )
+                    current_db = connection.execute(
+                        text("SELECT CURRENT_DATABASE()")
+                    ).scalar_one()
+                    current_schema = connection.execute(
+                        text("SELECT CURRENT_SCHEMA()")
+                    ).scalar_one()
+
+                    database_name = str(current_db) if current_db else (source.database_name or "SNOWFLAKE")
+                    schema_name = str(current_schema) if current_schema else "PUBLIC"
 
                 else:
                     return (

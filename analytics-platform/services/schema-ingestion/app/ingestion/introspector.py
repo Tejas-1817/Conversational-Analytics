@@ -55,6 +55,9 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
             include = {source.database_name}
         elif source.type == "mssql":
             include = {"dbo"}
+        elif source.type == "snowflake":
+            default_schema = source.options.get("schema_name") or "PUBLIC"
+            include = {default_schema.upper()}
 
         try:
             raw_schemas = inspector.get_schema_names()
