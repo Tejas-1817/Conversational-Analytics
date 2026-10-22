@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field, SecretStr
 
 
-DatabaseType = Literal["postgres", "mysql", "mssql", "snowflake"]
+DatabaseType = Literal["postgres", "mysql", "mssql", "snowflake", "databricks"]
 
 
 class ConnectionOptions(BaseModel):
@@ -17,6 +17,8 @@ class ConnectionOptions(BaseModel):
     warehouse: str | None = None
     role: str | None = None
     schema_name: str | None = None
+    http_path: str | None = None
+    catalog_name: str | None = None
 
 class DataSourceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)

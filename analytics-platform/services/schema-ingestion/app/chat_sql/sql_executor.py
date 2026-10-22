@@ -122,6 +122,8 @@ class SQLExecutor:
                     connection.execute(
                         text(f"EXPLAIN USING TEXT {clean_sql}")
                     )
+                elif source_type == "databricks":
+                    connection.execute(text(f"EXPLAIN {clean_sql}"))
 
                 else:
                     return f"Unsupported source type: {source.type}"
@@ -276,6 +278,12 @@ class SQLExecutor:
 
                     database_name = str(current_db) if current_db else (source.database_name or "SNOWFLAKE")
                     schema_name = str(current_schema) if current_schema else "PUBLIC"
+
+                elif source_type == "databricks":
+                    current_catalog = connection.execute(text("SELECT CURRENT_CATALOG()")).scalar_one()
+                    current_schema = connection.execute(text("SELECT CURRENT_SCHEMA()")).scalar_one()
+                    database_name = str(current_catalog) if current_catalog else (source.database_name or "main")
+                    schema_name = str(current_schema) if current_schema else "default"
 
                 else:
                     return (

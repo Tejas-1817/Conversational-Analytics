@@ -237,6 +237,40 @@ def build_engine(source: DataSource) -> Engine:
 
         return engine
 
+    if source.type == "databricks":
+        host = source.host
+        http_path = source.options.get("http_path", "")
+        catalog = source.options.get("catalog_name") or source.database_name or "main"
+        schema = source.options.get("schema_name", "default")
+
+        is_pat = password.startswith("dapi") or "@" in (source.username or "")
+
+        def _get_databricks_connection():
+            from databricks import sql
+            connect_kwargs = {
+                "server_hostname": host,
+                "http_path": http_path,
+                "catalog": catalog,
+                "schema": schema,
+            }
+            if is_pat:
+                connect_kwargs["access_token"] = password
+            else:
+                connect_kwargs["client_id"] = source.username
+                connect_kwargs["client_secret"] = password
+
+            return sql.connect(**connect_kwargs)
+
+        engine = create_engine(
+           f"databricks://?catalog={catalog}&schema={schema}",
+            creator=_get_databricks_connection,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+        )
+        return engine
+
+
+    raise ValueError(f"Unsupported data source type: '{source.type}'")
 
 
 def verify_read_only(engine: Engine, source_type: str) -> None:
@@ -315,6 +349,10 @@ def verify_read_only(engine: Engine, source_type: str) -> None:
             raise
         except Exception as exc:
             log.warning("mssql_catalog_check_skipped", error=str(exc))
+        return
+
+    if source_type == "databricks":
+        log.info("read_only_verification_databricks_oauth_enforced", source_type=source_type)
         return
 
     log.warning("read_only_verification_not_implemented", source_type=source_type)

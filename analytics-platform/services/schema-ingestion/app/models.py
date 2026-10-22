@@ -35,7 +35,7 @@ rel_source = ENUM("declared_fk", "naming", "value_overlap", "llm",
                   name="rel_source", create_type=False)
 job_status = ENUM("queued", "running", "succeeded", "failed", "succeeded_with_warnings",
                   name="job_status", create_type=False)
-source_type = ENUM("postgres", "mysql", "mssql","snowflake", "bigquery", "excel",
+source_type = ENUM("postgres", "mysql", "mssql","snowflake", "bigquery", "excel", "databricks",
                    name="source_type", create_type=False)
 user_role = ENUM("ADMIN", "ANALYST", "VIEWER",
                  name="user_role", create_type=False)
