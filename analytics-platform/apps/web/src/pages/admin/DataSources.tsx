@@ -1,24 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { fetchApi } from '../../services/api';
-import { Database, Plus, RefreshCw, MoreVertical, Play, Server, Clock, Trash2 } from 'lucide-react';
+import { Database, Plus, RefreshCw, MoreVertical, Play, Server, Clock, Trash2, Users, Building2, Filter } from 'lucide-react';
 import { ConnectionModal } from '../../components/ConnectionModal';
 import { SourceLogo } from '../../components/SourceLogos';
+import { ManageSourceUsersModal } from '../../components/ManageSourceUsersModal';
+import type { SourceAccessTarget } from '../../components/ManageSourceUsersModal';
+import { ReassignEnterpriseModal } from '../../components/ReassignEnterpriseModal';
 
 export const DataSources = () => {
   const [sources, setSources] = useState<any[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [selectedTenantFilter, setSelectedTenantFilter] = useState<string>('ALL');
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [selectedSourceForUsers, setSelectedSourceForUsers] = useState<SourceAccessTarget | null>(null);
+  const [selectedSourceForEnterprise, setSelectedSourceForEnterprise] = useState<any | null>(null);
 
   const loadSources = async (isSilent = false) => {
     // Only show the skeleton loader on initial page mount, never during background auto-refresh
     if (!isSilent) setLoading(true);
 
     try {
-      const [sourcesRes, reposRes] = await Promise.allSettled([
+      const [sourcesRes, reposRes, tenantsRes] = await Promise.allSettled([
         fetchApi('/sources'),
         fetchApi('/code-repos'),
+        fetchApi('/tenants'),
       ]);
+
+      if (tenantsRes.status === 'fulfilled' && Array.isArray(tenantsRes.value)) {
+        setTenants(tenantsRes.value);
+      }
 
       const regularSources = sourcesRes.status === 'fulfilled' && Array.isArray(sourcesRes.value) ? sourcesRes.value : [];
       const codeRepos = reposRes.status === 'fulfilled' && Array.isArray(reposRes.value) ? reposRes.value : [];
@@ -83,11 +95,36 @@ export const DataSources = () => {
     }
   };
 
+  const tenantMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    tenants.forEach((t) => {
+      map[t.id] = t.display_name || t.name;
+    });
+    return map;
+  }, [tenants]);
+
+  const filteredSources = useMemo(() => {
+    if (selectedTenantFilter === 'ALL') return sources;
+    return sources.filter((s) => s.tenant_id === selectedTenantFilter);
+  }, [sources, selectedTenantFilter]);
+
   return (
     <div onClick={() => setOpenMenuId(null)}>
       <ConnectionModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
+        onSuccess={loadSources}
+      />
+      <ManageSourceUsersModal
+        isOpen={!!selectedSourceForUsers}
+        onClose={() => setSelectedSourceForUsers(null)}
+        source={selectedSourceForUsers}
+      />
+      <ReassignEnterpriseModal
+        isOpen={!!selectedSourceForEnterprise}
+        onClose={() => setSelectedSourceForEnterprise(null)}
+        source={selectedSourceForEnterprise}
+        tenants={tenants}
         onSuccess={loadSources}
       />
       <div className="flex justify-between items-center mb-4">
@@ -99,7 +136,28 @@ export const DataSources = () => {
             Manage connections to your data warehouses, databases, and code repositories.
           </p>
         </div>
-        <button onClick={() => setIsModalOpen(true)}><Plus size={18} /> Connect Data Source</button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {tenants.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Filter size={15} style={{ color: 'var(--text-muted)' }} />
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Enterprise:</span>
+              <select
+                value={selectedTenantFilter}
+                onChange={(e) => setSelectedTenantFilter(e.target.value)}
+                style={{ padding: '0.35rem 0.75rem', fontSize: '0.85rem' }}
+              >
+                <option value="ALL">All Enterprises ({sources.length})</option>
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.display_name || t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <button onClick={() => setIsModalOpen(true)}><Plus size={18} /> Connect Data Source</button>
+        </div>
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -108,6 +166,7 @@ export const DataSources = () => {
             <thead>
               <tr>
                 <th>Source Name</th>
+                <th>Enterprise</th>
                 <th>Database / Repo URL</th>
                 <th>Source Type</th>
                 <th>Connection Status</th>
@@ -118,18 +177,18 @@ export const DataSources = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center p-4">
+                  <td colSpan={7} className="text-center p-4">
                     <div className="skeleton" style={{ height: '40px', width: '100%', marginBottom: '10px' }} />
                     <div className="skeleton" style={{ height: '40px', width: '100%' }} />
                   </td>
                 </tr>
-              ) : sources.length === 0 ? (
+              ) : filteredSources.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center p-4 text-muted">
+                  <td colSpan={7} className="text-center p-4 text-muted">
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '3rem' }}>
                       <Server size={48} style={{ opacity: 0.2 }} />
                       <div>
-                        <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>No Data Sources Connected</div>
+                        <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>No Data Sources Found</div>
                         <div>Connect your first data source or Git repository to begin profiling metadata.</div>
                       </div>
                       <button className="btn-secondary mt-2" onClick={() => setIsModalOpen(true)}><Plus size={18} /> Connect Data Source</button>
@@ -137,7 +196,7 @@ export const DataSources = () => {
                   </td>
                 </tr>
               ) : (
-                sources.map(s => (
+                filteredSources.map(s => (
                   <tr key={s.id}>
                     <td>
                       <div className="flex items-center gap-2">
@@ -146,6 +205,20 @@ export const DataSources = () => {
                         </div>
                         <span style={{ fontWeight: 600 }}>{s.name}</span>
                       </div>
+                    </td>
+                    <td>
+                      <span
+                        className="badge badge-default"
+                        style={{
+                          fontSize: '0.75rem',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Building2 size={12} style={{ opacity: 0.7 }} />
+                        {tenantMap[s.tenant_id] || 'Default Enterprise'}
+                      </span>
                     </td>
                     <td style={{ maxWidth: '280px' }}>
                       <span
@@ -184,6 +257,26 @@ export const DataSources = () => {
                     </td>
                     <td>
                       <div className="flex items-center justify-end gap-2 relative">
+                        {!s.is_code_repo && (
+                          <>
+                            <button
+                              className="btn-ghost"
+                              title="Reassign Enterprise"
+                              onClick={() => setSelectedSourceForEnterprise(s)}
+                              style={{ padding: '0.5rem', color: 'var(--text-muted)' }}
+                            >
+                              <Building2 size={16} />
+                            </button>
+                            <button
+                              className="btn-ghost"
+                              title="Manage User Access"
+                              onClick={() => setSelectedSourceForUsers(s)}
+                              style={{ padding: '0.5rem', color: 'var(--primary)' }}
+                            >
+                              <Users size={16} />
+                            </button>
+                          </>
+                        )}
                         <button
                           className="btn-ghost"
                           title={s.is_code_repo ? 'Sync & Re-index Repository' : 'Run Ingestion'}

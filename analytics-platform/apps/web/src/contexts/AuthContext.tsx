@@ -21,19 +21,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
+    setUser(null);
+  };
+
   const loadUser = async () => {
     try {
       const data = await fetchApi('/auth/me');
       setUser(data);
     } catch (e) {
-      // Fallback user if backend is offline/mocking
-      const defaultUser: User = {
-        id: 'user-default-1',
-        email: 'admin@example.com',
-        role: 'ADMIN',
-        tenant_id: 'altzor',
-      };
-      setUser(defaultUser);
+      // Clear invalid/expired token and reset state
+      logout();
     } finally {
       setLoading(false);
     }
@@ -43,15 +43,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (localStorage.getItem('token')) {
       loadUser();
     } else {
-      // Seed default dev token and load user
-      localStorage.setItem('token', 'dev-demo-token');
-      const defaultUser: User = {
-        id: 'user-default-1',
-        email: 'admin@example.com',
-        role: 'ADMIN',
-        tenant_id: 'altzor',
-      };
-      setUser(defaultUser);
       setLoading(false);
     }
   }, []);
@@ -60,12 +51,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem('token', accessToken);
     localStorage.setItem('refresh_token', refreshToken);
     await loadUser();
-  };
-
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refresh_token');
-    setUser(null);
   };
 
   return (

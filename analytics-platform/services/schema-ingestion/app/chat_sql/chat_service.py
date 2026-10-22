@@ -475,7 +475,41 @@ class ChatService:
             .all()
         )
 
+        from app.api.deps import get_user_permitted_table_ids
+        permitted_table_ids = get_user_permitted_table_ids(db_session, user, active_source.id) if (user and getattr(user, "role", "") != "ADMIN") else None
+        if permitted_table_ids is not None:
+            source_tables = [t for t in source_tables if t.id in permitted_table_ids]
+
         if not source_tables:
+            if permitted_table_ids is not None:
+                denied_msg = "Access Denied: You do not have permission to query any tables in this data source. Contact your enterprise administrator."
+                res_conv_id = self._persist_exchange(
+                    db_session=db_session,
+                    user=user,
+                    conversation_id=conversation_id,
+                    source_id=source_id,
+                    domain_id=domain_id,
+                    question=question,
+                    answer=denied_msg,
+                    title="Access Denied",
+                    intent="data",
+                )
+                return {
+                    "answer": denied_msg,
+                    "conversation_id": res_conv_id,
+                    "sql": None,
+                    "data": [],
+                    "columns": [],
+                    "visualization": "text",
+                    "title": "Access Denied",
+                    "statistics": {"row_count": 0, "column_count": 0, "execution_time_ms": 0},
+                    "recommended_visualization": {"visualization": "text", "title": "Access Denied"},
+                    "follow_up_questions": [],
+                    "execution_time_ms": 0,
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "database": db_name,
+                    "column_types": {},
+                }
             raise ValueError(
                 "No active table metadata is available for the selected data source."
             )
@@ -496,7 +530,9 @@ class ChatService:
 
             catalog[table.table_name] = columns
 
-        if len(full_schema_text) <= max_schema_chars: 
+        if permitted_table_ids is not None:
+            schema_text = "\n\n".join([_build_table_schema_block(t) for t in source_tables])
+        elif len(full_schema_text) <= max_schema_chars: 
             schema_text = full_schema_text
         else:
             retrieval_query = question
@@ -1929,6 +1965,49 @@ USER QUESTION:
             catalog=catalog,
             dialect=source_dialect,
         )
+
+        if validation.code == "unauthorized_table":
+            from app.audit import audit
+            audit(
+                db_session,
+                tenant_id=user.tenant_id,
+                entity_type="sql_query",
+                entity_id=None,
+                action="UNAUTHORIZED_TABLE_ACCESS_BLOCKED",
+                actor=user.email,
+                after={"question": question, "raw_sql": raw_sql, "error": validation.message},
+            )
+            db_session.commit()
+
+            denied_msg = f"{validation.message}"
+            res_conv_id = self._persist_exchange(
+                db_session=db_session,
+                user=user,
+                conversation_id=conversation_id,
+                source_id=source_id,
+                domain_id=domain_id,
+                question=question,
+                answer=denied_msg,
+                title="Access Denied",
+                intent="data",
+            )
+            return {
+                "answer": denied_msg,
+                "conversation_id": res_conv_id,
+                "sql": None,
+                "data": [],
+                "columns": [],
+                "visualization": "text",
+                "title": "Access Denied",
+                "statistics": {"row_count": 0, "column_count": 0, "execution_time_ms": 0},
+                "recommended_visualization": {"visualization": "text", "title": "Access Denied"},
+                "follow_up_questions": [],
+                "execution_time_ms": 0,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "database": db_name,
+                "column_types": {},
+            }
+
         draft_sql = validation.sql if validation.valid else "UNANSWERABLE"
 
 

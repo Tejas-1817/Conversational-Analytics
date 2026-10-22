@@ -5,17 +5,26 @@ from pathlib import Path
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, File, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
+from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from app.api.deps import Permission, require_admin, require_permission, verify_tenant_owns
+from app.api.deps import Permission, require_admin, require_permission, verify_tenant_owns, verify_user_has_source_access
 from app.audit import AuditEvent, audit
 from app.config import get_settings
 from app.connectors.factory import build_engine, test_connection, verify_read_only
 from app.db import get_session
 from app.ingestion.excel_ingestor import preview_excel_sheets
 from app.models import DataSource, User
-from app.schemas import DataSourceCreate, DataSourceOut, ExcelPreviewResponse, ExcelSourceCreate
+from app.schemas import (
+    DataSourceCreate,
+    DataSourceEnterpriseUpdate,
+    DataSourceOut,
+    ExcelPreviewResponse,
+    ExcelSourceCreate,
+    SourceUserAccessItemOut,
+    SourceUserAccessUpdate,
+)
 from app.security.crypto import encrypt_secret
 
 log = structlog.get_logger()
@@ -33,9 +42,13 @@ def create_source(
 
     # dedicated_tenant_id = uuid.uuid4()
 
+    target_tenant_id = (
+        payload.tenant_id if (payload.tenant_id and current_user.role == "ADMIN") 
+        else current_user.tenant_id
+    )
     source = DataSource(
-    tenant_id=current_user.tenant_id,
-    name=payload.name,
+        tenant_id=target_tenant_id,
+        name=payload.name,
     type=payload.type,
     host=payload.host,
     port=payload.port,
@@ -216,15 +229,68 @@ def create_excel_source(
 
 @router.get("", response_model=list[DataSourceOut])
 def list_sources(
+    tenant_id: uuid.UUID | None = None,
     session: Session = Depends(get_session),
     current_user: User = Depends(require_permission(Permission.VIEW_SOURCES)),
 ) -> list[DataSource]:
-    return (
-        session.query(DataSource)
-        .filter(DataSource.tenant_id == current_user.tenant_id)
-        .order_by(DataSource.created_at.desc())
-        .all()
-    )
+    query = session.query(DataSource)
+    if current_user.role == "ADMIN":
+        if tenant_id is not None:
+            query = query.filter(DataSource.tenant_id == tenant_id)
+    else:
+        query = query.filter(DataSource.tenant_id == current_user.tenant_id)
+        from app.models import UserDataSourceAccess
+        allowed_ids = (
+            session.query(UserDataSourceAccess.source_id)
+            .filter(
+                UserDataSourceAccess.tenant_id == current_user.tenant_id,
+                UserDataSourceAccess.user_id == current_user.id,
+            )
+            .subquery()
+        )
+        query = query.filter(DataSource.id.in_(allowed_ids))
+    return query.order_by(DataSource.created_at.desc()).all()
+
+
+@router.patch("/{source_id}/enterprise", response_model=DataSourceOut)
+def update_source_enterprise(
+    source_id: uuid.UUID,
+    body: DataSourceEnterpriseUpdate,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+) -> DataSource:
+    """Reassign a data source to an enterprise (ADMIN only). Purges user grants to avoid cross-tenant leaks."""
+    source = session.get(DataSource, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    from app.models import Tenant, UserDataSourceAccess, UserTableAccess
+    target_tenant = session.get(Tenant, body.tenant_id)
+    if not target_tenant:
+        raise HTTPException(status_code=404, detail="Target enterprise not found")
+
+    old_tenant_id = source.tenant_id
+    if old_tenant_id != body.tenant_id:
+        source.tenant_id = body.tenant_id
+        # Purge existing user grants to avoid cross-tenant access leaks
+        session.query(UserTableAccess).filter(UserTableAccess.source_id == source.id).delete(synchronize_session=False)
+        session.query(UserDataSourceAccess).filter(UserDataSourceAccess.source_id == source.id).delete(synchronize_session=False)
+
+        audit(
+            session,
+            tenant_id=body.tenant_id,
+            entity_type="data_sources",
+            entity_id=source.id,
+            action="DATA_SOURCE_ENTERPRISE_CHANGED",
+            actor=current_user.email,
+            before={"tenant_id": str(old_tenant_id)},
+            after={"tenant_id": str(body.tenant_id)},
+            request=request,
+        )
+        session.commit()
+        session.refresh(source)
+    return source
 
 @router.post("/test", response_model=dict)
 def test_new_source(
@@ -356,6 +422,7 @@ def get_active_schema_file(
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
     verify_tenant_owns(source.tenant_id, current_user)
+    verify_user_has_source_access(session, current_user, source.id)
     
     from app.models import SchemaRegistry
     registry = session.query(SchemaRegistry).filter_by(source_id=source.id, is_active=True).first()
@@ -386,6 +453,7 @@ def download_schema_registry_file(
     if not registry:
         raise HTTPException(status_code=404, detail="Schema file not found")
     verify_tenant_owns(registry.tenant_id, current_user)
+    verify_user_has_source_access(session, current_user, registry.source_id)
     
     if not Path(registry.file_path).exists():
         raise HTTPException(status_code=404, detail="Physical schema file missing on disk")
@@ -396,4 +464,102 @@ def download_schema_registry_file(
         media_type="text/plain",
         content_disposition_type="attachment"
     )
+
+
+@router.get("/{source_id}/users", response_model=list[SourceUserAccessItemOut])
+def get_source_users(
+    source_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+) -> list[SourceUserAccessItemOut]:
+    source = session.get(DataSource, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    verify_tenant_owns(source.tenant_id, current_user)
+
+    from app.models import UserDataSourceAccess
+    users = (
+        session.query(User)
+        .filter(User.tenant_id == current_user.tenant_id)
+        .order_by(User.email.asc())
+        .all()
+    )
+
+    granted_user_ids = set(
+        session.scalars(
+            select(UserDataSourceAccess.user_id).where(
+                UserDataSourceAccess.tenant_id == current_user.tenant_id,
+                UserDataSourceAccess.source_id == source_id,
+            )
+        ).all()
+    )
+
+    return [
+        SourceUserAccessItemOut(
+            user_id=u.id,
+            email=u.email,
+            role=u.role,
+            is_granted=(u.id in granted_user_ids or u.role == "ADMIN"),
+        )
+        for u in users
+    ]
+
+
+@router.put("/{source_id}/users", status_code=200)
+def update_source_users(
+    source_id: uuid.UUID,
+    body: SourceUserAccessUpdate,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+) -> dict:
+    source = session.get(DataSource, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    verify_tenant_owns(source.tenant_id, current_user)
+
+    from app.models import UserDataSourceAccess
+    valid_users = (
+        session.scalars(
+            select(User.id).where(
+                User.tenant_id == current_user.tenant_id,
+                User.id.in_(body.user_ids),
+                User.role != "ADMIN",
+            )
+        ).all()
+        if body.user_ids
+        else []
+    )
+
+    session.execute(
+        delete(UserDataSourceAccess).where(
+            UserDataSourceAccess.tenant_id == current_user.tenant_id,
+            UserDataSourceAccess.source_id == source_id,
+        )
+    )
+
+    for uid in valid_users:
+        session.add(
+            UserDataSourceAccess(
+                tenant_id=current_user.tenant_id,
+                user_id=uid,
+                source_id=source_id,
+                granted_by=current_user.email,
+            )
+        )
+
+    audit(
+        session,
+        tenant_id=current_user.tenant_id,
+        entity_type="user_data_source_access",
+        entity_id=source_id,
+        action=AuditEvent.USER_ROLE_CHANGED,
+        actor=current_user.email,
+        after={"granted_users": [str(u) for u in valid_users]},
+        request=request,
+    )
+
+    session.commit()
+    return {"status": "updated", "granted_count": len(valid_users)}
+
 

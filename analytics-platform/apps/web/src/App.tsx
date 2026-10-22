@@ -9,6 +9,7 @@ import { Login } from './pages/auth/Login';
 import { DataSources } from './pages/admin/DataSources';
 import { Jobs } from './pages/admin/Jobs';
 import { Users } from './pages/admin/Users';
+import { Enterprises } from './pages/admin/Enterprises';
 import { ReliabilityDashboard } from './pages/admin/ReliabilityDashboard';
 import { Benchmarks } from './pages/admin/Benchmarks';
 import { EvaluationRunDetails } from './pages/admin/EvaluationRunDetails';
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/sources" element={<ProtectedRoute requireAdmin><DataSources /></ProtectedRoute>} />
           <Route path="/jobs" element={<ProtectedRoute requireAdmin><Jobs /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute requireAdmin><Users /></ProtectedRoute>} />
+          <Route path="/enterprises" element={<ProtectedRoute requireAdmin><Enterprises /></ProtectedRoute>} />
           
           {/* Phase 7: Eval Routes */}
           <Route path="/eval/dashboard" element={<ProtectedRoute requireAdmin><ReliabilityDashboard /></ProtectedRoute>} />

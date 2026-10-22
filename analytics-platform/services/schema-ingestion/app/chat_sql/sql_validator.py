@@ -32,11 +32,14 @@ SQLGLOT_DIALECTS = {
 
 BLOCKED_NODE_TYPES = {
     "ALTER",
+    "CALL",
     "COMMAND",
     "COPY",
     "CREATE",
     "DELETE",
     "DROP",
+    "EXEC",
+    "EXECUTE",
     "GRANT",
     "INSERT",
     "INTO",
@@ -51,6 +54,8 @@ BLOCKED_NODE_TYPES = {
 
 BLOCKED_FUNCTIONS = {
     "dblink_exec",
+    "dblink_connect",
+    "dblink",
     "lo_export",
     "lo_import",
     "pg_cancel_backend",
@@ -64,6 +69,21 @@ BLOCKED_FUNCTIONS = {
     "pg_ls_dir",
     "pg_stat_file",
     "current_setting",
+    "pg_backend_pid",
+    "pg_advisory_lock",
+    "pg_advisory_unlock",
+    "pg_try_advisory_lock",
+    "pg_export_snapshot",
+    "pg_logdir_ls",
+    "sys_eval",
+    "sys_exec",
+    "xp_cmdshell",
+    "sp_executesql",
+    "openrowset",
+    "opendatasource",
+    "load_file",
+    "into_outfile",
+    "into_dumpfile",
 }
 
 POSTGRES_INCOMPATIBLE_FUNCTIONS = {
@@ -331,12 +351,12 @@ class SQLValidator:
 
                 if columns is None:
                     log.warning(
-                        "sql_validation_unknown_table",
+                        "sql_validation_unauthorized_table",
                         table_name=qualified_name,
                     )
                     return ValidationResult(
-                        valid=False, code="unknown_table",
-                        message=f"Table '{qualified_name}' not found in catalog.",
+                        valid=False, code="unauthorized_table",
+                        message=f"Access Denied: You do not have permission to query table '{qualified_name}'. Contact your enterprise administrator.",
                     )
 
                 alias_name = (

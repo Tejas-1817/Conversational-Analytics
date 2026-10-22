@@ -156,7 +156,7 @@ class Settings(BaseSettings):
     # =========================================================================
     # GraphRAG — Code Intelligence
     # =========================================================================
-    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_uri: str = "bolt://192.168.1.92:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = ""
     code_repos_clone_dir: str = "./storage/code_repos"
