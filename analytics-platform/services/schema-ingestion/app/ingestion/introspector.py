@@ -49,7 +49,7 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
 
     # Default application schemas per dialect unless schemas were explicitly supplied.
     if not include:
-        if source.type == "postgres":
+        if source.type in ("postgres", "redshift"):
             include = {"public"}
         elif source.type == "mysql" and source.database_name:
             include = {source.database_name}

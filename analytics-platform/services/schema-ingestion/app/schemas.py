@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, computed_field, SecretStr
 
 
-DatabaseType = Literal["postgres", "mysql", "mssql", "snowflake", "databricks"]
+DatabaseType = Literal["postgres", "mysql", "mssql", "snowflake", "databricks", "redshift"]
 
 
 class ConnectionOptions(BaseModel):

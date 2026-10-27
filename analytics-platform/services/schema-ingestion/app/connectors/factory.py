@@ -93,6 +93,7 @@ def build_engine(source: DataSource) -> Engine:
         "postgres": 5432,
         "mysql": 3306,
         "mssql": 1433,
+        "redshift": 5439,
     }
 
     if source.type in default_ports:
@@ -132,6 +133,29 @@ def build_engine(source: DataSource) -> Engine:
         def _pg_session_guards(dbapi_conn, _record):  # noqa: ANN001
             with dbapi_conn.cursor() as cur:
                 cur.execute("SET default_transaction_read_only = on")
+                cur.execute(f"SET statement_timeout = {settings.statement_timeout_ms}")
+
+        return engine
+
+    if source.type == "redshift":
+        url = URL.create(
+            "postgresql+psycopg",
+            username=source.username,
+            password=password,
+            host=source.host,
+            port=source.port or 5439,
+            database=source.database_name,
+            query={"sslmode": "require"},
+        )
+        engine = _build_engine_with_retry(
+            url,
+            pool_kwargs=POOL_OPTIONS,
+            connect_args={"connect_timeout": 15},
+        )
+
+        @event.listens_for(engine, "connect")
+        def _redshift_session_guards(dbapi_conn, _record):
+            with dbapi_conn.cursor() as cur:
                 cur.execute(f"SET statement_timeout = {settings.statement_timeout_ms}")
 
         return engine
@@ -322,6 +346,10 @@ def verify_read_only(engine: Engine, source_type: str) -> None:
                     f"Snowflake user is connecting with high-privilege role '{current_role}'. "
                     "Please assign a restricted read-only role (e.g., ANALYST or custom read-only role)."
                 )
+        return
+
+    if source_type == "redshift":
+        log.info("read_only_verification_redshift_enforced", source_type=source_type)
         return
 
     if source_type == "mssql":

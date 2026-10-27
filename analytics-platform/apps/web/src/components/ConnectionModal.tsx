@@ -21,7 +21,7 @@ import { SourceLogo } from './SourceLogos';
 
 const connectionSchema = z.object({
   name: z.string().min(1, 'Connection Name is required').max(200, 'Name must be 200 characters or less'),
-  type: z.enum(['postgres', 'mysql', 'mssql', 'excel', 'snowflake', 'sqlite', 'github', 'databricks']),
+  type: z.enum(['postgres', 'mysql', 'mssql', 'excel', 'snowflake', 'sqlite', 'github', 'databricks', 'redshift']),
   host: z.string().optional(),
   port: z.number().int().positive().optional().or(z.literal('')),
   database_name: z.string().optional(),
@@ -58,7 +58,7 @@ interface ConnectionModalProps {
 interface ConnectorOption {
   id: string;
   name: string;
-  type: 'postgres' | 'mysql' | 'mssql' | 'excel' | 'snowflake' | 'sqlite' | 'github' | 'databricks' | 'coming_soon';
+  type: 'postgres' | 'mysql' | 'mssql' | 'excel' | 'snowflake' | 'sqlite' | 'github' | 'databricks' | 'redshift' | 'coming_soon';
   category: 'database' | 'warehouse' | 'files' | 'tools';
   description: string;
   isAvailable: boolean;
@@ -154,10 +154,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     {
       id: 'redshift',
       name: 'Redshift',
-      type: 'coming_soon',
+      type: 'redshift',
       category: 'warehouse',
       description: 'Amazon Redshift petabyte-scale data warehouse.',
-      isAvailable: false,
+      isAvailable: true,
       renderIcon: () => <SourceLogo type="redshift" size={32} />,
     },
     {
@@ -406,6 +406,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       postgres: 5432,
       mysql: 3306,
       mssql: 1433,
+      redshift: 5439,
     };
 
     const defaultPort = defaultPorts[connector.type];
@@ -1269,7 +1270,13 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
                         name="database_name"
                         value={formData.database_name}
                         onChange={handleChange}
-                        placeholder={formData.type === 'snowflake' ? 'e.g. ANALYTICS_PROD' : (formData.type === 'mysql' ? 'app_db' : 'postgres')}
+                        placeholder={
+                          formData.type === 'snowflake'
+                            ? 'e.g. ANALYTICS_PROD'
+                            : formData.type === 'redshift'
+                              ? 'e.g. dev or analytics_dw'
+                              : (formData.type === 'mysql' ? 'app_db' : 'postgres')
+                        }
                         disabled={isTesting || isSaving}
                       />
                       {errors.database_name && <div className="form-error">{errors.database_name}</div>}
@@ -1317,7 +1324,13 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
                       name="host"
                       value={formData.host}
                       onChange={handleChange}
-                      placeholder={formData.type === 'snowflake' ? 'e.g. xy12345.us-east-2.aws or acme-prod' : 'localhost or db.company.internal'}
+                      placeholder={
+                        formData.type === 'snowflake'
+                          ? 'e.g. xy12345.us-east-2.aws or acme-prod'
+                          : formData.type === 'redshift'
+                            ? 'e.g. cluster-name.c123456789.us-east-1.redshift.amazonaws.com'
+                            : 'localhost or db.company.internal'
+                      }
                       disabled={isTesting || isSaving}
                     />
                     {errors.host && <div className="form-error">{errors.host}</div>}
