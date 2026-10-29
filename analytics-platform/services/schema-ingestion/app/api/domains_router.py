@@ -19,7 +19,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, aliased
 
 from app.db import get_session
-from app.models import User, Domain, DomainTable, DomainDocument, DomainTerm, DataSource, TableMeta, ColumnMeta, Relationship
+from app.models import User, Domain, DomainTable, DomainDocument, DomainTerm, DataSource, TableMeta, ColumnMeta, Relationship, UserTableAccess
+from app.schemas import ColumnGraphMeta, DomainGraphNode, DomainGraphEdge, DomainGraphResponse
 from app.api.deps import (
     get_current_user,
     Permission,
@@ -392,6 +393,178 @@ def get_domain_detail(
         tables=tables_summary,
         documents=docs_summary,
         terms=terms_summary,
+    )
+
+
+@router.get("/{domain_id}/graph", response_model=DomainGraphResponse)
+def get_domain_graph(
+    domain_id: uuid.UUID,
+    source_id: Optional[uuid.UUID] = None,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> DomainGraphResponse:
+    """Fetch domain-scoped, RBAC-filtered interactive relationship graph nodes and edges."""
+    domain = session.query(Domain).filter(Domain.id == domain_id, Domain.tenant_id == current_user.tenant_id).first()
+    if not domain:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    verify_user_has_domain_access(session, current_user, domain)
+
+    domain_tables = session.query(DomainTable).filter(DomainTable.domain_id == domain.id).all()
+    domain_table_ids = [dt.table_id for dt in domain_tables]
+
+    # Resolve target source if domain_tables is empty
+    target_source_id = source_id or domain.source_id
+    if not domain_table_ids and not target_source_id:
+        ds = session.query(DataSource).filter(
+            DataSource.tenant_id == current_user.tenant_id,
+            DataSource.name.ilike(domain.name)
+        ).first()
+        if not ds:
+            ds = session.query(DataSource).filter(DataSource.tenant_id == current_user.tenant_id).first()
+        if ds:
+            target_source_id = ds.id
+
+    if not domain_table_ids and target_source_id:
+        src_tables = session.query(TableMeta.id).filter(TableMeta.source_id == target_source_id).all()
+        domain_table_ids = [t[0] for t in src_tables]
+
+    if not domain_table_ids:
+        return DomainGraphResponse(
+            domain_id=domain.id,
+            domain_name=domain.name,
+            nodes=[],
+            edges=[],
+            total_nodes=0,
+            total_edges=0,
+        )
+
+    # RBAC table permission filter
+    if current_user.role == "ADMIN":
+        visible_table_ids = set(domain_table_ids)
+    else:
+        grants = session.query(UserTableAccess.table_id).filter(
+            UserTableAccess.tenant_id == current_user.tenant_id,
+            UserTableAccess.user_id == current_user.id,
+            UserTableAccess.table_id.in_(domain_table_ids),
+        ).all()
+        visible_table_ids = {g[0] for g in grants}
+
+    if not visible_table_ids:
+        return DomainGraphResponse(
+            domain_id=domain.id,
+            domain_name=domain.name,
+            nodes=[],
+            edges=[],
+            total_nodes=0,
+            total_edges=0,
+        )
+
+    # Load tables
+    tables = session.query(TableMeta).filter(TableMeta.id.in_(visible_table_ids)).all()
+    table_map = {t.id: t for t in tables}
+
+    # Load data sources for source name/type
+    source_ids = {t.source_id for t in tables}
+    sources = session.query(DataSource).filter(DataSource.id.in_(source_ids)).all() if source_ids else []
+    source_map = {s.id: s for s in sources}
+
+    # Load columns for visible tables
+    columns = (
+        session.query(ColumnMeta)
+        .filter(ColumnMeta.table_id.in_(visible_table_ids))
+        .order_by(ColumnMeta.ordinal_position)
+        .all()
+    )
+    cols_by_table: dict[uuid.UUID, list[ColumnMeta]] = {}
+    col_map: dict[uuid.UUID, ColumnMeta] = {}
+    for c in columns:
+        col_map[c.id] = c
+        cols_by_table.setdefault(c.table_id, []).append(c)
+
+    # Relationships between visible columns
+    all_col_ids = set(col_map.keys())
+    relationships = []
+    if all_col_ids:
+        relationships = (
+            session.query(Relationship)
+            .filter(
+                Relationship.from_column_id.in_(all_col_ids),
+                Relationship.to_column_id.in_(all_col_ids),
+            )
+            .all()
+        )
+
+    fk_col_ids = {r.from_column_id for r in relationships}
+
+    # Construct nodes
+    nodes: list[DomainGraphNode] = []
+    for t_id, table in table_map.items():
+        src = source_map.get(table.source_id)
+        table_cols = cols_by_table.get(t_id, [])
+        col_metas = [
+            ColumnGraphMeta(
+                id=c.id,
+                column_name=c.column_name,
+                data_type=c.data_type,
+                is_primary_key=bool(c.is_primary_key),
+                is_foreign_key=(c.id in fk_col_ids),
+                description=c.description,
+            )
+            for c in table_cols
+        ]
+        nodes.append(
+            DomainGraphNode(
+                id=str(table.id),
+                table_id=table.id,
+                table_name=table.table_name,
+                business_name=table.business_name,
+                schema_name=table.schema_name,
+                source_id=table.source_id,
+                source_name=src.name if src else "Unknown Source",
+                source_type=src.type if src else "database",
+                row_count=table.row_count,
+                column_count=len(col_metas),
+                columns=col_metas,
+            )
+        )
+
+    # Construct edges (strictly dropping any edges where either endpoint is not visible)
+    edges: list[DomainGraphEdge] = []
+    for rel in relationships:
+        from_col = col_map.get(rel.from_column_id)
+        to_col = col_map.get(rel.to_column_id)
+        if not from_col or not to_col:
+            continue
+        from_table = table_map.get(from_col.table_id)
+        to_table = table_map.get(to_col.table_id)
+        if not from_table or not to_table:
+            continue
+
+        edges.append(
+            DomainGraphEdge(
+                id=str(rel.id),
+                relationship_id=rel.id,
+                source_table_id=str(from_table.id),
+                source_column_id=str(from_col.id),
+                source_column_name=from_col.column_name,
+                target_table_id=str(to_table.id),
+                target_column_id=str(to_col.id),
+                target_column_name=to_col.column_name,
+                cardinality=rel.cardinality or "many_to_one",
+                relationship_source=rel.source or "foreign_key",
+                confidence=float(rel.confidence) if rel.confidence is not None else 1.0,
+                status=rel.status or "draft",
+                evidence=rel.evidence or {},
+            )
+        )
+
+    return DomainGraphResponse(
+        domain_id=domain.id,
+        domain_name=domain.name,
+        nodes=nodes,
+        edges=edges,
+        total_nodes=len(nodes),
+        total_edges=len(edges),
     )
 
 

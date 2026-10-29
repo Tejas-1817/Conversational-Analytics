@@ -80,15 +80,15 @@ def trigger_ingestion(
 
 @router.get("/{job_id}", response_model=JobOut)
 def get_job(job_id: uuid.UUID, session: Session = Depends(get_session), current_user: User = Depends(require_viewer)) -> IngestionJob:
-    """Return a job only if it belongs to the calling user's tenant (via source FK)."""
-    job = session.scalar(
+    """Return a job only if it belongs to the calling user's tenant (via source FK), or any job for ADMIN."""
+    query = (
         select(IngestionJob)
         .join(DataSource, IngestionJob.source_id == DataSource.id)
-        .where(
-            IngestionJob.id == job_id,
-            DataSource.tenant_id == current_user.tenant_id,
-        )
+        .where(IngestionJob.id == job_id)
     )
+    if current_user.role != "ADMIN":
+        query = query.where(DataSource.tenant_id == current_user.tenant_id)
+    job = session.scalar(query)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
@@ -96,11 +96,10 @@ def get_job(job_id: uuid.UUID, session: Session = Depends(get_session), current_
 
 @router.get("", response_model=list[JobOut])
 def list_jobs(session: Session = Depends(get_session), current_user: User = Depends(require_viewer)) -> list[IngestionJob]:
-    """List jobs scoped to the calling user's tenant via source FK."""
+    """List jobs scoped to the calling user's tenant via source FK, or all for ADMIN."""
+    query = select(IngestionJob).join(DataSource, IngestionJob.source_id == DataSource.id)
+    if current_user.role != "ADMIN":
+        query = query.where(DataSource.tenant_id == current_user.tenant_id)
     return session.scalars(
-        select(IngestionJob)
-        .join(DataSource, IngestionJob.source_id == DataSource.id)
-        .where(DataSource.tenant_id == current_user.tenant_id)
-        .order_by(IngestionJob.created_at.desc())
-        .limit(50)
+        query.order_by(IngestionJob.created_at.desc()).limit(50)
     ).all()

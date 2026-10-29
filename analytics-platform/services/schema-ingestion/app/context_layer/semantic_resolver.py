@@ -85,6 +85,10 @@ class SemanticResolver:
 
         except Exception as exc:
             log.warning("semantic_metric_resolution_error", error=str(exc))
+            try:
+                db.rollback()
+            except Exception:
+                pass
 
         return resolved
 
@@ -122,5 +126,9 @@ class SemanticResolver:
 
         except Exception as exc:
             log.warning("glossary_resolution_error", error=str(exc))
+            try:
+                db.rollback()
+            except Exception:
+                pass
 
         return resolved

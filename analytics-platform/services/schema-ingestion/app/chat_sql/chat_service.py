@@ -388,15 +388,13 @@ class ChatService:
                 "Database session and authenticated user are required."
             )
 
-        active_source = (
-            db_session.query(DataSource)
-            .filter(
-                DataSource.id == source_id,
-                DataSource.tenant_id == user.tenant_id,
-                DataSource.status == "connected",
-            )
-            .one_or_none()
+        source_query = db_session.query(DataSource).filter(
+            DataSource.id == source_id,
+            DataSource.status == "connected",
         )
+        if getattr(user, "role", "") != "ADMIN":
+            source_query = source_query.filter(DataSource.tenant_id == user.tenant_id)
+        active_source = source_query.one_or_none()
 
         if active_source is None:
             raise SourceNotFoundError(
@@ -667,6 +665,10 @@ class ChatService:
         except Exception as ctx_err:
             # SAFEGUARD: Graceful degradation if Context Layer encounters an unexpected error
             log.warning("context_layer_assembly_warning", error=str(ctx_err))
+            try:
+                db_session.rollback()
+            except Exception:
+                pass
             context_layer_str = "None"
 
 

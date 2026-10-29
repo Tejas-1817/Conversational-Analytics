@@ -236,6 +236,10 @@ class RetrievalService:
                 reason=str(exc),
                 tenant_id=str(tenant_id),
             )
+            try:
+                db.rollback()
+            except Exception:
+                pass
             # Return an empty hits object — ResolverService will fall back to keyword path
             return RetrievalHits(threshold=get_settings().rag_distance_threshold)
 

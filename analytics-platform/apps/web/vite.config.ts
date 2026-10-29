@@ -4,6 +4,19 @@ import react from '@vitejs/plugin-react'
 const apiProxy = {
   target: 'http://127.0.0.1:8000',
   changeOrigin: true,
+  configure: (proxy: any) => {
+    proxy.on('error', (_err: any, _req: any, res: any) => {
+      if (res && !res.headersSent && typeof res.writeHead === 'function') {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: 'Backend service is starting up or temporarily unavailable. Please retry in a moment.',
+            code: 'BACKEND_STARTING',
+          })
+        );
+      }
+    });
+  },
   bypass: (req: any) => {
     if (req.headers && req.headers.accept && req.headers.accept.includes('text/html')) {
       return '/index.html';

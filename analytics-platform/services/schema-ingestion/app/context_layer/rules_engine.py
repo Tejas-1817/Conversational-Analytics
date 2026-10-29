@@ -73,5 +73,9 @@ class RulesEngine:
 
         except Exception as exc:
             log.warning("rules_engine_resolution_error", error=str(exc))
+            try:
+                db.rollback()
+            except Exception:
+                pass
 
         return matched_rules

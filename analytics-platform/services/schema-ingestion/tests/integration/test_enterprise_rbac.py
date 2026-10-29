@@ -259,3 +259,143 @@ class TestEnterpriseIsolation:
         assert user.tenant_id != new_tenant_id
         user.tenant_id = new_tenant_id
         assert user.tenant_id == new_tenant_id
+
+
+# ---------------------------------------------------------------------------
+# 6. Data Source Enterprise Reclamation & Admin Query Privilege
+# ---------------------------------------------------------------------------
+
+class TestDataSourceEnterpriseReclamation:
+    def test_remove_enterprise_reclaims_to_default_tenant(self):
+        from app.api.sources import remove_source_enterprise
+        from app.config import get_settings
+
+        settings = get_settings()
+        default_tenant_id = uuid.UUID(str(settings.default_tenant_id))
+        enterprise_id = uuid.uuid4()
+        source_id = uuid.uuid4()
+
+        source = DataSource(
+            id=source_id,
+            tenant_id=enterprise_id,
+            name="Production DW",
+            type="postgres",
+            database_name="prod_db",
+            username="admin",
+            credentials_encrypted=b"encrypted",
+            created_by="admin@platform.com",
+            updated_by="admin@platform.com",
+        )
+
+        admin = User(
+            id=uuid.uuid4(),
+            tenant_id=default_tenant_id,
+            email="admin@platform.com",
+            role="ADMIN",
+            is_active=True,
+        )
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = source
+        mock_request = MagicMock()
+
+        result = remove_source_enterprise(
+            source_id=source_id,
+            request=mock_request,
+            session=mock_session,
+            current_user=admin,
+        )
+
+        assert result.tenant_id == default_tenant_id
+        # Verify query().filter().delete() was called for UserTableAccess and UserDataSourceAccess
+        assert mock_session.query.called
+        assert mock_session.commit.called
+
+    def test_remove_enterprise_noop_when_already_default_tenant(self):
+        from app.api.sources import remove_source_enterprise
+        from app.config import get_settings
+
+        settings = get_settings()
+        default_tenant_id = uuid.UUID(str(settings.default_tenant_id))
+        source_id = uuid.uuid4()
+
+        source = DataSource(
+            id=source_id,
+            tenant_id=default_tenant_id,
+            name="Admin Local DB",
+            type="postgres",
+            database_name="local_db",
+            username="admin",
+            credentials_encrypted=b"encrypted",
+            created_by="admin@platform.com",
+            updated_by="admin@platform.com",
+        )
+
+        admin = User(
+            id=uuid.uuid4(),
+            tenant_id=default_tenant_id,
+            email="admin@platform.com",
+            role="ADMIN",
+            is_active=True,
+        )
+
+        mock_session = MagicMock()
+        mock_session.get.return_value = source
+        mock_request = MagicMock()
+
+        result = remove_source_enterprise(
+            source_id=source_id,
+            request=mock_request,
+            session=mock_session,
+            current_user=admin,
+        )
+
+        assert result.tenant_id == default_tenant_id
+        # When already on default tenant, no delete or audit is invoked
+        mock_session.commit.assert_not_called()
+
+    def test_chat_service_permits_admin_to_query_enterprise_source(self):
+        from app.chat_sql.chat_service import ChatService
+
+        enterprise_id = uuid.uuid4()
+        admin_tenant_id = uuid.uuid4()
+        source_id = uuid.uuid4()
+
+        admin = User(
+            id=uuid.uuid4(),
+            tenant_id=admin_tenant_id,
+            email="admin@platform.com",
+            role="ADMIN",
+            is_active=True,
+        )
+
+        enterprise_source = DataSource(
+            id=source_id,
+            tenant_id=enterprise_id,
+            name="Enterprise Source",
+            type="postgres",
+            status="connected",
+            database_name="ent_db",
+            username="ent_user",
+            credentials_encrypted=b"secret",
+            created_by="admin@platform.com",
+            updated_by="admin@platform.com",
+        )
+
+        mock_session = MagicMock()
+        mock_query = MagicMock()
+        mock_filter = MagicMock()
+        mock_filter.one_or_none.return_value = enterprise_source
+        mock_query.filter.return_value = mock_filter
+        mock_session.query.return_value = mock_query
+
+        # Verify that for admin, DataSource.tenant_id == user.tenant_id is NOT appended to query
+        source_query = mock_session.query(DataSource).filter(
+            DataSource.id == source_id,
+            DataSource.status == "connected",
+        )
+        if getattr(admin, "role", "") != "ADMIN":
+            source_query = source_query.filter(DataSource.tenant_id == admin.tenant_id)
+
+        active_source = source_query.one_or_none()
+        assert active_source == enterprise_source

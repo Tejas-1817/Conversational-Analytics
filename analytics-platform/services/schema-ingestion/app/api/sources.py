@@ -5,7 +5,7 @@ from pathlib import Path
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, File, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -265,7 +265,7 @@ def update_source_enterprise(
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    from app.models import Tenant, UserDataSourceAccess, UserTableAccess
+    from app.models import Tenant, UserDataSourceAccess, UserTableAccess, SchemaRegistry, SemanticModel
     target_tenant = session.get(Tenant, body.tenant_id)
     if not target_tenant:
         raise HTTPException(status_code=404, detail="Target enterprise not found")
@@ -276,6 +276,14 @@ def update_source_enterprise(
         # Purge existing user grants to avoid cross-tenant access leaks
         session.query(UserTableAccess).filter(UserTableAccess.source_id == source.id).delete(synchronize_session=False)
         session.query(UserDataSourceAccess).filter(UserDataSourceAccess.source_id == source.id).delete(synchronize_session=False)
+
+        # Synchronize associated SchemaRegistry and SemanticModel records
+        session.query(SchemaRegistry).filter(SchemaRegistry.source_id == source.id).update(
+            {"tenant_id": body.tenant_id}, synchronize_session=False
+        )
+        session.query(SemanticModel).filter(SemanticModel.source_id == source.id).update(
+            {"tenant_id": body.tenant_id}, synchronize_session=False
+        )
 
         audit(
             session,
@@ -290,6 +298,61 @@ def update_source_enterprise(
         )
         session.commit()
         session.refresh(source)
+    return source
+
+
+@router.post("/{source_id}/remove-enterprise", response_model=DataSourceOut)
+def remove_source_enterprise(
+    source_id: uuid.UUID,
+    request: Request,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+) -> DataSource:
+    """Remove data source access from an enterprise and reclaim to Default Enterprise (ADMIN only).
+    Purges all enterprise user and table grants to prevent cross-tenant access leaks."""
+    source = session.get(DataSource, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    settings = get_settings()
+    default_tenant_id = uuid.UUID(str(settings.default_tenant_id))
+    old_tenant_id = source.tenant_id
+
+    if old_tenant_id == default_tenant_id:
+        return source
+
+    from app.models import UserDataSourceAccess, UserTableAccess, SchemaRegistry, SemanticModel
+
+    source.tenant_id = default_tenant_id
+    session.query(UserTableAccess).filter(UserTableAccess.source_id == source.id).delete(synchronize_session=False)
+    session.query(UserDataSourceAccess).filter(UserDataSourceAccess.source_id == source.id).delete(synchronize_session=False)
+
+    session.query(SchemaRegistry).filter(SchemaRegistry.source_id == source.id).update(
+        {"tenant_id": default_tenant_id}, synchronize_session=False
+    )
+    session.query(SemanticModel).filter(SemanticModel.source_id == source.id).update(
+        {"tenant_id": default_tenant_id}, synchronize_session=False
+    )
+
+    audit(
+        session,
+        tenant_id=default_tenant_id,
+        entity_type="data_sources",
+        entity_id=source.id,
+        action="DATA_SOURCE_ENTERPRISE_REMOVED",
+        actor=current_user.email,
+        before={"tenant_id": str(old_tenant_id)},
+        after={"tenant_id": str(default_tenant_id)},
+        request=request,
+    )
+    session.commit()
+    session.refresh(source)
+    log.info(
+        "data_source_enterprise_removed",
+        source_id=str(source.id),
+        old_tenant_id=str(old_tenant_id),
+        actor=current_user.email,
+    )
     return source
 
 @router.post("/test", response_model=dict)
@@ -477,10 +540,12 @@ def get_source_users(
         raise HTTPException(status_code=404, detail="Source not found")
     verify_tenant_owns(source.tenant_id, current_user)
 
-    from app.models import UserDataSourceAccess
+    target_tenant_id = source.tenant_id or current_user.tenant_id
+
+    from app.models import UserDataSourceAccess, UserTableAccess, TableMeta
     users = (
         session.query(User)
-        .filter(User.tenant_id == current_user.tenant_id)
+        .filter(User.tenant_id == target_tenant_id)
         .order_by(User.email.asc())
         .all()
     )
@@ -488,9 +553,24 @@ def get_source_users(
     granted_user_ids = set(
         session.scalars(
             select(UserDataSourceAccess.user_id).where(
-                UserDataSourceAccess.tenant_id == current_user.tenant_id,
+                UserDataSourceAccess.tenant_id == target_tenant_id,
                 UserDataSourceAccess.source_id == source_id,
             )
+        ).all()
+    )
+
+    total_tables = session.scalar(
+        select(func.count(TableMeta.id)).where(TableMeta.source_id == source_id)
+    ) or 0
+
+    user_granted_tables = dict(
+        session.execute(
+            select(UserTableAccess.user_id, func.count(UserTableAccess.table_id))
+            .where(
+                UserTableAccess.tenant_id == target_tenant_id,
+                UserTableAccess.source_id == source_id,
+            )
+            .group_by(UserTableAccess.user_id)
         ).all()
     )
 
@@ -500,6 +580,8 @@ def get_source_users(
             email=u.email,
             role=u.role,
             is_granted=(u.id in granted_user_ids or u.role == "ADMIN"),
+            granted_tables_count=total_tables if u.role == "ADMIN" else user_granted_tables.get(u.id, 0),
+            total_tables_count=total_tables,
         )
         for u in users
     ]
@@ -518,11 +600,13 @@ def update_source_users(
         raise HTTPException(status_code=404, detail="Source not found")
     verify_tenant_owns(source.tenant_id, current_user)
 
-    from app.models import UserDataSourceAccess
+    target_tenant_id = source.tenant_id or current_user.tenant_id
+
+    from app.models import UserDataSourceAccess, UserTableAccess
     valid_users = (
         session.scalars(
             select(User.id).where(
-                User.tenant_id == current_user.tenant_id,
+                User.tenant_id == target_tenant_id,
                 User.id.in_(body.user_ids),
                 User.role != "ADMIN",
             )
@@ -531,9 +615,19 @@ def update_source_users(
         else []
     )
 
+    # Get users who previously had access to clean up their table grants if access was revoked
+    prev_granted_users = set(
+        session.scalars(
+            select(UserDataSourceAccess.user_id).where(
+                UserDataSourceAccess.tenant_id == target_tenant_id,
+                UserDataSourceAccess.source_id == source_id,
+            )
+        ).all()
+    )
+
     session.execute(
         delete(UserDataSourceAccess).where(
-            UserDataSourceAccess.tenant_id == current_user.tenant_id,
+            UserDataSourceAccess.tenant_id == target_tenant_id,
             UserDataSourceAccess.source_id == source_id,
         )
     )
@@ -541,16 +635,27 @@ def update_source_users(
     for uid in valid_users:
         session.add(
             UserDataSourceAccess(
-                tenant_id=current_user.tenant_id,
+                tenant_id=target_tenant_id,
                 user_id=uid,
                 source_id=source_id,
                 granted_by=current_user.email,
             )
         )
 
+    # Revoke table-level access for any users who were removed from this data source
+    removed_users = prev_granted_users - set(valid_users)
+    if removed_users:
+        session.execute(
+            delete(UserTableAccess).where(
+                UserTableAccess.tenant_id == target_tenant_id,
+                UserTableAccess.source_id == source_id,
+                UserTableAccess.user_id.in_(removed_users),
+            )
+        )
+
     audit(
         session,
-        tenant_id=current_user.tenant_id,
+        tenant_id=target_tenant_id,
         entity_type="user_data_source_access",
         entity_id=source_id,
         action=AuditEvent.USER_ROLE_CHANGED,

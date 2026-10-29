@@ -45,6 +45,10 @@ class GovernanceContext:
                         masked_columns.append(f"{tbl_name}.{col_name}")
             except Exception as exc:
                 log.warning("governance_cls_detection_error", error=str(exc))
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
 
         cls_directive = ""
         if masked_columns:

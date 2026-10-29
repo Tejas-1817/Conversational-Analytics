@@ -45,6 +45,38 @@ export const ReassignEnterpriseModal: React.FC<ReassignEnterpriseModalProps> = (
   const currentTenant = tenants.find((t) => t.id === source.tenant_id);
   const currentTenantName = currentTenant ? (currentTenant.display_name || currentTenant.name) : 'Default Enterprise';
 
+  const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
+  const handleRemoveEnterprise = async () => {
+    if (!window.confirm(
+      `Are you sure you want to remove enterprise access from "${source.name}"?\n\n` +
+      `• All users under "${currentTenantName}" will lose access to query this database.\n` +
+      `• The database will be returned to the Platform Admin workspace for testing.\n\n` +
+      `Proceed?`
+    )) {
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      await fetchApi(`/sources/${source.id}/remove-enterprise`, {
+        method: 'POST',
+      });
+      setSuccessMsg('Enterprise access removed! Reclaimed to Platform Admin.');
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+      }, 700);
+    } catch (err: any) {
+      setError(err.message || 'Failed to remove enterprise access');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleReassign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTenantId) return;
@@ -165,7 +197,7 @@ export const ReassignEnterpriseModal: React.FC<ReassignEnterpriseModalProps> = (
             {/* Target Source Overview */}
             <div
               style={{
-                background: 'var(--bg-dark, #0B0E14)',
+                background: 'var(--bg-dark)',
                 border: '1px solid var(--border-color)',
                 borderRadius: 'var(--radius-md)',
                 padding: '0.85rem 1rem',
@@ -180,7 +212,8 @@ export const ReassignEnterpriseModal: React.FC<ReassignEnterpriseModalProps> = (
                     width: 32,
                     height: 32,
                     borderRadius: 'var(--radius-sm)',
-                    background: 'rgba(255, 255, 255, 0.05)',
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -189,7 +222,7 @@ export const ReassignEnterpriseModal: React.FC<ReassignEnterpriseModalProps> = (
                   <SourceLogo type={source.type} size={20} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{source.name}</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>{source.name}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                     Type: <span style={{ textTransform: 'capitalize' }}>{source.type}</span>
                   </div>
@@ -204,6 +237,47 @@ export const ReassignEnterpriseModal: React.FC<ReassignEnterpriseModalProps> = (
                 </span>
               </div>
             </div>
+
+            {/* Remove Enterprise Option */}
+            {source.tenant_id && source.tenant_id !== DEFAULT_TENANT_ID && (
+              <div
+                style={{
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '0.85rem 1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem',
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#F59E0B' }}>
+                    Testing & Administration
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Revoke enterprise access and reclaim this data source back to the Platform Admin workspace.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleRemoveEnterprise}
+                  disabled={saving}
+                  style={{
+                    fontSize: '0.8rem',
+                    padding: '0.4rem 0.85rem',
+                    color: '#F59E0B',
+                    borderColor: 'rgba(245, 158, 11, 0.4)',
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Remove Enterprise
+                </button>
+              </div>
+            )}
 
             {/* Target Enterprise Selection */}
             <div className="form-group" style={{ margin: 0 }}>
@@ -224,7 +298,7 @@ export const ReassignEnterpriseModal: React.FC<ReassignEnterpriseModalProps> = (
                         padding: '0.75rem 1rem',
                         borderRadius: 'var(--radius-md)',
                         border: `1.5px solid ${isSelected ? 'var(--primary)' : 'var(--border-color)'}`,
-                        background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-dark, #0B0E14)',
+                        background: isSelected ? 'var(--primary-light)' : 'var(--bg-card)',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -251,7 +325,7 @@ export const ReassignEnterpriseModal: React.FC<ReassignEnterpriseModalProps> = (
                         </div>
                         <div>
                           <div style={{ fontWeight: 600, fontSize: '0.875rem', color: isSelected ? 'var(--primary)' : 'inherit' }}>
-                            {t.display_name || t.name}
+                            {t.display_name || t.name} {t.id === DEFAULT_TENANT_ID ? '(Platform Admin Workspace)' : ''}
                           </div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                             slug: <code>{t.slug}</code>

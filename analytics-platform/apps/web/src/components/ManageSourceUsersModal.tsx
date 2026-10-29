@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { X, Search, Users, ShieldCheck, CheckSquare, Square, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { X, Search, Users, ShieldCheck, CheckSquare, Square, Loader2, AlertCircle, CheckCircle2, Table } from 'lucide-react';
 import { fetchApi } from '../services/api';
 import { SourceLogo } from './SourceLogos';
+import { ManageTablePermissionsModal } from './ManageTablePermissionsModal';
+import type { UserAccessTarget } from './ManageDataSourceAccessModal';
 
 export interface SourceUserItem {
   user_id: string;
   email: string;
   role: string;
   is_granted: boolean;
+  granted_tables_count?: number;
+  total_tables_count?: number;
 }
 
 export interface SourceAccessTarget {
@@ -33,11 +37,30 @@ export const ManageSourceUsersModal: React.FC<ManageSourceUsersModalProps> = ({
 }) => {
   const [users, setUsers] = useState<SourceUserItem[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [selectedUserForTables, setSelectedUserForTables] = useState<UserAccessTarget | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const loadUsers = useCallback(async () => {
+    if (!source) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data: SourceUserItem[] = await fetchApi(`/sources/${source.id}/users`);
+      setUsers(data);
+      const granted = new Set(
+        data.filter(u => u.is_granted && u.role !== 'ADMIN').map(u => u.user_id)
+      );
+      setSelectedUserIds(granted);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load user access list for this data source');
+    } finally {
+      setLoading(false);
+    }
+  }, [source]);
 
   useEffect(() => {
     if (!isOpen || !source) {
@@ -46,28 +69,12 @@ export const ManageSourceUsersModal: React.FC<ManageSourceUsersModalProps> = ({
       setSearch('');
       setError(null);
       setSuccessMsg(null);
+      setSelectedUserForTables(null);
       return;
     }
 
-    const fetchUsers = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data: SourceUserItem[] = await fetchApi(`/sources/${source.id}/users`);
-        setUsers(data);
-        const granted = new Set(
-          data.filter(u => u.is_granted && u.role !== 'ADMIN').map(u => u.user_id)
-        );
-        setSelectedUserIds(granted);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load user access list for this data source');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUsers();
-  }, [isOpen, source]);
+    loadUsers();
+  }, [isOpen, source, loadUsers]);
 
   const filteredUsers = useMemo(() => {
     if (!search.trim()) return users;
@@ -282,7 +289,7 @@ export const ManageSourceUsersModal: React.FC<ManageSourceUsersModalProps> = ({
               overflowY: 'auto',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--border-color)',
-              background: 'var(--bg-dark, #0B0E14)',
+              background: 'var(--bg-card)',
             }}
           >
             {loading ? (
@@ -319,12 +326,12 @@ export const ManageSourceUsersModal: React.FC<ManageSourceUsersModalProps> = ({
                         padding: '0.75rem 1rem',
                         borderBottom: '1px solid var(--border-color)',
                         cursor: isAdmin ? 'default' : 'pointer',
-                        background: isChecked ? 'rgba(59, 130, 246, 0.05)' : 'transparent',
+                        background: isChecked ? 'var(--primary-light)' : 'transparent',
                         transition: 'background 0.15s ease',
                       }}
                       onMouseEnter={e => {
                         if (!isAdmin && !isChecked) {
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                          e.currentTarget.style.background = 'var(--bg-hover)';
                         }
                       }}
                       onMouseLeave={e => {
@@ -386,7 +393,40 @@ export const ManageSourceUsersModal: React.FC<ManageSourceUsersModalProps> = ({
                         </div>
                       </div>
 
-                      <div style={{ flexShrink: 0, marginLeft: '1rem' }}>
+                      <div style={{ flexShrink: 0, marginLeft: '1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        {isChecked && !isAdmin && (
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedUserForTables({
+                                id: u.user_id,
+                                email: u.email,
+                                role: u.role,
+                              });
+                            }}
+                            title="Configure granular table permissions for this user"
+                            style={{
+                              padding: '0.25rem 0.5rem',
+                              fontSize: '0.75rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: 'var(--primary)',
+                              border: '1px solid rgba(59, 130, 246, 0.3)',
+                              borderRadius: 'var(--radius-sm)',
+                              background: 'rgba(59, 130, 246, 0.08)',
+                            }}
+                          >
+                            <Table size={13} />
+                            <span>
+                              {typeof u.granted_tables_count === 'number' && typeof u.total_tables_count === 'number' && u.total_tables_count > 0
+                                ? `Tables (${u.granted_tables_count}/${u.total_tables_count})`
+                                : 'Tables'}
+                            </span>
+                          </button>
+                        )}
                         {isChecked ? (
                           <CheckSquare size={20} color={isAdmin ? 'var(--text-muted)' : 'var(--primary)'} />
                         ) : (
@@ -426,6 +466,17 @@ export const ManageSourceUsersModal: React.FC<ManageSourceUsersModalProps> = ({
           </button>
         </div>
       </div>
+
+      <ManageTablePermissionsModal
+        isOpen={!!selectedUserForTables}
+        onClose={() => setSelectedUserForTables(null)}
+        user={selectedUserForTables}
+        source={source ? { id: source.id, name: source.name, type: source.type, database_name: source.database_name } : null}
+        onSuccess={() => {
+          loadUsers();
+          if (onSuccess) onSuccess();
+        }}
+      />
     </div>
   );
 };

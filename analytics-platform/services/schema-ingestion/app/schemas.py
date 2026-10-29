@@ -212,6 +212,8 @@ class UserDataSourceItemOut(BaseModel):
     type: str
     database_name: str | None = None
     is_granted: bool
+    granted_tables_count: int = 0
+    total_tables_count: int = 0
 
 
 class SourceUserAccessItemOut(BaseModel):
@@ -219,6 +221,8 @@ class SourceUserAccessItemOut(BaseModel):
     email: str
     role: str
     is_granted: bool
+    granted_tables_count: int = 0
+    total_tables_count: int = 0
 
 
 class SourceUserAccessUpdate(BaseModel):
@@ -230,10 +234,63 @@ class UserTableAccessItemOut(BaseModel):
     table_id: uuid.UUID
     schema_name: str
     table_name: str
+    business_name: str | None = None
+    description: str | None = None
+    row_count: int | None = None
     is_granted: bool
 
 
 class UserTableAccessUpdate(BaseModel):
     table_ids: list[uuid.UUID]
+
+
+# --- Domain Interactive Graph Schemas ---
+class ColumnGraphMeta(BaseModel):
+    id: uuid.UUID
+    column_name: str
+    data_type: str
+    is_primary_key: bool = False
+    is_foreign_key: bool = False
+    description: str | None = None
+
+
+class DomainGraphNode(BaseModel):
+    id: str  # table_id as string
+    table_id: uuid.UUID
+    table_name: str
+    business_name: str | None = None
+    schema_name: str
+    source_id: uuid.UUID
+    source_name: str
+    source_type: str
+    row_count: int | None = None
+    column_count: int
+    columns: list[ColumnGraphMeta]
+
+
+class DomainGraphEdge(BaseModel):
+    id: str  # relationship_id as string
+    relationship_id: uuid.UUID
+    source_table_id: str
+    source_column_id: str
+    source_column_name: str
+    target_table_id: str
+    target_column_id: str
+    target_column_name: str
+    cardinality: str  # "one_to_one" | "one_to_many" | "many_to_one" | "many_to_many"
+    relationship_source: str  # "foreign_key" | "name_match" | "value_overlap" | "user_defined"
+    confidence: float
+    status: str  # "draft" | "approved" | "rejected" | "reviewed"
+    evidence: dict = {}
+
+
+class DomainGraphResponse(BaseModel):
+    domain_id: uuid.UUID
+    domain_name: str
+    nodes: list[DomainGraphNode]
+    edges: list[DomainGraphEdge]
+    total_nodes: int
+    total_edges: int
+
 
 

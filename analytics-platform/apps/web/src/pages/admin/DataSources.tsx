@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchApi } from '../../services/api';
-import { Database, Plus, RefreshCw, MoreVertical, Play, Server, Clock, Trash2, Users, Building2, Filter } from 'lucide-react';
+import { Database, Plus, RefreshCw, MoreVertical, Play, Server, Clock, Trash2, Users, Building2, Filter, Unlink } from 'lucide-react';
 import { ConnectionModal } from '../../components/ConnectionModal';
 import { SourceLogo } from '../../components/SourceLogos';
 import { ManageSourceUsersModal } from '../../components/ManageSourceUsersModal';
@@ -81,6 +81,30 @@ export const DataSources = () => {
     }
   };
 
+  const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
+  const handleRemoveEnterprise = async (source: any) => {
+    const enterpriseName = tenantMap[source.tenant_id] || 'Enterprise';
+    const confirmed = window.confirm(
+      `Are you sure you want to remove enterprise access from "${source.name}"?\n\n` +
+      `• Current Enterprise: ${enterpriseName}\n` +
+      `• All users under ${enterpriseName} will lose access to query this database.\n` +
+      `• The database will be returned to the Platform Admin workspace for testing.\n\n` +
+      `Proceed with removing enterprise access?`
+    );
+    if (!confirmed) return;
+
+    try {
+      await fetchApi(`/sources/${source.id}/remove-enterprise`, {
+        method: 'POST',
+      });
+      alert(`Enterprise access removed from "${source.name}". Reclaimed to Platform Admin.`);
+      loadSources();
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove enterprise access');
+    }
+  };
+
   const deleteSource = async (source: any) => {
     if (!window.confirm(`Are you sure you want to delete ${source.name}?`)) return;
     try {
@@ -119,6 +143,7 @@ export const DataSources = () => {
         isOpen={!!selectedSourceForUsers}
         onClose={() => setSelectedSourceForUsers(null)}
         source={selectedSourceForUsers}
+        onSuccess={loadSources}
       />
       <ReassignEnterpriseModal
         isOpen={!!selectedSourceForEnterprise}
@@ -259,6 +284,19 @@ export const DataSources = () => {
                       <div className="flex items-center justify-end gap-2 relative">
                         {!s.is_code_repo && (
                           <>
+                            {s.tenant_id && s.tenant_id !== DEFAULT_TENANT_ID && (
+                              <button
+                                className="btn-ghost"
+                                title="Remove Enterprise Access (Reclaim to Admin)"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveEnterprise(s);
+                                }}
+                                style={{ padding: '0.5rem', color: '#f59e0b' }}
+                              >
+                                <Unlink size={16} />
+                              </button>
+                            )}
                             <button
                               className="btn-ghost"
                               title="Reassign Enterprise"

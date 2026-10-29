@@ -433,6 +433,13 @@ export const Users = () => {
           </form>
         </div>
       </div>
+
+      <ManageDataSourceAccessModal
+        isOpen={!!selectedUserForAccess}
+        onClose={() => setSelectedUserForAccess(null)}
+        user={selectedUserForAccess}
+        onSuccess={loadData}
+      />
     </div>
   );
 };

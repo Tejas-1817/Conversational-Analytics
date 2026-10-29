@@ -42,6 +42,7 @@ import { TableDetailModal } from '../../components/TableDetailModal';
 import { UploadFilesModal } from '../../components/UploadFilesModal';
 import { AddDataSourceModal } from '../../components/AddDataSourceModal';
 import { ContextTabContent } from '../../components/ContextTabContent';
+import { RelationshipGraph } from '../../components/graph/RelationshipGraph';
 
 interface TableMetaItem {
   id: string;
@@ -116,6 +117,9 @@ export const DomainDetail: React.FC = () => {
   const [isUploadFilesModalOpen, setIsUploadFilesModalOpen] = useState(false);
   const [isAddDataSourceModalOpen, setIsAddDataSourceModalOpen] = useState(false);
   const [selectedTableIndex, setSelectedTableIndex] = useState(0);
+
+  // View Mode for Overview Tab: 'grid' (6 cards) or 'graph' (interactive Neo4j-style relationship diagram)
+  const [viewMode, setViewMode] = useState<'grid' | 'graph'>('grid');
 
   // Table Search & Filter in Data Sources tab
   const [tableSearch, setTableSearch] = useState('');
@@ -645,30 +649,34 @@ export const DomainDetail: React.FC = () => {
               }}
             >
               <button
+                onClick={() => setViewMode('grid')}
                 style={{
                   padding: '5px 8px',
-                  background: '#4F46E5',
-                  color: '#FFFFFF',
+                  background: viewMode === 'grid' ? '#4F46E5' : 'transparent',
+                  color: viewMode === 'grid' ? '#FFFFFF' : 'var(--text-muted)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
+                  transition: 'all 0.15s ease',
                 }}
                 title="Grid View"
               >
                 <LayoutGrid size={15} />
               </button>
               <button
+                onClick={() => setViewMode('graph')}
                 style={{
                   padding: '5px 8px',
-                  background: 'transparent',
-                  color: 'var(--text-muted)',
+                  background: viewMode === 'graph' ? '#4F46E5' : 'transparent',
+                  color: viewMode === 'graph' ? '#FFFFFF' : 'var(--text-muted)',
                   border: 'none',
                   borderRadius: '4px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
+                  transition: 'all 0.15s ease',
                 }}
                 title="Graph View"
               >
@@ -701,9 +709,23 @@ export const DomainDetail: React.FC = () => {
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: OVERVIEW TAB CONTENT (6-CARD GRID) */}
+      {/* TAB 1: OVERVIEW TAB CONTENT (6-CARD GRID OR INTERACTIVE GRAPH VIEW) */}
       {/* ========================================================================= */}
-      {activeTab === 'overview' && (
+      {activeTab === 'overview' && viewMode === 'graph' && domain && (
+        <RelationshipGraph
+          domainId={domainId || domain.id}
+          sourceId={domain.source_id}
+          onInspectTableFull={(tableId) => {
+            const idx = tablesList.findIndex((t) => t.id === tableId);
+            if (idx !== -1) {
+              setSelectedTableIndex(idx);
+              setIsTableModalOpen(true);
+            }
+          }}
+        />
+      )}
+
+      {activeTab === 'overview' && viewMode === 'grid' && (
         <div
           style={{
             display: 'grid',

@@ -1,8 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Search, Database, ShieldCheck, CheckSquare, Square, Loader2, AlertCircle, CheckCircle2, Table, Building2 } from 'lucide-react';
 import { fetchApi } from '../services/api';
 import { SourceLogo } from './SourceLogos';
-import { ManageTablePermissionsModal } from './ManageTablePermissionsModal';
+export interface TablePermissionsSourceTarget {
+  id: string;
+  name: string;
+  type?: string;
+  database_name?: string | null;
+}
+export const TablePermissionsSourceTarget = {};
 
 export interface UserDataSourceItem {
   source_id: string;
@@ -10,6 +16,8 @@ export interface UserDataSourceItem {
   type: string;
   database_name?: string | null;
   is_granted: boolean;
+  granted_tables_count?: number;
+  total_tables_count?: number;
 }
 export const UserDataSourceItem = {};
 
@@ -38,12 +46,34 @@ export const ManageDataSourceAccessModal: React.FC<ManageDataSourceAccessModalPr
   const [sources, setSources] = useState<UserDataSourceItem[]>([]);
   const [tenants, setTenants] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [selectedSourceForTables, setSelectedSourceForTables] = useState<{ id: string; name: string } | null>(null);
+  const [selectedSourceForTables, setSelectedSourceForTables] = useState<TablePermissionsSourceTarget | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const loadSources = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [sourcesData, tenantsData] = await Promise.all([
+        fetchApi(`/users/${user.id}/sources`),
+        fetchApi('/tenants').catch(() => []),
+      ]);
+      if (Array.isArray(tenantsData)) {
+        setTenants(tenantsData);
+      }
+      setSources(sourcesData);
+      const granted = new Set(sourcesData.filter(s => s.is_granted).map(s => s.source_id));
+      setSelectedIds(granted);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load user data source permissions');
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!isOpen || !user) {
@@ -52,32 +82,12 @@ export const ManageDataSourceAccessModal: React.FC<ManageDataSourceAccessModalPr
       setSearch('');
       setError(null);
       setSuccessMsg(null);
+      setSelectedSourceForTables(null);
       return;
     }
 
-    const fetchSources = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [sourcesData, tenantsData] = await Promise.all([
-          fetchApi(`/users/${user.id}/sources`),
-          fetchApi('/tenants').catch(() => []),
-        ]);
-        if (Array.isArray(tenantsData)) {
-          setTenants(tenantsData);
-        }
-        setSources(sourcesData);
-        const granted = new Set(sourcesData.filter(s => s.is_granted).map(s => s.source_id));
-        setSelectedIds(granted);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load user data source permissions');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSources();
-  }, [isOpen, user]);
+    loadSources();
+  }, [isOpen, user, loadSources]);
 
   const enterpriseName = useMemo(() => {
     if (!user?.tenant_id) return 'Default Enterprise';
@@ -342,7 +352,7 @@ export const ManageDataSourceAccessModal: React.FC<ManageDataSourceAccessModalPr
               overflowY: 'auto',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--border-color)',
-              background: 'var(--bg-dark, #0B0E14)',
+              background: 'var(--bg-card)',
             }}
           >
             {loading ? (
@@ -383,12 +393,12 @@ export const ManageDataSourceAccessModal: React.FC<ManageDataSourceAccessModalPr
                         padding: '0.75rem 1rem',
                         borderBottom: '1px solid var(--border-color)',
                         cursor: isAdmin ? 'default' : 'pointer',
-                        background: isChecked ? 'rgba(59, 130, 246, 0.05)' : 'transparent',
+                        background: isChecked ? 'var(--primary-light)' : 'transparent',
                         transition: 'background 0.15s ease',
                       }}
                       onMouseEnter={e => {
                         if (!isAdmin && !isChecked) {
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                          e.currentTarget.style.background = 'var(--bg-hover)';
                         }
                       }}
                       onMouseLeave={e => {
@@ -448,7 +458,12 @@ export const ManageDataSourceAccessModal: React.FC<ManageDataSourceAccessModalPr
                             className="btn-ghost"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedSourceForTables({ id: source.source_id, name: source.name });
+                              setSelectedSourceForTables({
+                                id: source.source_id,
+                                name: source.name,
+                                type: source.type,
+                                database_name: source.database_name,
+                              });
                             }}
                             title="Configure granular table permissions for this data source"
                             style={{
@@ -464,7 +479,11 @@ export const ManageDataSourceAccessModal: React.FC<ManageDataSourceAccessModalPr
                             }}
                           >
                             <Table size={13} />
-                            <span>Tables</span>
+                            <span>
+                              {typeof source.granted_tables_count === 'number' && typeof source.total_tables_count === 'number' && source.total_tables_count > 0
+                                ? `Tables (${source.granted_tables_count}/${source.total_tables_count})`
+                                : 'Tables'}
+                            </span>
                           </button>
                         )}
                         {isChecked ? (
@@ -514,7 +533,11 @@ export const ManageDataSourceAccessModal: React.FC<ManageDataSourceAccessModalPr
         onClose={() => setSelectedSourceForTables(null)}
         user={user}
         source={selectedSourceForTables}
-        onSuccess={onSuccess}
+        enterpriseName={enterpriseName}
+        onSuccess={() => {
+          loadSources();
+          if (onSuccess) onSuccess();
+        }}
       />
     </div>
   );

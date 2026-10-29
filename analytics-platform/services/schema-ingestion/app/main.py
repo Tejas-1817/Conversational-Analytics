@@ -214,7 +214,8 @@ def bootstrap_admin():
         from app.models import (
             Base, Tenant, User, RevokedToken, Conversation, ConversationMessage,
             ApiKey, OIDCProvider, DataSource, TableMeta, ColumnMeta, IndexMeta, AuditLog,
-            Domain, DomainTable, DomainDocument, DomainTerm, UserDataSourceAccess, UserTableAccess
+            Domain, DomainTable, DomainDocument, DomainTerm, UserDataSourceAccess, UserTableAccess,
+            BusinessRule
         )
         engine = get_engine()
         enum_defs = {
@@ -246,7 +247,7 @@ def bootstrap_admin():
             OIDCProvider.__table__, DataSource.__table__, TableMeta.__table__,
             ColumnMeta.__table__, IndexMeta.__table__, AuditLog.__table__,
             Domain.__table__, DomainTable.__table__, DomainDocument.__table__, DomainTerm.__table__,
-            UserDataSourceAccess.__table__, UserTableAccess.__table__
+            UserDataSourceAccess.__table__, UserTableAccess.__table__, BusinessRule.__table__
         ]
         for tbl in infra_tables:
             try:

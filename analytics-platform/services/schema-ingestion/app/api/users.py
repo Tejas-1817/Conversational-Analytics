@@ -285,13 +285,38 @@ def get_user_sources(
         ).all()
     )
 
+    source_ids = [s.id for s in all_sources]
+    total_tables_map: dict[uuid.UUID, int] = {}
+    granted_tables_map: dict[uuid.UUID, int] = {}
+
+    if source_ids:
+        total_counts = db.execute(
+            select(TableMeta.source_id, func.count(TableMeta.id))
+            .where(TableMeta.source_id.in_(source_ids))
+            .group_by(TableMeta.source_id)
+        ).all()
+        total_tables_map = {row[0]: row[1] for row in total_counts}
+
+        granted_counts = db.execute(
+            select(UserTableAccess.source_id, func.count(UserTableAccess.table_id))
+            .where(
+                UserTableAccess.tenant_id == target_user.tenant_id,
+                UserTableAccess.user_id == user_id,
+                UserTableAccess.source_id.in_(source_ids),
+            )
+            .group_by(UserTableAccess.source_id)
+        ).all()
+        granted_tables_map = {row[0]: row[1] for row in granted_counts}
+
     return [
         UserDataSourceItemOut(
             source_id=s.id,
             name=s.name,
             type=s.type,
             database_name=s.database_name,
-            is_granted=(s.id in granted_ids or target_user.role == "ADMIN")
+            is_granted=(s.id in granted_ids or target_user.role == "ADMIN"),
+            granted_tables_count=total_tables_map.get(s.id, 0) if target_user.role == "ADMIN" else granted_tables_map.get(s.id, 0),
+            total_tables_count=total_tables_map.get(s.id, 0),
         )
         for s in all_sources
     ]
@@ -381,7 +406,7 @@ def get_user_source_tables(
         raise HTTPException(status_code=404, detail="Data source not found")
 
     tables = db.scalars(
-        select(TableMeta).where(TableMeta.source_id == source_id).order_by(TableMeta.schema_name, TableMeta.table_name)
+        select(TableMeta).where(TableMeta.source_id == source_id).order_by(TableMeta.schema_name.asc(), TableMeta.table_name.asc())
     ).all()
 
     granted_table_ids = set(
@@ -399,6 +424,9 @@ def get_user_source_tables(
             table_id=t.id,
             schema_name=t.schema_name,
             table_name=t.table_name,
+            business_name=t.business_name,
+            description=t.description,
+            row_count=t.row_count,
             is_granted=(t.id in granted_table_ids or target_user.role == "ADMIN")
         )
         for t in tables
@@ -448,6 +476,24 @@ def update_user_source_tables(
             table_id=tid,
             granted_by=admin.email,
         ))
+
+    # Auto-synchronize parent data source access:
+    # If table grants are assigned, ensure the user has access to the parent data source
+    if valid_tables:
+        existing_parent = db.scalar(
+            select(UserDataSourceAccess).where(
+                UserDataSourceAccess.tenant_id == target_user.tenant_id,
+                UserDataSourceAccess.user_id == user_id,
+                UserDataSourceAccess.source_id == source_id,
+            )
+        )
+        if not existing_parent:
+            db.add(UserDataSourceAccess(
+                tenant_id=target_user.tenant_id,
+                user_id=user_id,
+                source_id=source_id,
+                granted_by=admin.email,
+            ))
 
     audit(
         db,

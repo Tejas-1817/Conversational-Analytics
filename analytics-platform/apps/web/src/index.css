@@ -261,7 +261,7 @@ h4 {
 /* ==========================================================================
    INPUTS & FORMS
    ========================================================================== */
-input,
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
 select,
 textarea {
   width: 100%;
@@ -276,18 +276,66 @@ textarea {
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-input::placeholder,
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"])::placeholder,
 textarea::placeholder {
   color: var(--text-faint);
 }
 
-input:focus,
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus,
 select:focus,
 textarea:focus {
   outline: none;
   background: var(--bg-card);
   border-color: var(--border-focus);
   box-shadow: 0 0 0 3px rgba(91, 82, 232, 0.12);
+}
+
+/* Custom sleek range slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: #E2E8F0;
+  border-radius: 9999px;
+  border: none;
+  padding: 0;
+  margin: 0;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary, #4F46E5);
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.4);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary, #4F46E5);
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+input[type="range"]:focus {
+  outline: none;
+  box-shadow: none;
+  border: none;
 }
 
 .form-group {

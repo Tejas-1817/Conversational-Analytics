@@ -50,10 +50,10 @@ class SchemaProvider:
             try:
                 target_source_id = source.id if source else None
                 if not target_source_id and user and hasattr(user, "tenant_id"):
-                    active_src = db_session.query(DataSource).filter_by(
-                        tenant_id=user.tenant_id,
-                        status="connected"
-                    ).first()
+                    query = db_session.query(DataSource).filter_by(status="connected")
+                    if getattr(user, "role", "") != "ADMIN":
+                        query = query.filter_by(tenant_id=user.tenant_id)
+                    active_src = query.first()
                     if active_src:
                         target_source_id = active_src.id
 
