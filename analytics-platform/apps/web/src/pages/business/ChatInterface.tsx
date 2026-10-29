@@ -676,7 +676,7 @@ export const ChatInterface = () => {
             if (displayedText.length < targetText.length) {
               const lag = targetText.length - displayedText.length;
               // Adaptive speed: types smoothly, but accelerates so long answers finish in 3-4s
-              const step = Math.max(14, Math.min(120, Math.ceil(lag / 1.5)));
+              const step = Math.max(6, Math.min(60, Math.ceil(lag / 3)));
               displayedText = targetText.slice(0, displayedText.length + step);
 
 
@@ -689,7 +689,7 @@ export const ChatInterface = () => {
               } : m));
 
               // Smooth auto-scroll following the typed text
-              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
             } else if (isStreamFinished) {
               clearInterval(pumpInterval);
               resolve();
@@ -1121,7 +1121,7 @@ export const ChatInterface = () => {
 
           {messages.map((m, i) => (
             <div key={i} className={`message-bubble ${m.role}`}>
-              {m.role === 'assistant' && (
+              {/* {m.role === 'assistant' && (
                 <div className="message-avatar assistant">
                   <div style={{
                     width: '32px',
@@ -1137,7 +1137,7 @@ export const ChatInterface = () => {
                     <Sparkles size={16} />
                   </div>
                 </div>
-              )}
+              )} */}
 
               <div className="message-content">
                 {m.role === 'user' ? (
@@ -1391,7 +1391,7 @@ export const ChatInterface = () => {
                       </div>
                     )}
 
-                    {m.role === 'assistant' && !m.isError && (
+                    {m.role === 'assistant' && !m.isError && !m.isStreaming && (m.content || m.answer || m.answer_markdown) && (
                       <div className="flex items-center gap-4 mt-4 text-muted text-sm flex-wrap">
                         {m.confidence_score && (
                           <div className="flex items-center gap-1" title={m.confidence_reason}>
@@ -1399,31 +1399,6 @@ export const ChatInterface = () => {
                             <span>Confidence: {(m.confidence_score * 100).toFixed(0)}%</span>
                           </div>
                         )}
-
-
-                        <details style={{ cursor: 'pointer', position: 'relative' }} className="group">
-                          <summary className="flex items-center gap-1 hover:text-white" style={{ outline: 'none' }}>
-                            <Code size={14} /> Execution Trace
-                          </summary>
-                          <div className="card" style={{ position: 'absolute', bottom: '100%', left: 0, width: '500px', maxWidth: '80vw', zIndex: 50, padding: '1rem', marginBottom: '0.5rem', background: 'var(--bg-dark)' }}>
-                            <div className="flex justify-between items-center mb-2">
-                              <h4 className="text-sm text-muted m-0">Trace Details</h4>
-                              <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={(e) => {
-                                e.preventDefault(); handleCopy(JSON.stringify({ sql: m.sql || m.generated_sql, plan: m.query_plan, trace: m.trace }, null, 2));
-                              }}
-                                title="Copy Trace"
-                              >
-                                <Copy size={12} />
-                              </button>
-
-                            </div>
-                            <pre style={{ background: 'var(--bg-card)', padding: '1rem', borderRadius: 'var(--radius-sm)', overflowX: 'auto', fontSize: '0.75rem', border: '1px solid var(--border-color)', margin: 0, maxHeight: '300px', overflowY: 'auto' }}>
-                              {(m.sql || m.generated_sql) && `SQL:\n${m.sql || m.generated_sql}\n\n`}
-                              {m.query_plan && `Plan:\n${JSON.stringify(m.query_plan, null, 2)}\n\n`}
-                              {m.trace && `Router Trace:\n${JSON.stringify(m.trace, null, 2)}`}
-                            </pre>
-                          </div>
-                        </details>
 
                         <div className="flex-1" />
 
@@ -1478,21 +1453,6 @@ export const ChatInterface = () => {
           {/* Initial live loading state with live thought timer */}
           {loading && !messages.some(m => m.status === 'processing') && (
             <div className="message-bubble assistant">
-              <div className="message-avatar assistant">
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '8px',
-                  background: 'linear-gradient(135deg, #6366F1 0%, #06B6D4 100%)',
-                  color: '#FFFFFF',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
-                }}>
-                  <Sparkles size={16} />
-                </div>
-              </div>
               <div className="message-content">
                 <ThoughtSteps isLoading={true} />
               </div>

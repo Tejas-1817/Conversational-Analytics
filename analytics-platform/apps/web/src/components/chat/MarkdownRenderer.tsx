@@ -405,7 +405,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isS
           ),
         }}
       >
-        {isStreaming ? `${formattedContent} ▎` : formattedContent}
+        {formattedContent}
       </ReactMarkdown>
     </div>
   );

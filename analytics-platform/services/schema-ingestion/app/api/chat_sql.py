@@ -189,15 +189,15 @@ async def generate_sql_from_question_stream(
 
                 # Stream in fast 2-word phrases (cuts backend streaming time by 60%)
                 words = line.split(" ")
-                chunk_size = 10
+                chunk_size = 2
                 for i in range(0, len(words), chunk_size):
                     chunk = " ".join(words[i : i + chunk_size])
                     suffix = " " if (i + chunk_size) < len(words) else ""
                     yield f"data: {json.dumps({'type': 'token', 'delta': chunk + suffix})}\n\n"
-                    await asyncio.sleep(0.005)
+                    await asyncio.sleep(0.002)
 
                 # Crisp micro-pause between lines
-                await asyncio.sleep(0.008)
+                await asyncio.sleep(0.002)
 
 
 
