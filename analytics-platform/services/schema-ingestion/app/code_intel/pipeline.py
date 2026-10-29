@@ -118,8 +118,12 @@ class CodeIntelPipeline:
             _notify("cloning")
             local_path, diff_result = self.git_client.clone_or_pull_repo(repo_url, branch=branch)
 
+            # Check if Neo4j already has graph data for this repository
+            neo4j_stats = self.graph_writer.get_stats(repo_id)
+            has_existing_graph = neo4j_stats.get("File", 0) > 0
+
             # --- INCREMENTAL SYNC PATH ---
-            if diff_result is not None:
+            if diff_result is not None and has_existing_graph:
                 total_changes = len(diff_result.added) + len(diff_result.modified) + len(diff_result.deleted)
                 
                 # If no commits were pulled, finish immediately

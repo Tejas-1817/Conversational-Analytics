@@ -625,9 +625,30 @@ export const ChatInterface = () => {
         };
         setMessages(prev => [...prev, botMsg]);
       } else {
-        // Route to SQL chat endpoint
-        const data = await fetchApi('/api/v1/chat/sql', {
+        // Route to SQL chat streaming endpoint
+        const botMsgId = Date.now() + 1;
+        const token = localStorage.getItem('token');
+
+        // 1. Immediately create a placeholder assistant message for live typing
+        setMessages(prev => [
+          ...prev,
+          {
+            id: botMsgId,
+            role: 'assistant',
+            content: '',
+            answer: '',
+            answer_markdown: '',
+            question: questionText,
+            isStreaming: true,
+          }
+        ]);
+
+        const streamRes = await fetch('/api/v1/chat/sql/stream', {
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
           body: JSON.stringify({
             question: questionText,
             conversation_id: convId,
@@ -637,45 +658,117 @@ export const ChatInterface = () => {
           })
         });
 
-        if (data.conversation_id && data.conversation_id !== convId) {
-          setConvId(data.conversation_id);
-          localStorage.setItem('active_conversation_id', data.conversation_id);
+        if (!streamRes.ok) {
+          throw new Error(`Server returned error ${streamRes.status}`);
         }
 
-        const recVis = data.recommended_visualization || data.chart_recommendation;
-        const chartTypeRes = typeof recVis === 'object' && recVis !== null ? recVis.chart_type : (typeof recVis === 'string' ? recVis : undefined);
+        const reader = streamRes.body?.getReader();
+        const decoder = new TextDecoder();
+        let targetText = '';
+        let displayedText = '';
+        let generatedSql: string | null = null;
+        let finalData: any = null;
+        let isStreamFinished = false;
 
-        const botMsg = {
-          id: Date.now() + 1,
-          role: 'assistant',
-          content: data.answer_markdown || data.answer || '',
-          intent: data.intent,
-          question: data.question,
-          answer: data.answer,
-          answer_markdown: data.answer_markdown || data.answer,
-          sql: data.sql,
-          result_data: Array.isArray(data.rows) ? data.rows : [],
-          rows: Array.isArray(data.rows) ? data.rows : [],
-          columns: data.columns || [],
-          column_types: data.column_types || {},
-          row_count: data.row_count || 0,
-          data_truncated: Boolean(data.data_truncated),
-          follow_up_questions: Array.isArray(data.follow_up_questions)
-            ? data.follow_up_questions
-            : [],
-          recommended_visualization: data.recommended_visualization,
-          visualization: data.visualization,
-          title: data.title,
-          execution_time_ms: data.execution_time_ms,
-          generated_at: data.generated_at,
-          database: data.database,
-        };
-        if (data.conversation_id) {
-          await loadConversation(data.conversation_id);
-        } else {
-          setMessages(prev => [...prev, botMsg]);
+        // 60 FPS Smooth Easing Pump (Eliminates TCP pauses and jerks like ChatGPT)
+        const pumpPromise = new Promise<void>((resolve) => {
+          const pumpInterval = setInterval(() => {
+            if (displayedText.length < targetText.length) {
+              const lag = targetText.length - displayedText.length;
+              // Adaptive speed: types smoothly, but accelerates so long answers finish in 3-4s
+              const step = Math.max(6, Math.min(60, Math.ceil(lag / 3)));
+              displayedText = targetText.slice(0, displayedText.length + step);
+
+
+              setMessages(prev => prev.map(m => m.id === botMsgId ? {
+                ...m,
+                content: displayedText,
+                answer: displayedText,
+                answer_markdown: displayedText,
+                isStreaming: true,
+              } : m));
+
+              // Smooth auto-scroll following the typed text
+              messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+            } else if (isStreamFinished) {
+              clearInterval(pumpInterval);
+              resolve();
+            }
+          }, 16); // 16ms = 60 FPS
+        });
+
+        if (reader) {
+          let buffer = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop() || '';
+
+            for (const part of parts) {
+              const line = part.trim();
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const payload = JSON.parse(line.substring(6));
+
+                if (payload.type === 'sql') {
+                  generatedSql = payload.sql;
+                  setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, sql: payload.sql } : m));
+                } else if (payload.type === 'token') {
+                  targetText += payload.delta; // Silently queues into the 60fps pump (no jerk!)
+                } else if (payload.type === 'complete') {
+                  finalData = payload.result;
+                } else if (payload.type === 'error') {
+                  throw new Error(payload.message || 'Stream processing error');
+                }
+              } catch (parseErr) {
+                console.error('SSE parse error:', parseErr);
+              }
+            }
+          }
+        }
+
+        isStreamFinished = true;
+        await pumpPromise; // Wait for the smooth pump to finish typing remaining characters
+
+        // 2. Finalize message with complete charts, tables, & follow-up questions
+        if (finalData) {
+          if (finalData.conversation_id && finalData.conversation_id !== convId) {
+            setConvId(finalData.conversation_id);
+            localStorage.setItem('active_conversation_id', finalData.conversation_id);
+          }
+
+          const completeBotMsg = {
+            id: botMsgId,
+            role: 'assistant',
+            content: finalData.answer_markdown || finalData.answer || displayedText,
+            intent: finalData.intent,
+            question: finalData.question,
+            answer: finalData.answer || displayedText,
+            answer_markdown: finalData.answer_markdown || finalData.answer || displayedText,
+            sql: finalData.sql || generatedSql,
+            result_data: Array.isArray(finalData.rows) ? finalData.rows : [],
+            rows: Array.isArray(finalData.rows) ? finalData.rows : [],
+            columns: finalData.columns || [],
+            column_types: finalData.column_types || {},
+            row_count: finalData.row_count || 0,
+            data_truncated: Boolean(finalData.data_truncated),
+            follow_up_questions: Array.isArray(finalData.follow_up_questions) ? finalData.follow_up_questions : [],
+            recommended_visualization: finalData.recommended_visualization,
+            visualization: finalData.visualization,
+            title: finalData.title,
+            execution_time_ms: finalData.execution_time_ms,
+            generated_at: finalData.generated_at,
+            database: finalData.database,
+            isStreaming: false,
+          };
+
+          setMessages(prev => prev.map(m => m.id === botMsgId ? completeBotMsg : m));
         }
       }
+
       await loadConversationsList();
     } catch (err: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: err.message || 'Failed to process query.', isError: true }]);
@@ -1028,7 +1121,7 @@ export const ChatInterface = () => {
 
           {messages.map((m, i) => (
             <div key={i} className={`message-bubble ${m.role}`}>
-              {m.role === 'assistant' && (
+              {/* {m.role === 'assistant' && (
                 <div className="message-avatar assistant">
                   <div style={{
                     width: '32px',
@@ -1044,7 +1137,7 @@ export const ChatInterface = () => {
                     <Sparkles size={16} />
                   </div>
                 </div>
-              )}
+              )} */}
 
               <div className="message-content">
                 {m.role === 'user' ? (
@@ -1068,9 +1161,11 @@ export const ChatInterface = () => {
                         {/* 1. Structured Cards & Markdown Synthesis */}
                         {m.answer_markdown && (
                           <div className="business-answer">
-                            <MarkdownRenderer content={m.answer_markdown} />
+                            <MarkdownRenderer content={m.answer_markdown} isStreaming={m.isStreaming} />
                           </div>
                         )}
+
+
 
                         {/* 2. Primary Visualization */}
                         {m.result_data && m.result_data.length > 0 && (
@@ -1296,7 +1391,7 @@ export const ChatInterface = () => {
                       </div>
                     )}
 
-                    {m.role === 'assistant' && !m.isError && (
+                    {m.role === 'assistant' && !m.isError && !m.isStreaming && (m.content || m.answer || m.answer_markdown) && (
                       <div className="flex items-center gap-4 mt-4 text-muted text-sm flex-wrap">
                         {m.confidence_score && (
                           <div className="flex items-center gap-1" title={m.confidence_reason}>
@@ -1304,31 +1399,6 @@ export const ChatInterface = () => {
                             <span>Confidence: {(m.confidence_score * 100).toFixed(0)}%</span>
                           </div>
                         )}
-
-
-                        <details style={{ cursor: 'pointer', position: 'relative' }} className="group">
-                          <summary className="flex items-center gap-1 hover:text-white" style={{ outline: 'none' }}>
-                            <Code size={14} /> Execution Trace
-                          </summary>
-                          <div className="card" style={{ position: 'absolute', bottom: '100%', left: 0, width: '500px', maxWidth: '80vw', zIndex: 50, padding: '1rem', marginBottom: '0.5rem', background: 'var(--bg-dark)' }}>
-                            <div className="flex justify-between items-center mb-2">
-                              <h4 className="text-sm text-muted m-0">Trace Details</h4>
-                              <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={(e) => {
-                                e.preventDefault(); handleCopy(JSON.stringify({ sql: m.sql || m.generated_sql, plan: m.query_plan, trace: m.trace }, null, 2));
-                              }}
-                                title="Copy Trace"
-                              >
-                                <Copy size={12} />
-                              </button>
-
-                            </div>
-                            <pre style={{ background: 'var(--bg-card)', padding: '1rem', borderRadius: 'var(--radius-sm)', overflowX: 'auto', fontSize: '0.75rem', border: '1px solid var(--border-color)', margin: 0, maxHeight: '300px', overflowY: 'auto' }}>
-                              {(m.sql || m.generated_sql) && `SQL:\n${m.sql || m.generated_sql}\n\n`}
-                              {m.query_plan && `Plan:\n${JSON.stringify(m.query_plan, null, 2)}\n\n`}
-                              {m.trace && `Router Trace:\n${JSON.stringify(m.trace, null, 2)}`}
-                            </pre>
-                          </div>
-                        </details>
 
                         <div className="flex-1" />
 
@@ -1383,21 +1453,6 @@ export const ChatInterface = () => {
           {/* Initial live loading state with live thought timer */}
           {loading && !messages.some(m => m.status === 'processing') && (
             <div className="message-bubble assistant">
-              <div className="message-avatar assistant">
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '8px',
-                  background: 'linear-gradient(135deg, #6366F1 0%, #06B6D4 100%)',
-                  color: '#FFFFFF',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 2px 8px rgba(99, 102, 241, 0.25)',
-                }}>
-                  <Sparkles size={16} />
-                </div>
-              </div>
               <div className="message-content">
                 <ThoughtSteps isLoading={true} />
               </div>

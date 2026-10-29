@@ -49,7 +49,7 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
 
     # Default application schemas per dialect unless schemas were explicitly supplied.
     if not include:
-        if source.type == "postgres":
+        if source.type in ("postgres", "redshift"):
             include = {"public"}
         elif source.type == "mysql" and source.database_name:
             include = {source.database_name}
@@ -58,6 +58,9 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
         elif source.type == "snowflake":
             default_schema = source.options.get("schema_name") or "PUBLIC"
             include = {default_schema.upper()}
+        elif source.type == "databricks":
+            default_schema = source.options.get("schema_name") or "default"
+            include = {default_schema}
 
         try:
             raw_schemas = inspector.get_schema_names()

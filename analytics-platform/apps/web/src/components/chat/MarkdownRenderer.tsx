@@ -5,6 +5,7 @@ import { Lightbulb, CheckCircle2, TrendingUp, Layers } from 'lucide-react';
 
 interface MarkdownRendererProps {
   content: string;
+  isStreaming?: boolean;
 }
 
 /**
@@ -155,10 +156,15 @@ export function formatSummaryContent(content: string): string {
   return transformedBlocks.join('\n\n');
 }
 
-export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
+export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, isStreaming }) => {
   if (!content) return null;
 
-  const formattedContent = React.useMemo(() => formatSummaryContent(content), [content]);
+  const formattedContent = React.useMemo(() => {
+    // While streaming, keep raw markdown so text doesn't flicker while typing
+    if (isStreaming) return content;
+    return formatSummaryContent(content);
+  }, [content, isStreaming]);
+
 
   return (
     <div
@@ -404,3 +410,4 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) =
     </div>
   );
 };
+

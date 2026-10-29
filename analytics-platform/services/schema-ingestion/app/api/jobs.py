@@ -62,16 +62,20 @@ def trigger_ingestion(
     session.add(job)
     session.commit()
 
-    # Enqueue in Redis Queue; if queue is offline or no worker, run via FastAPI background tasks
+    # Enqueue in Redis if a worker is running; otherwise run immediately in FastAPI background
     enqueued = False
     try:
-        q = _queue()
-        # Verify redis is alive and has workers
-        q.enqueue(run_pipeline, str(job.id), str(source_id), job_id=str(job.id))
-        enqueued = True
+        from rq import Worker
+        r = Redis.from_url(get_settings().redis_url)
+        # Check if an active RQ worker is currently running
+        if Worker.all(connection=r):
+            q = _queue()
+            q.enqueue(run_pipeline, str(job.id), str(source_id), job_id=str(job.id))
+            enqueued = True
     except Exception:
         enqueued = False
 
+    # 1-Click Auto Sync: Runs automatically in-process if no worker terminal is open
     if not enqueued:
         background_tasks.add_task(run_pipeline, str(job.id), str(source_id))
 

@@ -15,6 +15,14 @@ interface ThoughtStepsProps {
   steps?: ThoughtStep[];
 }
 
+const THINKING_WORDS = [
+  'Pondering', 'Mulling', 'Cogitating', 'Ruminating', 'Contemplating',
+  'Deliberating', 'Musing', 'Percolating', 'Simmering', 'Brewing',
+  'Marinating', 'Churning', 'Crunching', 'Noodling', 'Puzzling',
+  'Synthesizing', 'Conjuring', 'Hatching', 'Whirring', 'Wrangling',
+  'Herding', 'Pontificating', 'Discombobulating', 'Spelunking', 'Moseying'
+];
+
 export const ThoughtSteps: React.FC<ThoughtStepsProps> = ({
   isLoading = false,
   activeStage,
@@ -24,6 +32,21 @@ export const ThoughtSteps: React.FC<ThoughtStepsProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [liveElapsedSeconds, setLiveElapsedSeconds] = useState(0.1);
+
+  // Claude-style randomized verb
+  const [thinkingVerb, setThinkingVerb] = useState(() =>
+    THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)]
+  );
+
+  // Pick a fresh random verb each time loading begins
+  useEffect(() => {
+    if (!isLoading) return;
+    setThinkingVerb(THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)]);
+    const interval = setInterval(() => {
+      setThinkingVerb(THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)]);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
   // Live timer while loading
   useEffect(() => {
@@ -79,6 +102,14 @@ export const ThoughtSteps: React.FC<ThoughtStepsProps> = ({
       width: '100%',
       fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)',
     }}>
+      {/*style breathing pulse animation */}
+      <style>{`
+        @keyframes claudePulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.35; }
+        }
+      `}</style>
+
       {/* Live / Completed Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <button
@@ -106,15 +137,21 @@ export const ThoughtSteps: React.FC<ThoughtStepsProps> = ({
           }}
         >
           {isLoading ? (
-            <Loader2 size={15} className="animate-spin" style={{ color: '#3B82F6' }} />
+            <Loader2 size={15} className="animate-spin" style={{ color: 'var(--text-muted, #64748B)' }} />
           ) : isOpen ? (
             <ChevronDown size={15} style={{ color: 'var(--text-muted, #94A3B8)' }} />
           ) : (
             <ChevronRight size={15} style={{ color: 'var(--text-muted, #94A3B8)' }} />
           )}
 
-          <span style={{ color: isLoading ? '#3B82F6' : 'var(--text-muted, #64748B)', fontWeight: isLoading ? 600 : 500 }}>
-            {isLoading ? `Thinking... (${displayDuration}s)` : `Thought for ${displayDuration} seconds`}
+          <span
+            style={{
+              color: 'var(--text-muted, #64748B)',
+              fontWeight: 500,
+              animation: isLoading ? 'claudePulse 1.8s ease-in-out infinite' : 'none',
+            }}
+          >
+            {isLoading ? `${thinkingVerb}...` : `Thought for ${displayDuration} seconds`}
           </span>
         </button>
       </div>

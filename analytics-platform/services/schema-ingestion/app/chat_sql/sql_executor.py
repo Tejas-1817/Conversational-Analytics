@@ -27,6 +27,22 @@ ExecutionResult = tuple[
 
 
 import re
+import threading
+
+_ENGINE_POOL: dict[str, Any] = {}
+_POOL_LOCK = threading.Lock()
+
+def get_or_create_engine(source: DataSource):
+    """Maintains a warm SQLAlchemy connection pool per DataSource."""
+    source_key = f"{source.tenant_id}_{source.id}"
+    if source_key in _ENGINE_POOL:
+        return _ENGINE_POOL[source_key]
+    
+    with _POOL_LOCK:
+        if source_key not in _ENGINE_POOL:
+            engine = build_engine(source)
+            _ENGINE_POOL[source_key] = engine
+        return _ENGINE_POOL[source_key]
 
 def _normalize_sqlite_aliases(sql: str) -> str:
     """If a table was aliased in FROM/JOIN (e.g. FROM table AS t), replace table.col with t.col."""
@@ -85,6 +101,13 @@ class SQLExecutor:
                             f"EXPLAIN (FORMAT JSON) {clean_sql}"
                         )
                     )
+                elif source_type == "redshift":
+                    connection.execute(
+                        text(f"SET statement_timeout = {int(timeout_ms)}")
+                    )
+                    connection.execute(
+                        text(f"EXPLAIN {clean_sql}")
+                    )
 
                 elif source_type == "mysql":
                     connection.execute(
@@ -122,6 +145,8 @@ class SQLExecutor:
                     connection.execute(
                         text(f"EXPLAIN USING TEXT {clean_sql}")
                     )
+                elif source_type == "databricks":
+                    connection.execute(text(f"EXPLAIN {clean_sql}"))
 
                 else:
                     return f"Unsupported source type: {source.type}"
@@ -176,7 +201,7 @@ class SQLExecutor:
         engine = None
 
         try:
-            engine = build_engine(source)
+            engine = get_or_create_engine(source)
 
         except Exception as exc:
             elapsed_ms = round(
@@ -219,6 +244,17 @@ class SQLExecutor:
                         text("SELECT current_database()")
                     ).scalar_one()
 
+                    schema_name = connection.execute(
+                        text("SELECT current_schema()")
+                    ).scalar_one()
+
+                elif source_type == "redshift":
+                    connection.execute(
+                        text(f"SET statement_timeout = {int(timeout_ms)}")
+                    )
+                    database_name = connection.execute(
+                        text("SELECT current_database()")
+                    ).scalar_one()
                     schema_name = connection.execute(
                         text("SELECT current_schema()")
                     ).scalar_one()
@@ -276,6 +312,12 @@ class SQLExecutor:
 
                     database_name = str(current_db) if current_db else (source.database_name or "SNOWFLAKE")
                     schema_name = str(current_schema) if current_schema else "PUBLIC"
+
+                elif source_type == "databricks":
+                    current_catalog = connection.execute(text("SELECT CURRENT_CATALOG()")).scalar_one()
+                    current_schema = connection.execute(text("SELECT CURRENT_SCHEMA()")).scalar_one()
+                    database_name = str(current_catalog) if current_catalog else (source.database_name or "main")
+                    schema_name = str(current_schema) if current_schema else "default"
 
                 else:
                     return (
@@ -377,8 +419,8 @@ class SQLExecutor:
             return [], 0, elapsed_ms, [], error, False
 
         finally:
-            if engine is not None:
-                try:
-                    engine.dispose()
-                except Exception:
+            # if engine is not None:
+            #     try:
+            #         engine.dispose()
+            #     except Exception:
                     pass

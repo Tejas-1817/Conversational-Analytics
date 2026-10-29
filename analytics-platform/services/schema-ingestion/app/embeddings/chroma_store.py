@@ -17,6 +17,7 @@ Usage:
 """
 from __future__ import annotations
 
+import threading
 import math
 import uuid
 from dataclasses import dataclass, field
@@ -89,6 +90,9 @@ def _collection_name(tenant_id: str | uuid.UUID, source_id: str | uuid.UUID | No
 class ChromaStore:
     """Thread-safe wrapper around a Chroma client with per-tenant and per-source collections."""
 
+    _cached_client: Any = None
+    _lock = threading.Lock()
+
     def __init__(self, ephemeral: bool = False) -> None:
         settings = get_settings()
         self._fallback_store: dict[str, dict[str, dict[str, Any]]] = {}
@@ -98,41 +102,56 @@ class ChromaStore:
             self._client = None
             return
 
+        # Ephemeral mode (used by unit tests) always gets a fresh in-memory instance
         if ephemeral or settings.chroma_mode == "ephemeral":
             self._client = chromadb.EphemeralClient()
-        elif settings.chroma_mode == "cloud":
-            if not settings.chroma_api_key:
-                raise RuntimeError("CHROMA_API_KEY is required in cloud mode")
-            if not settings.chroma_tenant:
-                raise RuntimeError("CHROMA_TENANT is required in cloud mode")
-            if not settings.chroma_database:
-                raise RuntimeError("CHROMA_DATABASE is required in cloud mode")
+            return
 
-            try:
-                self._client = chromadb.CloudClient(
-                    tenant=settings.chroma_tenant,
-                    database=settings.chroma_database,
-                    api_key=settings.chroma_api_key,
-                    cloud_host=settings.chroma_host,
-                )
-                self._client.heartbeat()
-                log.info(
-                    "chroma_store_cloud_client_initialized",
-                    tenant=settings.chroma_tenant,
-                    database=settings.chroma_database,
-                )
-            except Exception as exc:
-                raise RuntimeError(
-                    f"Could not connect to Chroma Cloud: {exc}"
-                ) from exc 
-        else:
-            try:
-                self._client = chromadb.PersistentClient(
-                    path=settings.chroma_persist_dir
-                )
-            except Exception as exc:
-                log.warning("chromadb_persistent_client_failed_fallback_to_ephemeral", error=str(exc))
-                self._client = chromadb.EphemeralClient()
+        # Reuse existing client if already initialized (Singleton pattern)
+        if ChromaStore._cached_client is not None:
+            self._client = ChromaStore._cached_client
+            return
+
+        # Thread-safe initialization for Cloud or Persistent Client
+        with ChromaStore._lock:
+            if ChromaStore._cached_client is not None:
+                self._client = ChromaStore._cached_client
+                return
+
+            if settings.chroma_mode == "cloud":
+                if not settings.chroma_api_key:
+                    raise RuntimeError("CHROMA_API_KEY is required in cloud mode")
+                if not settings.chroma_tenant:
+                    raise RuntimeError("CHROMA_TENANT is required in cloud mode")
+                if not settings.chroma_database:
+                    raise RuntimeError("CHROMA_DATABASE is required in cloud mode")
+
+                try:
+                    client = chromadb.CloudClient(
+                        tenant=settings.chroma_tenant,
+                        database=settings.chroma_database,
+                        api_key=settings.chroma_api_key,
+                        cloud_host=settings.chroma_host,
+                    )
+                    client.heartbeat()
+                    log.info(
+                        "chroma_store_cloud_client_initialized",
+                        tenant=settings.chroma_tenant,
+                        database=settings.chroma_database,
+                    )
+                    ChromaStore._cached_client = client
+                    self._client = client
+                except Exception as exc:
+                    raise RuntimeError(f"Could not connect to Chroma Cloud: {exc}") from exc
+            else:
+                try:
+                    client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
+                except Exception as exc:
+                    log.warning("chromadb_persistent_client_failed_fallback_to_ephemeral", error=str(exc))
+                    client = chromadb.EphemeralClient()
+                ChromaStore._cached_client = client
+                self._client = client
+
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -46,7 +46,7 @@ class PromptBuilder:
         )
         business_context = business_context[:MAX_DOMAIN_CONTEXT_CHARS]
         context_layer_text = business_context
-        
+
         history = (
             conversation_context.strip()[:6_000]
             if conversation_context and conversation_context.strip()
@@ -103,6 +103,22 @@ FROM [dbo].[orders] AS o
 GROUP BY DATEFROMPARTS(YEAR(o.placed_at), MONTH(o.placed_at), 1)
 ORDER BY order_month;"""
 
+        elif dialect_lower == "redshift":
+            dialect_title = "Amazon Redshift"
+            time_trunc_rule = "- For Redshift time grouping, use DATE_TRUNC('month', alias.timestamp_column) or DATE_TRUNC('day', alias.timestamp_column)."
+            limit_rule = "- Use LIMIT <N> for top, bottom, highest, or lowest questions."
+            identifier_rule = "- Schema-qualify tables (e.g. public.orders or analytics.fact_sales). Identifiers are case-insensitive by default."
+            ref_example = """Example question:
+How many orders were placed each month?
+
+Example SQL:
+SELECT
+    DATE_TRUNC('month', o.placed_at) AS order_month,
+    COUNT(DISTINCT o.order_id) AS total_orders
+FROM public.orders AS o
+GROUP BY DATE_TRUNC('month', o.placed_at)
+ORDER BY order_month;"""
+
         elif dialect_lower == "snowflake":
             dialect_title = "Snowflake"
             time_trunc_rule = "- For Snowflake time grouping, use DATE_TRUNC('month', alias.timestamp_column) or DATE_TRUNC('day', alias.timestamp_column)."
@@ -119,6 +135,20 @@ FROM analytics.orders AS o
 GROUP BY DATE_TRUNC('month', o.placed_at)
 ORDER BY order_month;"""
 
+        elif dialect_lower in ("databricks", "spark"):
+            dialect_title = "Databricks SQL"
+            time_trunc_rule = "- For Databricks time grouping, use DATE_TRUNC('month', alias.timestamp_column) or DATE_TRUNC('day', alias.timestamp_column)."
+            limit_rule = "- Use LIMIT <N> for top, bottom, highest, or lowest questions."
+            identifier_rule = "- In Databricks, reference tables as schema.table or catalog.schema.table. Use backticks (`) if identifiers contain spaces or reserved keywords."
+            ref_example = """Example question:
+How many orders were placed each month?
+Example SQL:
+SELECT
+    DATE_TRUNC('month', o.placed_at) AS order_month,
+    COUNT(DISTINCT o.order_id) AS total_orders
+FROM default.orders AS o
+GROUP BY DATE_TRUNC('month', o.placed_at)
+ORDER BY order_month;"""
         else:
             dialect_title = "PostgreSQL"
             time_trunc_rule = """- For PostgreSQL time grouping, use DATE_TRUNC('month', alias.timestamp_column).

@@ -27,6 +27,8 @@ SQLGLOT_DIALECTS = {
     "mssql": "tsql",
     "excel": "sqlite",
     "snowflake": "snowflake",
+    "databricks": "databricks",
+    "redshift": "redshift",
 }
 
 BLOCKED_NODE_TYPES = {

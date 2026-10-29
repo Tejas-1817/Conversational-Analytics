@@ -16,6 +16,7 @@ SUPPORTED_SOURCE_TYPES = frozenset(
         "mysql",
         "mssql",
         "excel",
+        "redshift",
     }
 )
 

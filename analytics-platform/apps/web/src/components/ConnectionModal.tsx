@@ -21,7 +21,7 @@ import { SourceLogo } from './SourceLogos';
 
 const connectionSchema = z.object({
   name: z.string().min(1, 'Connection Name is required').max(200, 'Name must be 200 characters or less'),
-  type: z.enum(['postgres', 'mysql', 'mssql', 'excel', 'snowflake', 'sqlite', 'github']),
+  type: z.enum(['postgres', 'mysql', 'mssql', 'excel', 'snowflake', 'sqlite', 'github', 'databricks', 'redshift']),
   host: z.string().optional(),
   port: z.number().int().positive().optional().or(z.literal('')),
   database_name: z.string().optional(),
@@ -58,7 +58,7 @@ interface ConnectionModalProps {
 interface ConnectorOption {
   id: string;
   name: string;
-  type: 'postgres' | 'mysql' | 'mssql' | 'excel' | 'snowflake' | 'sqlite' | 'github' | 'coming_soon';
+  type: 'postgres' | 'mysql' | 'mssql' | 'excel' | 'snowflake' | 'sqlite' | 'github' | 'databricks' | 'redshift' | 'coming_soon';
   category: 'database' | 'warehouse' | 'files' | 'tools';
   description: string;
   isAvailable: boolean;
@@ -91,6 +91,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
   const [warehouse, setWarehouse] = useState('');
   const [role, setRole] = useState('');
   const [schemaName, setSchemaName] = useState('PUBLIC');
+
+  // Databricks Configuration State
+  const [httpPath, setHttpPath] = useState('');
+  const [catalogName, setCatalogName] = useState('main');
 
 
   // Excel Upload State
@@ -150,10 +154,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     {
       id: 'redshift',
       name: 'Redshift',
-      type: 'coming_soon',
+      type: 'redshift',
       category: 'warehouse',
       description: 'Amazon Redshift petabyte-scale data warehouse.',
-      isAvailable: false,
+      isAvailable: true,
       renderIcon: () => <SourceLogo type="redshift" size={32} />,
     },
     {
@@ -177,10 +181,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
     {
       id: 'databricks',
       name: 'Databricks',
-      type: 'coming_soon',
+      type: 'databricks',
       category: 'warehouse',
-      description: 'Databricks Lakehouse Platform with Delta Lake.',
-      isAvailable: false,
+      description: 'Query Databricks Lakehouse with Delta Lake tables, using Unity Catalog for governance.',
+      isAvailable: true,
       renderIcon: () => <SourceLogo type="databricks" size={32} />,
     },
     {
@@ -351,6 +355,11 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       setTempFileId(null);
       setSheetPreviews([]);
       setSheetOverrides({});
+      setWarehouse('');
+      setRole('');
+      setSchemaName('PUBLIC');
+      setHttpPath('');
+      setCatalogName('main');
       setErrors({});
       setBackendError(null);
       setTestSuccess(false);
@@ -397,6 +406,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
       postgres: 5432,
       mysql: 3306,
       mssql: 1433,
+      redshift: 5439,
     };
 
     const defaultPort = defaultPorts[connector.type];
@@ -530,19 +540,49 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
         errs.sheets = 'Please select at least one sheet to include.';
       }
     } else {
-      if (!formData.host?.trim()) errs.host = 'Host is required';
-      if (!formData.database_name?.trim()) errs.database_name = 'Database Name is required';
-      if (!formData.username?.trim()) errs.username = 'Username is required';
-      if (!formData.password) errs.password = 'Password is required';
+      if (!formData.host?.trim()) errs.host = 'Server Hostname is required';
+      if (formData.type === 'databricks') {
+        if (!httpPath.trim()) errs.httpPath = 'HTTP Path is required (e.g. /sql/1.0/warehouses/...)';
+      } else {
+        if (!formData.database_name?.trim()) errs.database_name = 'Database Name is required';
+      }
+      if (!formData.username?.trim()) errs.username = formData.type === 'databricks' ? 'Client ID is required' : 'Username is required';
+      if (!formData.password) errs.password = formData.type === 'databricks' ? 'Client Secret is required' : 'Password is required';
     }
+
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
-  const buildSourcePayload = () => ({
-    ...formData,
-  });
+  const buildSourcePayload = () => {
+    if (formData.type === 'snowflake') {
+      return {
+        ...formData,
+        port: undefined, // Snowflake connects via HTTPS/443 automatically
+        options: {
+          warehouse: warehouse.trim() || undefined,
+          role: role.trim() || undefined,
+          schema_name: schemaName.trim() || 'PUBLIC',
+        },
+      };
+    }
+    if (formData.type === 'databricks') {
+      return {
+        ...formData,
+        port: 443,
+        database_name: catalogName.trim() || 'default',
+        options: {
+          http_path: httpPath.trim() || undefined,
+          catalog_name: catalogName.trim() || undefined,
+          schema_name: formData.database_name?.trim() || 'default',
+        },
+      };
+    }
+    return {
+      ...formData,
+    };
+  };
 
   const handleTestConnection = async () => {
     if (!validateForm()) return false;
@@ -1230,7 +1270,13 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
                         name="database_name"
                         value={formData.database_name}
                         onChange={handleChange}
-                        placeholder={formData.type === 'snowflake' ? 'e.g. ANALYTICS_PROD' : (formData.type === 'mysql' ? 'app_db' : 'postgres')}
+                        placeholder={
+                          formData.type === 'snowflake'
+                            ? 'e.g. ANALYTICS_PROD'
+                            : formData.type === 'redshift'
+                              ? 'e.g. dev or analytics_dw'
+                              : (formData.type === 'mysql' ? 'app_db' : 'postgres')
+                        }
                         disabled={isTesting || isSaving}
                       />
                       {errors.database_name && <div className="form-error">{errors.database_name}</div>}
@@ -1278,7 +1324,13 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
                       name="host"
                       value={formData.host}
                       onChange={handleChange}
-                      placeholder={formData.type === 'snowflake' ? 'e.g. xy12345.us-east-2.aws or acme-prod' : 'localhost or db.company.internal'}
+                      placeholder={
+                        formData.type === 'snowflake'
+                          ? 'e.g. xy12345.us-east-2.aws or acme-prod'
+                          : formData.type === 'redshift'
+                            ? 'e.g. cluster-name.c123456789.us-east-1.redshift.amazonaws.com'
+                            : 'localhost or db.company.internal'
+                      }
                       disabled={isTesting || isSaving}
                     />
                     {errors.host && <div className="form-error">{errors.host}</div>}
@@ -1315,6 +1367,39 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({ isOpen, onClos
                           value={schemaName}
                           onChange={(e) => setSchemaName(e.target.value)}
                           placeholder="e.g. PUBLIC"
+                          disabled={isTesting || isSaving}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Databricks HTTP Path & Unity Catalog */}
+                  {formData.type === 'databricks' && (
+                    <div className="grid grid-cols-2 gap-3 form-group" style={{ marginBottom: 'var(--space-3)' }}>
+                      <div>
+                        <label htmlFor="httpPath" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>
+                          HTTP Path <span style={{ color: 'var(--danger, #ef4444)' }}>*</span>
+                        </label>
+                        <input
+                          id="httpPath"
+                          name="httpPath"
+                          value={httpPath}
+                          onChange={(e) => setHttpPath(e.target.value)}
+                          placeholder="/sql/1.0/warehouses/xxxx"
+                          disabled={isTesting || isSaving}
+                        />
+                        {errors.httpPath && <div className="form-error">{errors.httpPath}</div>}
+                      </div>
+                      <div>
+                        <label htmlFor="catalogName" style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: 500 }}>
+                          Unity Catalog Name
+                        </label>
+                        <input
+                          id="catalogName"
+                          name="catalogName"
+                          value={catalogName}
+                          onChange={(e) => setCatalogName(e.target.value)}
+                          placeholder="main"
                           disabled={isTesting || isSaving}
                         />
                       </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Search, Database, ShieldCheck, CheckSquare, Square, Loader2, AlertCircle, CheckCircle2, Table, Building2 } from 'lucide-react';
 import { fetchApi } from '../services/api';
 import { SourceLogo } from './SourceLogos';
+import { ManageTablePermissionsModal } from './ManageTablePermissionsModal';
 export interface TablePermissionsSourceTarget {
   id: string;
   name: string;
@@ -52,7 +53,6 @@ export const ManageDataSourceAccessModal: React.FC<ManageDataSourceAccessModalPr
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-
   const loadSources = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -65,8 +65,9 @@ export const ManageDataSourceAccessModal: React.FC<ManageDataSourceAccessModalPr
       if (Array.isArray(tenantsData)) {
         setTenants(tenantsData);
       }
-      setSources(sourcesData);
-      const granted = new Set(sourcesData.filter(s => s.is_granted).map(s => s.source_id));
+      const items: UserDataSourceItem[] = Array.isArray(sourcesData) ? sourcesData : [];
+      setSources(items);
+      const granted = new Set<string>(items.filter((s) => s.is_granted).map((s) => s.source_id));
       setSelectedIds(granted);
     } catch (err: any) {
       setError(err.message || 'Failed to load user data source permissions');
@@ -88,6 +89,7 @@ export const ManageDataSourceAccessModal: React.FC<ManageDataSourceAccessModalPr
 
     loadSources();
   }, [isOpen, user, loadSources]);
+
 
   const enterpriseName = useMemo(() => {
     if (!user?.tenant_id) return 'Default Enterprise';

@@ -356,6 +356,31 @@ def bootstrap_admin():
     except Exception as exc:
         log.warning("admin_bootstrap_skipping", error=str(exc))
 
+# ---------------------------------------------------------------------------
+# Startup: Pre-warm Embedding Model & Vector Store
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+def prewarm_services():
+    """Pre-warm sentence-transformers and Chroma client to eliminate runtime latency."""
+    # 1. Warm up Embedding Model into RAM
+    try:
+        log.info("prewarming_embedding_model_starting")
+        from app.embeddings.registry import get_embedding_provider
+        provider = get_embedding_provider()
+        provider.embed(["warmup"])
+        log.info("prewarming_embedding_model_completed", dimension=provider.dimension)
+    except Exception as exc:
+        log.warning("prewarming_embedding_model_failed", error=str(exc))
+
+    # 2. Warm up Chroma Cloud Client Connection
+    try:
+        log.info("prewarming_chroma_store_starting")
+        from app.embeddings.chroma_store import ChromaStore
+        ChromaStore()  # Initializes the singleton client and performs cloud heartbeat
+        log.info("prewarming_chroma_store_completed")
+    except Exception as exc:
+        log.warning("prewarming_chroma_store_failed", error=str(exc))
 
 # ---------------------------------------------------------------------------
 # Health check
