@@ -1678,8 +1678,8 @@ export const RelationshipGraph: React.FC<RelationshipGraphProps> = ({
                 fontSize: '11.5px',
                 fontWeight: 600,
                 cursor: 'pointer',
-                background: viewMode === 'erd' ? '#4F46E5' : 'transparent',
-                color: viewMode === 'erd' ? '#FFFFFF' : '#64748B',
+                background: (viewMode as string) === 'erd' ? '#4F46E5' : 'transparent',
+                color: (viewMode as string) === 'erd' ? '#FFFFFF' : '#64748B',
                 transition: 'all 0.15s ease',
               }}
             >
@@ -1913,7 +1913,7 @@ export const RelationshipGraph: React.FC<RelationshipGraphProps> = ({
               />
               <span style={{ color: 'var(--text-muted)' }}>Draft / Inferred (Dashed)</span>
             </div>
-            {viewMode === 'erd' && (
+            {(viewMode as string) === 'erd' && (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span
