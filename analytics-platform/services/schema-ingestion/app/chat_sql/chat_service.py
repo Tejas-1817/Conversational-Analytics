@@ -1832,7 +1832,7 @@ USER QUESTION:
                      
             direct_answer = self.llm_provider.generate_text(
                 prompt=analysis_prompt,
-                max_tokens=1500,
+                max_tokens=8192,
                 timeout=300,
             )
 
@@ -2170,19 +2170,22 @@ USER QUESTION:
         #             attempted_sql_count=len(attempted_sql),
         #         )
 
-                # Graceful Strategy Fallback: When SQL is UNANSWERABLE, synthesize high-level strategy and recommendations
+                # Handle genuinely UNANSWERABLE queries
         if validated_sql == "UNANSWERABLE":
-            log.info("sql_unanswerable_fallback_to_strategy", question=question)
-
-            fallback_answer = self.answer_synthesizer.synthesize_strategy(
-                question=question,
-                schema_inventory=schema_inventory,
-                domain_context=domain_context_str,
-                conversation_context=conversation_context,
+            log.info("sql_genuinely_unanswerable", question=question, database=db_name)
+            
+            fallback_answer = (
+                f"This question cannot be answered using the tables and columns available in **{db_name}**.\n\n"
+                f"The database does not contain fields or operational indicators related to this request.\n\n"
+                "**To query this data:**\n"
+                "- Ensure your question refers to concepts present in your database tables.\n"
+                "- Or define a custom metric/synonym in your **Business Glossary** to connect this term to specific database columns."
             )
+            title = "Query Cannot Be Answered"
+            intent_type = "data"
 
             rec_follow_ups = ChatRecommender.recommend(
-                intent="strategy",
+                intent=intent_type,
                 question=question,
                 columns=[],
                 schema_inventory=schema_inventory,
@@ -2197,8 +2200,8 @@ USER QUESTION:
                 domain_id=domain_id,
                 question=question,
                 answer=fallback_answer,
-                title="Strategic Analysis & Guidance",
-                intent="strategy",
+                title=title,
+                intent=intent_type,
                 sql=None,
                 rows=[],
                 columns=[],
@@ -2212,7 +2215,7 @@ USER QUESTION:
 
             return {
                 "success": True,
-                "intent": "strategy",
+                "intent": intent_type,
                 "conversation_id": res_conv_id,
                 "question": question,
                 "summary": fallback_answer,
@@ -2227,11 +2230,8 @@ USER QUESTION:
                 "column_count": 0,
                 "data_truncated": False,
                 "visualization": "text",
-                "title": "Strategic Analysis & Guidance",
-                "recommended_visualization": {
-                    "visualization": "text",
-                    "title": "Strategic Analysis & Guidance",
-                },
+                "title": title,
+                "recommended_visualization": {"visualization": "text", "title": title},
                 "follow_up_questions": rec_follow_ups,
                 "execution_time_ms": 0.0,
                 "generated_at": generated_at,

@@ -239,7 +239,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
           {shortLabel}
         </div>
 
-        {/* Metric Value & Embedded Sparkline */}
+        {/* Metric Value Display */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '0.75rem' }}>
           <div style={{
             fontSize: '3.25rem',
@@ -251,33 +251,19 @@ export const ChartRenderer: React.FC<ChartProps> = ({
             {displayVal}
           </div>
 
-          {/* Embedded Micro-Sparkline */}
-          <div style={{ width: '85px', height: '36px', flexShrink: 0 }}>
-            <ReactECharts
-              option={{
-                grid: { left: 0, right: 0, top: 2, bottom: 2 },
-                xAxis: { type: 'category', show: false },
-                yAxis: { type: 'value', show: false },
-                series: [{
-                  type: 'line',
-                  smooth: 0.45,
-                  showSymbol: false,
-                  lineStyle: { width: 2.2, color: '#10B981' },
-                  areaStyle: {
-                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                      { offset: 0, color: 'rgba(16, 185, 129, 0.35)' },
-                      { offset: 1, color: 'rgba(16, 185, 129, 0.0)' }
-                    ])
-                  },
-                  data: [15, 28, 22, 38, 32, 54, 48, 70]
-                }]
-              }}
-              style={{ width: '100%', height: '100%' }}
-              opts={{ renderer: 'svg' }}
-            />
+          <div style={{
+            width: '44px',
+            height: '44px',
+            borderRadius: '12px',
+            background: 'rgba(99, 102, 241, 0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--primary, #6366F1)'
+          }}>
+            <Award size={24} />
           </div>
         </div>
-
 
         <div style={{
           display: 'inline-flex',
@@ -285,13 +271,13 @@ export const ChartRenderer: React.FC<ChartProps> = ({
           gap: '0.35rem',
           fontSize: '0.75rem',
           fontWeight: 600,
-          color: '#059669',
-          background: 'rgba(16, 185, 129, 0.12)',
-          border: '1px solid rgba(16, 185, 129, 0.25)',
+          color: 'var(--text-muted, #64748B)',
+          background: 'rgba(148, 163, 184, 0.1)',
+          border: '1px solid var(--border-color, rgba(148, 163, 184, 0.2))',
           borderRadius: '99px',
           padding: '0.2rem 0.65rem',
         }}>
-          <TrendingUp size={12} /> Live dataset
+          Verified Query Result
         </div>
       </div>
     );

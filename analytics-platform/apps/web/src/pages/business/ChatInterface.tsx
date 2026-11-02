@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
 import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight, ChevronDown, GitBranch, FileCode2, FolderGit2, Sparkles, ArrowDown } from 'lucide-react';
@@ -933,193 +933,9 @@ export const ChatInterface = () => {
     c.title?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      {/* Sidebar */}
-      <div style={{
-        width: sidebarCollapsed ? '48px' : `${sidebarWidth}px`,
-        minWidth: sidebarCollapsed ? '48px' : '180px',
-        display: 'flex',
-        flexDirection: 'column',
-        flexShrink: 0,
-        borderRight: '1px solid var(--border-color)',
-        transition: sidebarCollapsed ? 'width 0.2s ease' : undefined,
-        overflow: 'hidden',
-        background: 'var(--bg-sidebar)',
-      }}>
-        {/* Collapse toggle row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: '0.75rem 0.75rem 0.5rem' }}>
-          {!sidebarCollapsed && (
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Conversations</span>
-          )}
-          <button
-            className="btn-ghost"
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            onClick={() => setSidebarCollapsed(c => !c)}
-            style={{ padding: '0.25rem', borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
-          >
-            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </button>
-        </div>
-
-        {!sidebarCollapsed && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0 0.75rem 1rem', flex: 1, overflow: 'hidden' }}>
-            <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleNewChat}>
-              <Plus size={16} style={{ marginRight: '0.5rem' }} /> New Chat
-            </button>
-
-            <div style={{ position: 'relative' }}>
-              <Search size={14} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input
-                type="text"
-                placeholder="Search history..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem 0.5rem 0.5rem 2.25rem', fontSize: '0.85rem' }}
-              />
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <h3 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-                Recent Chats
-              </h3>
-              {filteredConversations.map(c => (
-                <div
-                  key={c.id}
-                  onClick={() => loadConversation(c.id)}
-                  style={{
-                    padding: '0.5rem 0.75rem',
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                    background: convId === c.id ? 'rgba(79, 70, 229, 0.1)' : 'transparent',
-                    color: convId === c.id ? 'var(--primary)' : 'var(--text-main)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.5rem',
-                    fontSize: '0.85rem'
-                  }}
-                  className="hover-bg-light group"
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', flex: 1 }}>
-                    <MessageSquare size={14} style={{ flexShrink: 0 }} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || 'New Conversation'}</span>
-                  </div>
-                  <button
-                    className="btn-ghost"
-                    title="Delete Chat"
-                    onClick={(e) => handleDeleteClick(e, c)}
-                    style={{
-                      padding: '0.2rem 0.35rem',
-                      borderRadius: '4px',
-                      color: 'var(--text-muted)',
-                      opacity: convId === c.id ? 0.9 : 0.6,
-                      transition: 'all 0.15s ease',
-                      lineHeight: 1
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.opacity = convId === c.id ? '0.9' : '0.6'; }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))}
-              {filteredConversations.length === 0 && (
-                <div className="text-muted text-sm text-center py-4">No conversations found.</div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {sidebarCollapsed && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0' }}>
-            <button className="btn-ghost" title="New Chat" onClick={handleNewChat} style={{ padding: '0.4rem' }}>
-              <Plus size={16} />
-            </button>
-            <button className="btn-ghost" title="Search" style={{ padding: '0.4rem' }}>
-              <Search size={16} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Drag-to-resize handle */}
-      {!sidebarCollapsed && (
-        <div
-          onMouseDown={handleDragStart}
-          style={{
-            width: '5px',
-            cursor: 'col-resize',
-            flexShrink: 0,
-            background: 'transparent',
-            transition: 'background 0.15s',
-            zIndex: 10,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.opacity = '0.3'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        />
-      )}
-
-      {/* Main Chat Area */}
-      <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
-
-
-        <div className="chat-messages" style={{ padding: '0 1rem', flex: 1 }}>
-          {messages.length === 0 && (
-            <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.85, maxWidth: '560px' }}>
-              <div style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '50%',
-                background: isCodeRepoSelected ? 'rgba(236, 72, 153, 0.12)' : 'rgba(79, 70, 229, 0.1)',
-                color: isCodeRepoSelected ? '#ec4899' : 'var(--primary)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 1.5rem',
-              }}>
-                {isCodeRepoSelected ? <FolderGit2 size={32} /> : <Bot size={32} />}
-              </div>
-              <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>
-                {isCodeRepoSelected ? 'Ask Code Intelligence' : 'How can I help you today?'}
-              </h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                {isCodeRepoSelected
-                  ? 'Ask questions about repository architecture, call hierarchies, AST functions, and API logic.'
-                  : 'Ask a question about your business data in plain English to generate SQL & view live results.'}
-              </p>
-
-              <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left' }}>
-                {isCodeRepoSelected ? (
-                  <>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("How does request authentication and token verification work?")}>
-                      <span className="text-sm">"How does request authentication and token verification work?"</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("What are the main API routes and their handler functions?")}>
-                      <span className="text-sm">"What are the main API routes and their handler functions?"</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Explain the core data models and database connections used.")}>
-                      <span className="text-sm">"Explain the core data models and database connections used."</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Which functions execute background tasks or jobs?")}>
-                      <span className="text-sm">"Which functions execute background tasks or jobs?"</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
-                      <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me top 5 users by created_at date")}>
-                      <span className="text-sm">"Show me top 5 users by created_at date"</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {messages.map((m, i) => (
+  // Memoize rendered message list so typing in the input box never re-renders past charts/tables
+  const renderedMessages = useMemo(() => {
+    return messages.map((m, i) => (
             <div key={i} className={`message-bubble ${m.role}`}>
               {/* {m.role === 'assistant' && (
                 <div className="message-avatar assistant">
@@ -1449,7 +1265,196 @@ export const ChatInterface = () => {
                 )}
               </div>
             </div>
-          ))}
+    ));
+  }, [messages, feedbackGiven]);
+
+  return (
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      {/* Sidebar */}
+      <div style={{
+        width: sidebarCollapsed ? '48px' : `${sidebarWidth}px`,
+        minWidth: sidebarCollapsed ? '48px' : '180px',
+        display: 'flex',
+        flexDirection: 'column',
+        flexShrink: 0,
+        borderRight: '1px solid var(--border-color)',
+        transition: sidebarCollapsed ? 'width 0.2s ease' : undefined,
+        overflow: 'hidden',
+        background: 'var(--bg-sidebar)',
+      }}>
+        {/* Collapse toggle row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: '0.75rem 0.75rem 0.5rem' }}>
+          {!sidebarCollapsed && (
+            <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Conversations</span>
+          )}
+          <button
+            className="btn-ghost"
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={() => setSidebarCollapsed(c => !c)}
+            style={{ padding: '0.25rem', borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
+          >
+            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        </div>
+
+        {!sidebarCollapsed && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0 0.75rem 1rem', flex: 1, overflow: 'hidden' }}>
+            <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleNewChat}>
+              <Plus size={16} style={{ marginRight: '0.5rem' }} /> New Chat
+            </button>
+
+            <div style={{ position: 'relative' }}>
+              <Search size={14} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Search history..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem 0.5rem 0.5rem 2.25rem', fontSize: '0.85rem' }}
+              />
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <h3 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                Recent Chats
+              </h3>
+              {filteredConversations.map(c => (
+                <div
+                  key={c.id}
+                  onClick={() => loadConversation(c.id)}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer',
+                    background: convId === c.id ? 'rgba(79, 70, 229, 0.1)' : 'transparent',
+                    color: convId === c.id ? 'var(--primary)' : 'var(--text-main)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.5rem',
+                    fontSize: '0.85rem'
+                  }}
+                  className="hover-bg-light group"
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', flex: 1 }}>
+                    <MessageSquare size={14} style={{ flexShrink: 0 }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || 'New Conversation'}</span>
+                  </div>
+                  <button
+                    className="btn-ghost"
+                    title="Delete Chat"
+                    onClick={(e) => handleDeleteClick(e, c)}
+                    style={{
+                      padding: '0.2rem 0.35rem',
+                      borderRadius: '4px',
+                      color: 'var(--text-muted)',
+                      opacity: convId === c.id ? 0.9 : 0.6,
+                      transition: 'all 0.15s ease',
+                      lineHeight: 1
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.opacity = convId === c.id ? '0.9' : '0.6'; }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+              {filteredConversations.length === 0 && (
+                <div className="text-muted text-sm text-center py-4">No conversations found.</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {sidebarCollapsed && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0' }}>
+            <button className="btn-ghost" title="New Chat" onClick={handleNewChat} style={{ padding: '0.4rem' }}>
+              <Plus size={16} />
+            </button>
+            <button className="btn-ghost" title="Search" style={{ padding: '0.4rem' }}>
+              <Search size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Drag-to-resize handle */}
+      {!sidebarCollapsed && (
+        <div
+          onMouseDown={handleDragStart}
+          style={{
+            width: '5px',
+            cursor: 'col-resize',
+            flexShrink: 0,
+            background: 'transparent',
+            transition: 'background 0.15s',
+            zIndex: 10,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.opacity = '0.3'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        />
+      )}
+
+      {/* Main Chat Area */}
+      <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
+
+
+        <div className="chat-messages" style={{ padding: '0 1rem', flex: 1 }}>
+          {messages.length === 0 && (
+            <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.85, maxWidth: '560px' }}>
+              <div style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: isCodeRepoSelected ? 'rgba(236, 72, 153, 0.12)' : 'rgba(79, 70, 229, 0.1)',
+                color: isCodeRepoSelected ? '#ec4899' : 'var(--primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.5rem',
+              }}>
+                {isCodeRepoSelected ? <FolderGit2 size={32} /> : <Bot size={32} />}
+              </div>
+              <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>
+                {isCodeRepoSelected ? 'Ask Code Intelligence' : 'How can I help you today?'}
+              </h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                {isCodeRepoSelected
+                  ? 'Ask questions about repository architecture, call hierarchies, AST functions, and API logic.'
+                  : 'Ask a question about your business data in plain English to generate SQL & view live results.'}
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left' }}>
+                {isCodeRepoSelected ? (
+                  <>
+                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("How does request authentication and token verification work?")}>
+                      <span className="text-sm">"How does request authentication and token verification work?"</span>
+                    </div>
+                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("What are the main API routes and their handler functions?")}>
+                      <span className="text-sm">"What are the main API routes and their handler functions?"</span>
+                    </div>
+                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Explain the core data models and database connections used.")}>
+                      <span className="text-sm">"Explain the core data models and database connections used."</span>
+                    </div>
+                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Which functions execute background tasks or jobs?")}>
+                      <span className="text-sm">"Which functions execute background tasks or jobs?"</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
+                      <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
+                    </div>
+                    <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me top 5 users by created_at date")}>
+                      <span className="text-sm">"Show me top 5 users by created_at date"</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {renderedMessages}
           {/* Initial live loading state with live thought timer */}
           {loading && !messages.some(m => m.status === 'processing') && (
             <div className="message-bubble assistant">

@@ -15,7 +15,7 @@ vi.mock('echarts-for-react', () => ({
 }));
 
 // Mock fetchApi
-vi.mock('../../services/api', () => ({
+vi.mock('../../../services/api', () => ({
   fetchApi: vi.fn(),
 }));
 
@@ -133,7 +133,7 @@ describe('RelationshipDrawer Component', () => {
 
 describe('RelationshipGraph Component', () => {
   it('renders toolbar search and filter controls', async () => {
-    const { fetchApi } = await import('../../services/api');
+    const { fetchApi } = await import('../../../services/api');
     (fetchApi as any).mockResolvedValue({
       domain_id: 'dom-1',
       domain_name: 'Sales Domain',

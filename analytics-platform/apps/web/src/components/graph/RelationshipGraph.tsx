@@ -355,10 +355,10 @@ export const RelationshipGraph: React.FC<RelationshipGraphProps> = ({
           setSelectedEdge((prev) =>
             prev
               ? {
-                  ...prev,
-                  status: 'approved',
-                  cardinality: cardinality || prev.cardinality,
-                }
+                ...prev,
+                status: 'approved',
+                cardinality: cardinality || prev.cardinality,
+              }
               : null
           );
         }
@@ -449,8 +449,8 @@ export const RelationshipGraph: React.FC<RelationshipGraphProps> = ({
               shadowColor: isFocalRoot
                 ? 'rgba(245, 158, 11, 0.5)'
                 : isPathNode
-                ? 'rgba(16, 185, 129, 0.5)'
-                : 'rgba(0, 0, 0, 0.15)',
+                  ? 'rgba(16, 185, 129, 0.5)'
+                  : 'rgba(0, 0, 0, 0.15)',
               opacity: isPathActive && !isPathNode ? 0.2 : 1,
             },
             label: {
@@ -540,8 +540,8 @@ export const RelationshipGraph: React.FC<RelationshipGraphProps> = ({
             shadowColor: isFocalRoot
               ? 'rgba(245, 158, 11, 0.45)'
               : isPathNode
-              ? 'rgba(16, 185, 129, 0.5)'
-              : 'rgba(0, 0, 0, 0.15)',
+                ? 'rgba(16, 185, 129, 0.5)'
+                : 'rgba(0, 0, 0, 0.15)',
             opacity: isPathActive && !isPathNode ? 0.15 : 1,
           },
           label: {
@@ -665,8 +665,8 @@ export const RelationshipGraph: React.FC<RelationshipGraphProps> = ({
             shadowColor: isFocalRoot
               ? 'rgba(245, 158, 11, 0.5)'
               : isPathNode
-              ? 'rgba(16, 185, 129, 0.5)'
-              : 'rgba(0, 0, 0, 0.16)',
+                ? 'rgba(16, 185, 129, 0.5)'
+                : 'rgba(0, 0, 0, 0.16)',
             opacity: isPathActive && !isPathNode ? 0.2 : 1,
           },
           label: {
@@ -1678,8 +1678,8 @@ export const RelationshipGraph: React.FC<RelationshipGraphProps> = ({
                 fontSize: '11.5px',
                 fontWeight: 600,
                 cursor: 'pointer',
-                background: viewMode === 'erd' ? '#4F46E5' : 'transparent',
-                color: viewMode === 'erd' ? '#FFFFFF' : '#64748B',
+                background: (viewMode as string) === 'erd' ? '#4F46E5' : 'transparent',
+                color: (viewMode as string) === 'erd' ? '#FFFFFF' : '#64748B',
                 transition: 'all 0.15s ease',
               }}
             >
@@ -1913,7 +1913,7 @@ export const RelationshipGraph: React.FC<RelationshipGraphProps> = ({
               />
               <span style={{ color: 'var(--text-muted)' }}>Draft / Inferred (Dashed)</span>
             </div>
-            {viewMode === 'erd' && (
+            {(viewMode as string) === 'erd' && (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span

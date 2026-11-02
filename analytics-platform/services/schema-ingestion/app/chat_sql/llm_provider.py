@@ -541,7 +541,7 @@ CORRECTED SQL:"""
     def generate_text(
         self,
         prompt: str,
-        max_tokens: int = 1500,
+        max_tokens: int = 8192,
         timeout: int | None = None,
     ) -> str:
         """Generate grounded natural-language text without SQL cleaning."""
