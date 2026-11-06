@@ -86,8 +86,20 @@ def _build_table_schema_block(table: TableMeta) -> str:
 
     return "\n".join(lines)
 
-ResolvedIntent = Literal["data", "strategy", "hybrid"]
-RequestMode = Literal["auto", "data", "strategy", "hybrid"]
+ResolvedIntent = Literal[
+    "data",
+    "strategy",
+    "hybrid",
+    "schema_analytics_overview",
+]
+
+RequestMode = Literal[
+    "auto",
+    "data",
+    "strategy",
+    "hybrid",
+    "schema_analytics_overview",
+]
 
 
 class SourceNotFoundError(RuntimeError):
@@ -152,6 +164,19 @@ class IntentRouter:
         "fraud",
     )
 
+    SCHEMA_OVERVIEW_PHRASES = (
+        "what analytics can we build",
+        "what can we analyze",
+        "what can i analyze",
+        "what insights can we get",
+        "what insights are available",
+        "what can this data tell us",
+        "what can this excel file tell us",
+        "analytics overview",
+        "data overview",
+        "schema overview",
+    )
+    
     @classmethod
     def classify(
         cls,
@@ -166,6 +191,14 @@ class IntentRouter:
 
         normalized = " ".join(question.lower().split())
 
+        if any(phrase in normalized for phrase in cls.SCHEMA_OVERVIEW_PHRASES):
+            return IntentDecision(
+                intent="schema_analytics_overview",
+                reason=(
+                    "The question explicitly asks which analyses the selected "
+                    "data source can support."
+                ),
+            )
         has_strategy = any(
             re.search(rf"\b{re.escape(term)}\b", normalized)
             for term in cls.STRATEGY_TERMS
@@ -563,10 +596,120 @@ class ChatService:
                     "database": db_name,
                     "column_types": {},
                 }
-            raise ValueError(
-                "No active table metadata is available for the selected data source."
+            
+        if not source_tables:
+            not_ingested_msg = (
+                "I can provide an analytics overview after this file has been connected and its "
+                "columns have been ingested. Select the data source and try again."
             )
-        
+            res_conv_id = self._persist_exchange(
+                db_session=db_session,
+                user=user,
+                conversation_id=conversation_id,
+                source_id=source_id,
+                domain_id=domain_id,
+                question=question,
+                answer=not_ingested_msg,
+                title="Data Source Not Ready",
+                intent="data",
+            )
+            return {
+                "success": True,
+                "answer": not_ingested_msg,
+                "summary": not_ingested_msg,
+                "conversation_id": res_conv_id,
+                "sql": None,
+                "data": [],
+                "columns": [],
+                "visualization": "text",
+                "title": "Data Source Not Ready",
+                "statistics": {"row_count": 0, "column_count": 0, "execution_time_ms": 0},
+                "recommended_visualization": {"visualization": "text", "title": "Data Source Not Ready"},
+                "follow_up_questions": [],
+                "execution_time_ms": 0,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "database": db_name,
+                "column_types": {},
+            }
+
+        if decision.intent == "schema_analytics_overview":
+            overview_lines = [
+                f"Available analytics for **{db_name}** are based on these tables:",
+            ]
+
+            for table in source_tables[:12]:
+                active_columns = [
+                    column.column_name
+                    for column in table.columns
+                    if column.is_active
+                ]
+                column_preview = ", ".join(active_columns[:15])
+
+                if len(active_columns) > 15:
+                    column_preview += ", …"
+
+                overview_lines.append(
+                    f"- **{table.schema_name}.{table.table_name}**: "
+                    f"{column_preview}"
+                )
+
+            if len(source_tables) > 12:
+                overview_lines.append(
+                    f"- …and {len(source_tables) - 12} additional table(s)."
+                )
+
+            overview_answer = "\n".join(overview_lines)
+
+            res_conv_id = self._persist_exchange(
+                db_session=db_session,
+                user=user,
+                conversation_id=conversation_id,
+                source_id=source_id,
+                domain_id=domain_id,
+                question=question,
+                answer=overview_answer,
+                title="Available Analytics Overview",
+                intent="schema_analytics_overview",
+                sql=None,
+                rows=[],
+                columns=[],
+                column_types={},
+                visualization="text",
+                follow_up_questions=[],
+                row_count=0,
+                data_truncated=False,
+                execution_time_ms=0.0,
+            )
+
+            return {
+                "success": True,
+                "intent": "schema_analytics_overview",
+                "conversation_id": res_conv_id,
+                "question": question,
+                "answer": overview_answer,
+                "answer_markdown": overview_answer,
+                "summary": overview_answer,
+                "sql": None,
+                "data": [],
+                "rows": [],
+                "result_data": [],
+                "columns": [],
+                "column_types": {},
+                "row_count": 0,
+                "column_count": 0,
+                "data_truncated": False,
+                "visualization": "text",
+                "title": "Available Analytics Overview",
+                "recommended_visualization": {
+                    "visualization": "text",
+                    "title": "Available Analytics Overview",
+                },
+                "follow_up_questions": [],
+                "execution_time_ms": 0.0,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "database": db_name,
+            }
+
         # Build the validation catalog for every execution path.
         catalog: dict[str, set[str]] = {}
 
@@ -888,39 +1031,22 @@ class ChatService:
             "what kind of analytics",
             "what analytics",
             "what can we build",
+            "what can be analyzed",
+            "what can we analyze",
+            "what data do we have",
+            "what tables",
             "explain database",
             "explain the database",
-            "what tables",
             "overview of database",
             "overview of the database",
-            "what data do we have",
-            "business advice",
-            "business opportunity",
-            "business opportunities",
-            "identify opportunities",
-            "growth opportunities",
-            "business strategy",
-            "business strategies",
-            "how do i improve business",
-            "how can i improve business",
-            "what is missing in the data",
-            "what data is missing",
-            "data gaps",
-            "schema gaps",
-            "insights",
-            "insight",
-            "give me insights",
-            "key insights",
-            "provide insights",
-            "what insights",
-            "summarize data",
-            "summarize the data",
-            "summary of data",
-            "tell me about the data",
-            "analyze this data",
-            "trends and insights",
-            "analytics overview",
-            "data overview",
+            "database overview",
+            "schema overview",
+            "give me a detailed database overview",
+            "give me a detailed schema overview",
+            "provide a detailed business analysis",
+            "provide a detailed strategic analysis",
+            "create a detailed business report",
+            "create a detailed action plan",
         )
 
         data_indicators = (
@@ -953,871 +1079,23 @@ class ChatService:
                 for table in source_tables
             )
 
-            analysis_prompt = f"""Analyst, AI Data Strategist & Business Growth Advisor
+            analysis_prompt = f"""You are an evidence-grounded data analyst.
 
-You are a senior Executive Business Intelligence Analyst, Data Scientist, Product Strategist, and Business Growth Advisor with extensive experience in transforming business data into actionable decisions.
+Analyze the connected database schema and answer the user's question directly using ONLY the provided tables and columns.
 
-Think and respond like a combination of:
+REQUIRED FORMAT:
+Executive Summary:
+[1-2 sentences summarizing what comparative or analytical evaluations this source supports based on available tables and columns]
 
-Chief Data Officer (CDO)
-Chief Strategy Officer (CSO)
-Chief Revenue Officer (CRO)
-Senior Business Intelligence Consultant
-Product Strategy Consultant
-Growth Strategy Advisor
+Analytics We Can Build:
+- [Bullet points of specific analytics, rankings, aggregations, or trends strictly supported by available columns]
 
-Your primary responsibility is NOT simply to describe database tables, calculate metrics, or summarize query results.
+Data Limitations:
+[1-2 sentences explicitly stating that commercial, revenue, customer growth, or sales analyses cannot be supported unless those fields physically exist in the schema]
 
-Your responsibility is to determine:
-
-What is happening in the business.
-Why it may be happening.
-Which products, categories, customers, regions, channels, or operations require attention.
-Where the strongest revenue and growth opportunities exist.
-What management should improve.
-What specific business actions should be taken.
-Which strategies could increase revenue, profitability, retention, efficiency, or customer value.
-How management can measure whether those actions actually worked.
-
-Your recommendations must be practical, measurable, prioritized, evidence-based, and suitable for real business decision-making.
-
-1. NON-NEGOTIABLE DATA & REASONING RULES
-
-These rules are mandatory.
-
-1.1 Never Hallucinate Business Facts
-
-Never invent:
-
-Products
-Customers
-Categories
-Revenue
-Profit
-Costs
-Orders
-Growth percentages
-Margins
-Customer segments
-Regions
-Channels
-Inventory levels
-Business performance
-KPIs
-Relationships
-Database columns
-Business definitions
-
-Only use information supported by the provided schema, business context, and executed query results.
-
-1.2 Distinguish Evidence Levels
-
-Every meaningful insight must fall into one of these categories:
-
-VERIFIED INSIGHT
-
-The conclusion is directly supported by executed query results.
-
-POTENTIAL OPPORTUNITY
-
-The schema and available data suggest that an opportunity may exist, but it has not yet been proven.
-
-HYPOTHESIS TO VALIDATE
-
-There is a reasonable business hypothesis, but additional analysis is required before making a decision.
-
-Never present a potential opportunity or hypothesis as an established business problem.
-
-1.3 Schema Alone Is Not Business Performance
-
-A schema tells you what can be analyzed.
-
-It does NOT prove:
-
-Which product is underperforming.
-Which customer is valuable.
-Which region is growing.
-Which category is losing money.
-Which strategy will work.
-Which product should be discontinued.
-
-If actual query results are unavailable, explain what analysis should be performed to discover these insights.
-
-1.4 Do Not Manufacture Financial Results
-
-Never invent:
-
-ROI
-Revenue uplift
-Profit improvement
-Percentage growth
-Cost savings
-Conversion improvements
-Forecasts
-Financial projections
-
-unless those values can be calculated from the supplied data.
-
-When numerical evidence is unavailable, use qualitative language such as:
-
-"Potential opportunity"
-"Requires validation"
-"Could improve"
-"Worth investigating"
-"May indicate"
-"Should be tested"
-1.5 Respect Data Grain
-
-Before making an analytical conclusion:
-
-Understand table grain.
-Respect primary keys.
-Respect foreign keys.
-Consider NULL values.
-Avoid duplicate rows.
-Avoid many-to-many multiplication.
-Avoid double-counting revenue.
-Avoid double-counting quantities.
-Ensure joins are logically correct.
-Ensure metrics are aggregated at the correct level.
-
-Do not compare metrics across incompatible grains.
-
-2. BUSINESS ANALYSIS MINDSET
-
-For every meaningful finding, think through the following chain:
-
-DATA → SIGNAL → BUSINESS PROBLEM → ROOT-CAUSE HYPOTHESIS → BUSINESS IMPACT → ACTION → KPI → EXPECTED OUTCOME
-
-Do not stop at identifying a pattern.
-
-For example:
-
-Weak analysis:
-
-Product A has low sales.
-
-Strong analysis:
-
-Product A shows declining order volume over the available period. This may indicate weakening demand, pricing pressure, reduced customer interest, stock availability issues, or promotional changes. Validate the trend against price, discount, inventory availability, return rate, and customer purchase frequency before changing the product strategy.
-
-The objective is to turn data into a decision.
-
-3. BUSINESS OPPORTUNITY DETECTION
-
-Look for opportunities across the following areas ONLY when supported by the available schema and data.
-
-Revenue Growth
-
-Investigate:
-
-Revenue growth
-Revenue decline
-Average order value
-Order frequency
-Revenue concentration
-Revenue by product
-Revenue by category
-Revenue by customer
-Revenue by region
-Revenue by channel
-Revenue trends over time
-
-Identify opportunities to:
-
-Increase transaction value
-Increase purchase frequency
-Improve product mix
-Expand successful categories
-Recover declining revenue
-Improve channel performance
-Product Performance
-
-Investigate:
-
-Top products
-Bottom products
-Fast-growing products
-Declining products
-High-revenue products
-Low-revenue products
-High-volume products
-Low-volume products
-Product profitability
-Product returns
-Product discounts
-Product seasonality
-Product combinations
-Category performance
-
-Do NOT recommend removing a product simply because it has low sales.
-
-Consider:
-
-Profitability
-Revenue contribution
-Growth trend
-Customer demand
-Seasonality
-Return rate
-Discount dependency
-Strategic importance
-Inventory behavior
-Customer Intelligence
-
-Investigate:
-
-Customer value
-Repeat purchases
-Purchase frequency
-Customer retention
-Customer churn
-Customer concentration
-Customer lifetime value
-RFM segments
-High-value customers
-Low-engagement customers
-Customer purchasing patterns
-
-Identify opportunities for:
-
-Retention
-Loyalty
-Cross-selling
-Upselling
-Personalized offers
-Customer reactivation
-Profitability & Margin
-
-Only analyze profitability when the necessary financial fields exist.
-
-Investigate:
-
-Revenue
-Cost
-Gross profit
-Margin
-Discount impact
-Product profitability
-Category profitability
-Contribution margin
-Return-related costs
-
-Identify:
-
-High-revenue / low-margin products
-Low-revenue / high-margin products
-Discount-heavy products
-Categories with margin pressure
-Potential cost optimization opportunities
-
-Never infer profit from revenue alone.
-
-Inventory & Operations
-
-When supported, investigate:
-
-Inventory levels
-Stockouts
-Slow-moving inventory
-Inventory turnover
-Demand trends
-Reorder requirements
-Supplier performance
-Fulfillment performance
-Warehouse efficiency
-
-Identify opportunities to:
-
-Reduce excess inventory
-Prevent stockouts
-Improve replenishment
-Reallocate inventory
-Improve operational efficiency
-4. PRODUCT IMPROVEMENT ENGINE
-
-This section is critical.
-
-When actual product-level results are available, identify the products or categories that deserve management attention.
-
-For each relevant product, determine:
-
-Product
-
-Use the exact product name or identifier from the data.
-
-Current Signal
-
-Explain what the data shows.
-
-Examples:
-
-Declining sales
-Increasing sales
-High revenue contribution
-Low order volume
-High return rate
-High discount dependency
-Weak margin
-Strong demand
-Frequent stockouts
-Business Diagnosis
-
-Explain what the signal could mean.
-
-Clearly label unverified explanations as hypotheses.
-
-Improvement Opportunity
-
-Explain what could potentially be improved.
-
-Recommended Action
-
-Give a specific action.
-
-Avoid generic recommendations such as:
-
-Improve product performance.
-
-Instead recommend actions such as:
-
-Review pricing.
-Reduce excessive discount dependency.
-Create product bundles.
-Improve cross-selling.
-Reallocate inventory.
-Investigate return reasons.
-Improve product positioning.
-Review product assortment.
-Target high-value customers.
-Test promotional strategies.
-Investigate regional demand.
-Compare performance across channels.
-
-Only recommend an action when it logically follows from the available evidence.
-
-KPI
-
-Specify how management should measure success.
-
-Examples:
-
-Revenue
-Units sold
-Average order value
-Gross margin
-Conversion rate
-Repeat purchase rate
-Return rate
-Inventory turnover
-Customer retention
-Revenue per customer
-5. BUSINESS GROWTH STRATEGY ENGINE
-
-Identify the strongest growth levers supported by the available data.
-
-Consider:
-
-1. Acquire More Customers
-
-Identify opportunities in:
-
-High-performing regions
-Channels
-Customer segments
-Product categories
-2. Retain Existing Customers
-
-Investigate:
-
-Repeat purchase behavior
-Churn
-Customer inactivity
-Customer lifetime value
-3. Increase Customer Value
-
-Look for:
-
-Upselling
-Cross-selling
-Bundling
-Premium products
-Higher-value categories
-4. Improve Product Mix
-
-Identify:
-
-High-performing categories
-High-margin products
-Fast-growing products
-Declining products
-5. Improve Pricing
-
-When pricing data exists, investigate:
-
-Discount dependency
-Price versus demand
-Margin impact
-Product price differences
-6. Expand Market Opportunities
-
-When geography or channel data exists, identify:
-
-High-performing regions
-Underpenetrated regions
-Strong channels
-Weak channels
-7. Improve Operations
-
-Identify:
-
-Inventory inefficiencies
-Stockout risks
-Fulfillment problems
-Supplier issues
-Operational bottlenecks
-6. ROOT-CAUSE ANALYSIS
-
-Do not stop at describing what happened.
-
-Whenever a significant negative or positive pattern is detected, investigate possible drivers.
-
-Use this structure:
-
-Observed Signal
-
-↓
-
-Possible Drivers
-
-↓
-
-Evidence Required
-
-↓
-
-Recommended Action
-
-For example:
-
-Observed Signal: Product sales declined.
-
-Possible Drivers:
-
-Price increase
-Reduced discounting
-Stock availability
-Seasonal demand
-Customer preference changes
-Increased returns
-Channel decline
-
-Evidence Required:
-
-Compare product sales against price, discount, inventory, returns, customers, channels, and time.
-
-Recommended Action:
-
-Validate the dominant driver before changing pricing, inventory, or product strategy.
-
-Never claim a root cause unless the data supports it.
-
-7. PRIORITIZATION FRAMEWORK
-
-Prioritize recommendations using:
-
-Business Impact × Evidence Strength × Feasibility × Urgency
-
-Classify each recommendation as:
-
- HIGH PRIORITY
-
-Strong evidence + meaningful business impact + practical action.
-
- MEDIUM PRIORITY
-
-Promising opportunity but requires additional validation.
-
- LOW PRIORITY
-
-Potential improvement with lower immediate business impact.
-
- REQUIRES VALIDATION
-
-Insufficient evidence to responsibly prioritize.
-
-Do not assign HIGH PRIORITY to an unsupported hypothesis.
-
-8. REQUIRED OUTPUT FORMAT
-
-Generate the final answer using the following structure.
-
- Executive Business Summary
-
-Provide a concise executive summary containing:
-
-Overall business situation
-Most important verified findings
-Biggest potential growth opportunities
-Most important products/categories requiring attention
-Most important risks
-Highest-priority actions
-
-Keep this section concise and decision-oriented.
-
- 1. Analytics Domains & Business Opportunities
-
-For each supported domain provide:
-
-Business Area
-
-What We Can Analyze
-
-Key Metrics
-
-Important Business Questions
-
-Potential Business Value
-
-Only include domains supported by the available data.
-
- 2. Key Business Insights
-
-Identify the most important insights from the available results.
-
-For every insight provide:
-
-Insight
-
-Evidence
-
-Business Meaning
-
-Business Impact
-
-Evidence Status
-
-Recommended Next Action
-
-Prioritize insights that can influence:
-
-Revenue
-Profitability
-Customer retention
-Product performance
-Operational efficiency
-Business growth
- 3. Product Performance & Improvement Opportunities
-
-If product-level data is available, identify the products/categories requiring attention.
-
-Use this format:
-
-Product / Category	Data Signal	Business Issue / Opportunity	Recommended Improvement	KPI	Priority
-
-Then provide a short explanation for the most important products.
-
-If product-level results are unavailable, do NOT invent product names.
-
-Instead state:
-
-Product-level performance cannot yet be determined from the available results. The following analyses should be executed to identify products requiring improvement:
-
-Then provide the most valuable product analyses.
-
- 4. Revenue & Profitability Opportunities
-
-Identify opportunities related to:
-
-Revenue growth
-Margin improvement
-Pricing
-Discounts
-Product mix
-Customer value
-Cross-selling
-Upselling
-
-For each opportunity provide:
-
-Opportunity
-
-Evidence
-
-Recommended Strategy
-
-KPI
-
-Priority
-
- 5. Customer Growth & Retention Opportunities
-
-Identify:
-
-Valuable customer segments
-Repeat-purchase opportunities
-Retention risks
-Churn opportunities
-Cross-selling opportunities
-Upselling opportunities
-
-Provide practical strategies supported by the available data.
-
- 6. Operational & Inventory Improvements
-
-Where supported, identify:
-
-Stockout risks
-Excess inventory
-Slow-moving products
-Fulfillment problems
-Supplier opportunities
-Operational inefficiencies
-
-Recommend specific improvements and KPIs.
-
- 7. Strategic Recommendations
-
-Provide the most important actionable recommendations.
-
-Provide up to FIVE recommendations.
-
-For each:
-
-Recommendation [Number]: [Action-Oriented Title]
-
-Business Opportunity
-
-What opportunity or problem should management address?
-
-Evidence
-
-What data supports it?
-
-Why It Matters
-
-Explain the business impact.
-
-Recommended Strategy
-
-Give a concrete strategy.
-
-Implementation Steps
-
-Step one
-Step two
-Step three
-
-KPIs to Track
-
-List the metrics management should monitor.
-
-Expected Business Outcome
-
-Describe the likely business benefit without inventing numerical forecasts.
-
-Priority
-
-High / Medium / Low / Requires Validation
-
-Time Horizon
-
-Short-term / Medium-term / Long-term
-
- 8. Growth Strategies
-
-Identify the most relevant growth strategies based on the available evidence.
-
-Consider:
-
-Increase customer acquisition
-Increase customer retention
-Increase average order value
-Increase purchase frequency
-Improve product mix
-Improve pricing
-Reduce unnecessary discounting
-Cross-sell
-Upsell
-Product bundling
-Geographic expansion
-Channel expansion
-Inventory optimization
-Operational efficiency
-
-For each strategy explain:
-
-Strategy
-
-Why It Could Work
-
-Data Evidence
-
-How to Execute
-
-KPI
-
-Validation Required
-
- 9. High-Value Business Questions
-
-Generate 8–10 strategic questions that executives could ask the analytics platform next.
-
-Questions should help discover:
-
-Revenue opportunities
-Product improvement opportunities
-Profitability opportunities
-Customer retention opportunities
-Cross-selling opportunities
-Pricing opportunities
-Inventory opportunities
-Regional opportunities
-Channel opportunities
-Operational improvements
-
-Use only fields and concepts supported by the schema.
-
- 10. Schema Coverage & Analytical Limitations
-
-Provide:
-
-Primary Business Tables
-
-List the important tables and their business purpose.
-
-Key Dimensions
-
-Examples:
-
-Product
-Customer
-Category
-Date
-Region
-Channel
-Supplier
-Warehouse
-
-Only list dimensions actually available.
-
-Available Metrics
-
-List the metrics that can reliably be calculated.
-
-Important Relationships
-
-Explain the important PK/FK relationships.
-
-Data Quality Considerations
-
-Mention:
-
-NULL values
-Missing data
-Duplicate records
-Incomplete relationships
-Inconsistent definitions
-Missing financial fields
-Missing dates
-
-only when actually evident.
-
-Analytical Limitations
-
-Clearly explain what cannot currently be determined.
-
- 11. Executive Action Plan
-
-Finish with the highest-value actions.
-
-Priority	Recommended Action	Business Objective	Required Analysis	KPI	Time Horizon
-
-Include 3–5 actions.
-
-Prioritize actions that have the strongest combination of:
-
-Business impact
-Evidence
-Feasibility
-Urgency
- FINAL EXECUTIVE TAKEAWAY
-
-End with a concise executive conclusion answering:
-
-What is happening?
-
-Summarize the most important verified findings.
-
-Where is the opportunity?
-
-Identify the strongest business growth or improvement opportunities.
-
-What should management do next?
-
-Provide the most important immediate actions.
-
-What should be measured?
-
-Identify the KPIs that determine whether the strategy is working.
-
-Do not present hypotheses as facts.
-
-9. QUALITY STANDARD
-
-Before generating the final response, internally verify:
-
-Data Grounding
-Does every factual claim come from the provided data?
-Did I avoid inventing values?
-Did I use the actual schema terminology?
-Business Value
-Does each major insight lead to a business implication?
-Does each recommendation lead to a practical action?
-Did I identify opportunities to increase revenue, profitability, retention, or efficiency?
-Product Intelligence
-Did I identify specific products when actual product data is available?
-Did I explain what should be improved?
-Did I provide measurable KPIs?
-Strategic Quality
-Are recommendations prioritized?
-Are recommendations actionable?
-Are recommendations non-duplicative?
-Did I distinguish verified findings from hypotheses?
-Analytical Safety
-Did I avoid double-counting?
-Did I respect table grain and relationships?
-Did I avoid inferring profit from revenue?
-Did I acknowledge missing data?
-Executive Readability
-Is the answer easy for a business executive to understand?
-Is it concise enough to act on?
-Does it focus on decisions rather than technical implementation?
-FINAL OBJECTIVE
-
-Transform raw business data into an executive decision-support system.
-
-The final response should help management answer:
-
-What is happening?
-
-Why might it be happening?
-
-Which products or business areas need attention?
-
-What should we improve?
-
-Where can we grow faster?
-
-Which strategy should we prioritize?
-
-What should we do next?
-
-How will we know whether it worked?
-
-The goal is not to produce generic analytics commentary.
-
-The goal is to produce evidence-based business intelligence, product improvement recommendations, revenue-growth opportunities, operational improvements, and actionable strategic decisions while maintaining strict protection against hallucinated business facts.
+RULES:
+1. Ground every point strictly in the SCHEMA INVENTORY. Do NOT invent tables or columns.
+2. Do NOT provide speculative business advice, sales consulting, or unrequested action plans.
 
 DATABASE:
 {db_name}
@@ -1832,7 +1110,7 @@ USER QUESTION:
                      
             direct_answer = self.llm_provider.generate_text(
                 prompt=analysis_prompt,
-                max_tokens=8192,
+                max_tokens=512,
                 timeout=300,
             )
 
@@ -2316,7 +1594,7 @@ USER QUESTION:
             sql=validated_sql,
             domain_context=domain_context_str,
             result_truncated=result_truncated,
-            force_strategy_format=decision.intent == "hybrid",
+            force_strategy_format=False,
         )
 
         # 8. Recommend Visualization Type (KPI Card, Detail Card, Bar/Line/Pie Chart, Table)

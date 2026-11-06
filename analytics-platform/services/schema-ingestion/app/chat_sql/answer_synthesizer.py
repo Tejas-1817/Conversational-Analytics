@@ -15,46 +15,83 @@ log = structlog.get_logger(__name__)
 MAX_ROWS_FOR_LLM = 50
 MAX_PREVIEW_CHARS = 12_000
 
-PREDICTIVE_KEYWORDS = (
+EXPLICIT_STRATEGY_REQUESTS = (
+    "give me recommendations",
+    "give me a strategy",
+    "create a strategy",
+    "create an action plan",
+    "provide an action plan",
+    "provide strategic recommendations",
+    "detailed business analysis",
+    "detailed strategic analysis",
+    "create a detailed action plan",
+    "provide a detailed action plan",
+    "give me detailed recommendations",
+    "provide detailed recommendations",
+)
+
+EXPLICIT_PREDICTION_REQUESTS = (
     "forecast",
     "forecasting",
-    "predict",
-    "prediction",
-    "projection",
-    "projected",
-    "next month",
-    "next quarter",
-    "next year",
+    "predict next",
+    "predict future",
     "future revenue",
     "future sales",
-    "expected revenue",
-    "expected sales",
 )
 
-STRATEGIC_KEYWORDS = (
-    "why",
-    "opportunity",
-    "opportunities",
-    "strategy",
-    "strategies",
-    "improve",
-    "improvement",
-    "recommend",
-    "recommendation",
-    "risk",
-    "risks",
-    "growth",
-    "underperform",
-    "underperforming",
-    "high rating",
-    "low sales",
-    "increase revenue",
-    "increase sales",
-    "reduce cost",
-    "reduce costs",
-    "business advice",
+
+def _detect_analysis_mode(question: str) -> str:
+    """Use expanded formats only when the user explicitly requests them."""
+    normalized = " ".join((question or "").lower().split())
+
+    if any(phrase in normalized for phrase in EXPLICIT_PREDICTION_REQUESTS):
+        return "predictive"
+
+    if any(phrase in normalized for phrase in EXPLICIT_STRATEGY_REQUESTS):
+        return "strategic"
+
+    # Direct is the safe default for every normal question, including "why".
+    return "standard"
+
+DIRECT_MODE_FORBIDDEN_MARKERS = (
+    "## executive summary",
+    "## operational advice",
+    "## sales strategies",
+    "## long-term tips",
+    "## recommendations",
+    "## next steps",
+    "## action plan",
+    "## strategic recommendations",
 )
 
+
+def _validate_direct_answer(answer: str) -> str | None:
+    """Return valid concise direct output, otherwise signal fallback."""
+    cleaned = (answer or "").strip()
+
+    if not cleaned:
+        return None
+
+    lowered = cleaned.lower()
+    if any(marker in lowered for marker in DIRECT_MODE_FORBIDDEN_MARKERS):
+        return None
+
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    bullet_count = sum(
+        line.startswith(("- ", "* ", "• "))
+        for line in lines
+    )
+
+    # Direct mode permits one answer and at most three evidence bullets.
+    if bullet_count > 3:
+        return None
+
+    # Guard against report-like answers even without Markdown headings.
+    if len(cleaned.split()) > 180:
+        return None
+
+    return cleaned
+    
 
 def _format_value(value: Any) -> str:
     """Format a database value for deterministic responses."""
@@ -72,20 +109,6 @@ def _format_value(value: Any) -> str:
         return f"{value:,.2f}"
 
     return str(value)
-
-
-def _detect_analysis_mode(question: str) -> str:
-    """Classify the answer as standard, strategic, or predictive."""
-
-    normalized_question = (question or "").lower()
-
-    if any(word in normalized_question for word in PREDICTIVE_KEYWORDS):
-        return "predictive"
-
-    if any(word in normalized_question for word in STRATEGIC_KEYWORDS):
-        return "strategic"
-
-    return "standard"
 
 
 def _contains_forecast_data(result_data: List[Dict[str, Any]]) -> bool:
@@ -284,41 +307,42 @@ class AnswerSynthesizer:
         business_context = business_context[:4_000]
 
         if analysis_mode == "standard":
-            response_format = """Provide an introductory lead-in sentence summarizing the overall finding, followed by an unordered bulleted list (using '- ') where each item, entity, metric, or row from the result data is presented in its own bullet point with entity names and key metrics bolded. Do not return one continuous paragraph block."""
+            response_format = """
+Return only a direct answer to the User Question.
+
+Rules:
+- Start with the answer in the first sentence.
+- Use at most 3 short bullet points only when needed as evidence.
+- Use only facts present in QUERY RESULT DATA.
+- Do not add an executive summary, recommendations, next steps, strategy,
+  background explanation, SQL explanation, definitions, related metrics,
+  caveats, or follow-up questions unless explicitly requested.
+- Do not repeat the question.
+- Do not use headings.
+- If the result does not answer the question, say what is unavailable in
+  one short sentence.
+"""
 
         elif analysis_mode in {"strategic", "hybrid"}:
-            response_format = """Return exactly these Markdown sections:
-
-## Executive Summary
-Summarize the most important verified findings.
-
-## Operational Advice
-Provide cautious operational actions tied to verified evidence.
-
-## Sales Strategies
-Provide sales recommendations only when supported by the result.
-Otherwise state which sales analysis is needed.
-
-## Long-Term Tips
-Provide cautious longer-term recommendations and clearly distinguish
-verified facts from hypotheses."""
+            response_format = """
+Return a direct, concise answer addressing the specific question asked based on verified evidence.
+Rules:
+- Directly answer the question in the opening sentence.
+- Do not include unsolicited headings, sales strategies, or operational advice unless explicitly requested.
+- Distinguish verified observations from hypotheses.
+"""
 
         else:
-            response_format = """Return exactly these Markdown sections:
+            # Predictive mode
+            response_format = """
+Return only the forecast answer requested by the user.
 
-## Executive Summary
-Summarize the most important verified result.
-
-## Operational Advice
-Provide up to three actions grounded in the verified result.
-
-## Sales Strategies
-Provide up to three sales actions only when sales-related evidence exists.
-Otherwise state which sales analysis should be run first.
-
-## Long-Term Tips
-Provide up to three cautious longer-term considerations.
-Clearly distinguish verified facts from hypotheses."""
+Rules:
+- Use only forecast values present in QUERY RESULT DATA.
+- Clearly distinguish forecast values from historical actual values.
+- Do not add strategy, recommendations, unrelated analysis, or headings.
+- If forecast data is unavailable, state that in one short sentence.
+"""
 
         prompt = f"""You are an evidence-grounded business data analyst.
 
@@ -381,15 +405,30 @@ FINAL ANSWER:"""
 
         try:
             if analysis_mode == "standard":
-                token_budget = 384
+                token_budget = 160
             else:
                 token_budget = 768
 
-            return self.llm_provider.generate_text(
+            generated_answer = self.llm_provider.generate_text(
                 prompt=prompt,
                 max_tokens=token_budget,
                 timeout=180,
             )
+
+            if analysis_mode == "standard":
+                validated_answer = _validate_direct_answer(generated_answer)
+                if validated_answer is None:
+                    log.warning(                        
+            "direct_answer_validation_failed_using_deterministic_fallback",            
+                        generated_chars=len(generated_answer or ""),
+                    )
+                    return _deterministic_answer(
+                        question=question,
+                        result_data=result_data,
+                    )
+                return validated_answer
+
+            return generated_answer
 
         except Exception as exc:
             log.warning(
@@ -442,86 +481,11 @@ FINAL ANSWER:"""
 
     @staticmethod
     def _strategy_fallback() -> str:
-        """Return safe, deterministic business advice when the strategy LLM call fails."""
-
-        return """## Executive Summary
-
-No verified row-level database results were available for this response, so specific
-business performance, product performance, revenue trends, or growth conclusions
-cannot be confirmed.
-
-The immediate priority is to validate the business signals that have the greatest
-potential impact on revenue, profitability, customer retention, and operational
-efficiency. Product, customer, sales, pricing, margin, inventory, and time-based
-performance should be evaluated before making major business decisions.
-
-## Operational Advice
-
-Prioritize analysis of the following areas, where supported by the connected schema:
-
-- **Product Performance:** Identify products with declining sales, low demand,
-  high returns, weak margins, or strong demand but insufficient availability.
-- **Inventory & Operations:** Check stock levels, stockouts, slow-moving products,
-  inventory turnover, fulfillment performance, and demand patterns.
-- **Customer Performance:** Analyze repeat purchases, customer retention,
-  purchase frequency, high-value customers, and inactive customer segments.
-- **Profitability:** Compare revenue, cost, discounts, returns, and margins where
-  the required financial fields are available.
-- **Time Trends:** Compare product, revenue, customer, and operational KPIs across
-  appropriate daily, monthly, quarterly, or yearly periods.
-
-Before changing a product, pricing strategy, inventory policy, or operational
-process, validate the relevant KPI against historical and segment-level data.
-
-## Sales Strategies
-
-Once verified results are available, prioritize strategies based on measurable
-business opportunities:
-
-- **Improve declining products:** Investigate pricing, discounts, availability,
-  returns, seasonality, and customer demand before changing the product strategy.
-- **Grow strong products:** Identify products with sustained demand and evaluate
-  cross-selling, upselling, bundling, and complementary-product opportunities.
-- **Improve product mix:** Compare product revenue, quantity, margin, and customer
-  demand to determine which products deserve greater commercial focus.
-- **Increase customer value:** Analyze repeat-purchase behavior and identify
-  opportunities for retention, personalized offers, cross-selling, and upselling.
-- **Optimize pricing and promotions:** Where pricing and discount data exists,
-  evaluate whether discounts are increasing demand sufficiently while protecting
-  profitability.
-- **Expand successful segments:** Compare products, customers, regions, and
-  channels to identify areas with consistently strong performance that may justify
-  additional investment.
-
-Do not assume that a low-selling product should be discontinued. Validate
-profitability, strategic importance, customer demand, seasonality, and inventory
-behavior first.
-
-## Long-Term Tips
-
-Build a continuous data-driven improvement cycle:
-
-1. Establish consistent definitions for revenue, profit, margin, orders,
-   customers, returns, and other business KPIs.
-2. Track product, customer, sales, inventory, and profitability metrics over time.
-3. Create alerts for meaningful changes such as declining product demand,
-   increasing returns, stockout risk, or customer inactivity.
-4. Regularly identify high-performing products and determine what factors are
-   contributing to their success.
-5. Investigate underperforming products before making pricing, inventory, or
-   assortment decisions.
-6. Measure every business initiative using clearly defined success KPIs.
-7. Validate hypotheses with actual database results before treating them as
-   business facts.
-
-The recommended decision cycle is:
-
-**Measure → Identify Opportunity → Investigate Root Cause → Take Action →
-Monitor KPI → Evaluate Result → Improve Strategy**
-
-Until verified database results are available, all product, sales, profitability,
-and growth recommendations should be treated as hypotheses rather than confirmed
-business findings."""
+        """Return safe, direct message when strategy advice cannot be generated."""
+        return (
+            "No verified database records were available to answer this question. "
+            "Specific recommendations cannot be confirmed without supporting row-level data."
+        )
 
     def synthesize_multi_query_answer(
         self,

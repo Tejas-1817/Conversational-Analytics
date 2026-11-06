@@ -186,10 +186,10 @@ class LLMProvider:
                     error=error_msg,
                 )
 
-                # If transient 503 / 429 / 404, quickly try next candidate model
-                if any(code in error_msg for code in ("503", "429", "404", "UNAVAILABLE", "NOT_FOUND")):
-                    time.sleep(0.3)
-                    continue
+                # If transient 503 / 504 / 429 / 404, quickly try next candidate model
+            if any(code in error_msg for code in ("503", "504", "429", "404", "UNAVAILABLE", "NOT_FOUND", "DEADLINE_EXCEEDED")):
+                time.sleep(0.3)
+                continue
                 
                 # For critical auth errors, fail immediately
                 raise LLMProviderError(f"Gemini generation error: {exc}") from exc
