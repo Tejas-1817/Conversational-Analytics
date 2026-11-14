@@ -451,10 +451,17 @@ def embed_approved_objects(
         if len(chunk) >= chunk_size:
             process_chunk(chunk)
             chunk = []
-            
+    from app.config import get_settings     
     if chunk:
         process_chunk(chunk)
 
+    if get_settings().rag_pipeline_v2:
+        try:
+            from app.rag.ingest import index_schema_tables
+            index_schema_tables(db, tenant_id)
+        except Exception as exc:
+            log.warning("rag_v2_schema_dual_write_failed", error=str(exc))
+        
     if upserted_total == 0:
         log.info("embedding_job_no_approved_objects", tenant_id=str(tenant_id))
         return {"tenant_id": str(tenant_id), "objects_embedded": 0, "object_types": {}}

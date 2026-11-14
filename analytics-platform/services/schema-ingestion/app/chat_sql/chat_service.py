@@ -230,6 +230,28 @@ class IntentRouter:
             reason="The question requests a factual database result.",
         )
 
+    def _schema_text_from_rag_v2(question, conversation_context, user, active_source, db_session, max_schema_chars) -> str:
+        settings = get_settings()
+        if not settings.rag_pipeline_v2:
+            return ""
+        try:
+            from app.rag.pipeline import RetrievalScope, retrieve
+            chunks = retrieve(
+                question=question,
+                scope=RetrievalScope(
+                    tenant_id=str(user.tenant_id),
+                    source_id=str(active_source.id),
+                    object_types=["schema_parent", "schema_child"],
+                ),
+                db=db_session,
+                conversation_context=conversation_context or "",
+            )
+            if not chunks:
+                return ""
+            return "\n\n".join(chunk.text for chunk in chunks)[:max_schema_chars]
+        except Exception as exc:
+            log.warning("rag_v2_schema_retrieval_failed", error=str(exc))
+            return ""
 
 class ChatService:
     """Text-to-SQL & Analytics Chat Service."""
@@ -759,16 +781,23 @@ class ChatService:
         elif len(full_schema_text) <= max_schema_chars: 
             schema_text = full_schema_text
         else:
-            retrieval_query = question
+            schema_text = _schema_text_from_rag_v2(
+                question,
+                conversation_context,
+                user,
+                active_source,
+                db_session,
+                max_schema_chars,
+            )
+            if not schema_text:
+                retrieval_query = question
 
-            # Follow-up questions such as "break this down by category"
-            # require the previous conversation to resolve "this".
             if conversation_context:
                 retrieval_query = (
-                    f"CURRENT QUESTION:\n{question}\n\n"
-                    f"RECENT CONVERSATION:\n"
-                    f"{conversation_context[-2_000:]}"
-                )
+                f"CURRENT QUESTION:\n{question}\n\n"
+                f"RECENT CONVERSATION:\n"
+                f"{conversation_context[-2_000:]}"
+            )
 
             retrieval = RetrievalService.retrieve(
                 query_text=retrieval_query,

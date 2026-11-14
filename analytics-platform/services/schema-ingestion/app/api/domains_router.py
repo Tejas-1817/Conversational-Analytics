@@ -748,6 +748,21 @@ def _process_document_background(
                     file=file_name,
                     error=str(exc),
                 )
+            try:
+                from app.config import get_settings
+                if get_settings().rag_pipeline_v2:
+                    from app.rag.ingest import index_domain_document
+                    index_domain_document(
+                        db,
+                        text=raw_text,
+                        tenant_id=str(tenant_id),
+                        domain_id=str(domain_id),
+                        document_id=str(file_id),
+                        file_name=file_name,
+                        source_id=str(source_id) if source_id else None,
+                    )
+            except Exception as exc:
+                log.warning("rag_v2_domain_dual_write_failed", error=str(exc))
 
         # 4. Update record with final chunk count and mark as complete
         doc_record = db.query(DomainDocument).filter(DomainDocument.id == file_id).first()
@@ -831,6 +846,38 @@ def query_domain_knowledge(
     if not domain:
         raise HTTPException(status_code=404, detail="Domain not found")
     verify_user_has_domain_access(session, current_user, domain)
+
+    from app.config import get_settings
+    if get_settings().rag_pipeline_v2:
+        from app.rag.pipeline import RetrievalScope, retrieve
+        from app.rag.grounding import build_grounded_prompt, enforce_citations
+        chunks = retrieve(
+            question=payload.question,
+            scope=RetrievalScope(
+                tenant_id=str(current_user.tenant_id),
+                source_id=str(domain.source_id) if domain.source_id else None,
+                domain_id=str(domain.id),
+                object_types=["domain_child"],
+            ),
+            db=session,
+        )
+        prompt = build_grounded_prompt(
+            question=payload.question,
+            chunks=chunks,
+            title=f"Domain: {domain.name}",
+        )
+        answer = enforce_citations(LLMProvider().generate_text(prompt=prompt), chunks)
+        return DomainQueryResponse(
+            answer=answer,
+            sources=[
+                DomainQueryHit(
+                    text=chunk.text,
+                    distance=float(chunk.distance or 0),
+                    metadata={"id": chunk.id, "file_name": chunk.file_name, "section_path": chunk.section_path},
+                )
+                for chunk in chunks
+            ],
+        )
 
     embed_provider = get_embedding_provider()
     query_vec = embed_provider.embed_query(payload.question)
