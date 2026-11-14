@@ -859,14 +859,18 @@ USER QUESTION:
 {payload.question}
 
 Provide a precise, accurate, plain-English answer grounded STRICTLY in the provided domain terms and document context. Do not invent details not present in the reference documents."""
-
     provider = LLMProvider()
-    response = provider.generate_chat_completion(
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2
-    )
+    response = provider.generate_text(prompt=prompt)
+    sources_out = [
+        DomainQueryHit(
+            text=h.text,
+            distance=float(h.distance),
+            metadata=h.metadata,
+        )
+        for h in domain_hits
+    ]
 
-    return DomainQueryResponse(answer=response.content.strip(), sources=sources_out)
+    return DomainQueryResponse(answer=response.strip(), sources=sources_out)
 
 
 def _format_user_name(user_email: str) -> str:

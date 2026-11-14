@@ -607,8 +607,8 @@ export const ChatInterface = () => {
         {
           id: Date.now(),
           role: 'assistant',
-          content: 'Please select a connected data source or git repository first.',
-          isError: true,
+          content: 'I can provide an analytics overview after this file has been connected and its columns have been ingested. Select the data source and try again.',
+          isError: false,
         },
       ]);
       return;
@@ -1046,8 +1046,8 @@ export const ChatInterface = () => {
   // Memoize rendered message list so typing in the input box never re-renders past charts/tables
   const renderedMessages = useMemo(() => {
     return messages.map((m, i) => (
-            <div key={i} className={`message-bubble ${m.role}`}>
-              {/* {m.role === 'assistant' && (
+      <div key={i} className={`message-bubble ${m.role}`}>
+        {/* {m.role === 'assistant' && (
                 <div className="message-avatar assistant">
                   <div style={{
                     width: '32px',
@@ -1065,16 +1065,17 @@ export const ChatInterface = () => {
                 </div>
               )} */}
 
-              <div className="message-content">
-                {m.role === 'user' ? (
-                  <div>{m.content}</div>
-                ) : (
-                  <div style={{ width: '100%' }}>
-                    {m.isError && (
-                      <div className="badge badge-danger" style={{ marginBottom: '1rem', padding: '0.5rem', borderRadius: '8px' }}>
-                        <AlertTriangle size={16} style={{ marginRight: '8px' }} /> {m.content}
-                      </div>
-                    )}
+        <div className="message-content">
+          {m.role === 'user' ? (
+            <div>{m.content}</div>
+          ) : (
+            <div style={{ width: '100%' }}>
+              {m.isError && (
+                <div className="badge badge-danger" style={{ marginBottom: '1rem', padding: '0.5rem', borderRadius: '8px' }}>
+                  <AlertTriangle size={16} style={{ marginRight: '8px' }} /> {m.content}
+                </div>
+              )}
+
 
                     {!m.isError && (m.sql || m.content || m.answer) && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
@@ -1086,12 +1087,14 @@ export const ChatInterface = () => {
                           intentReason={m.question}
                         />
 
-                        {/* 1. Structured Cards & Markdown Synthesis */}
-                        {m.answer_markdown && (
-                          <div className="business-answer">
-                            <MarkdownRenderer content={m.answer_markdown} isStreaming={m.isStreaming} />
-                          </div>
-                        )}
+
+                  {/* 1. Structured Cards & Markdown Synthesis */}
+                  {m.answer_markdown && (
+                    <div className="business-answer">
+                      <MarkdownRenderer content={m.answer_markdown} isStreaming={m.isStreaming} />
+                    </div>
+                  )}
+
 
 
 
@@ -1347,53 +1350,54 @@ export const ChatInterface = () => {
 
                         <div className="flex-1" />
 
-                        <div className="flex items-center gap-2">
-                          <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={() => handleCopy(m.answer_markdown || m.answer || m.content || '')} title="Copy response"><Copy size={14} /></button>
-                          <button
-                            className="btn-ghost"
-                            style={{ padding: '0.25rem' }}
-                            title="Regenerate"
-                            onClick={() => handleRegenerateResponse(m, i)}
-                          >
-                            <RefreshCcw size={14} />
-                          </button>
 
-                          <button
-                            className="btn-ghost"
-                            style={{
-                              padding: '0.25rem',
-                              color: feedbackGiven[m.id] === 'approved' ? '#10B981' : 'inherit',
-                              transition: 'all 0.2s ease',
-                            }}
-                            onClick={() => handleApproveResponse(m.id)}
-                            title={feedbackGiven[m.id] === 'approved' ? "Approved as Golden Query!" : "Approve as Golden Query"}
-                          >
-                            {feedbackGiven[m.id] === 'approved' ? (
-                              <Check size={14} style={{ color: '#10B981' }} />
-                            ) : (
-                              <ThumbsUp size={14} />
-                            )}
-                          </button>
+                  <div className="flex items-center gap-2">
+                    <button className="btn-ghost" style={{ padding: '0.25rem' }} onClick={() => handleCopy(m.answer_markdown || m.answer || m.content || '')} title="Copy response"><Copy size={14} /></button>
+                    <button
+                      className="btn-ghost"
+                      style={{ padding: '0.25rem' }}
+                      title="Regenerate"
+                      onClick={() => handleRegenerateResponse(m, i)}
+                    >
+                      <RefreshCcw size={14} />
+                    </button>
 
-                          <button
-                            className="btn-ghost"
-                            style={{
-                              padding: '0.25rem',
-                              color: feedbackGiven[m.id] === 'rejected' ? '#EF4444' : 'inherit',
-                              transition: 'all 0.2s ease',
-                            }}
-                            onClick={() => handleRejectResponse(m.id)}
-                            title={feedbackGiven[m.id] === 'rejected' ? "Feedback submitted! Click to undo." : "Flag incorrect response"}
-                          >
-                            <ThumbsDown size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    <button
+                      className="btn-ghost"
+                      style={{
+                        padding: '0.25rem',
+                        color: feedbackGiven[m.id] === 'approved' ? '#10B981' : 'inherit',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onClick={() => handleApproveResponse(m.id)}
+                      title={feedbackGiven[m.id] === 'approved' ? "Approved as Golden Query!" : "Approve as Golden Query"}
+                    >
+                      {feedbackGiven[m.id] === 'approved' ? (
+                        <Check size={14} style={{ color: '#10B981' }} />
+                      ) : (
+                        <ThumbsUp size={14} />
+                      )}
+                    </button>
+
+                    <button
+                      className="btn-ghost"
+                      style={{
+                        padding: '0.25rem',
+                        color: feedbackGiven[m.id] === 'rejected' ? '#EF4444' : 'inherit',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onClick={() => handleRejectResponse(m.id)}
+                      title={feedbackGiven[m.id] === 'rejected' ? "Feedback submitted! Click to undo." : "Flag incorrect response"}
+                    >
+                      <ThumbsDown size={14} />
+                    </button>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
+          )}
+        </div>
+      </div>
     ));
   }, [messages, feedbackGiven]);
 
