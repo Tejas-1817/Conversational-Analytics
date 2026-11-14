@@ -4,6 +4,7 @@ Orchestrates SchemaProvider, PromptBuilder, LLMProvider, and SQLValidator
 to handle Text-to-SQL requests.
 """
 import hashlib
+import threading
 import json
 import re
 import uuid
@@ -92,6 +93,10 @@ RequestMode = Literal["auto", "data", "strategy", "hybrid"]
 
 class SourceNotFoundError(RuntimeError):
     """Raised when the requested source is unavailable to the current tenant."""
+
+
+class GenerationCancelled(Exception):
+    """Raised when query generation is cancelled cooperatively."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,15 +353,29 @@ class ChatService:
 
             conversation.updated_at = asst_time
 
-            user_message = ConversationMessage(
-                conversation_id=conversation.id,
-                role="user",
-                content=question,
-                route=intent,
-                intent={"type": intent},
-                status="complete",
-                created_at=user_time,
+            existing_user_msg = (
+                db_session.query(ConversationMessage)
+                .filter(
+                    ConversationMessage.conversation_id == conversation.id,
+                    ConversationMessage.role == "user",
+                    ConversationMessage.content == question,
+                )
+                .order_by(ConversationMessage.created_at.desc())
+                .first()
             )
+            if existing_user_msg is None:
+                user_message = ConversationMessage(
+                    conversation_id=conversation.id,
+                    role="user",
+                    content=question,
+                    route=intent,
+                    intent={"type": intent},
+                    status="complete",
+                    created_at=user_time,
+                )
+                db_session.add(user_message)
+            else:
+                user_message = existing_user_msg
 
             assistant_message = ConversationMessage(
                 conversation_id=conversation.id,
@@ -371,7 +390,7 @@ class ChatService:
                 status="complete",
                 created_at=asst_time,
             )
-            db_session.add(user_message)
+            # user_message added conditionally above if not existing
             db_session.add(assistant_message)
             db_session.commit()
 
@@ -394,7 +413,8 @@ class ChatService:
         domain_id: uuid.UUID | None = None,
         requested_mode: RequestMode = "auto",
         db_session: Any | None = None,
-        user: Any | None = None,    
+        user: Any | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> dict[str, Any]:
         """Loads connected database schema, prompts LLM, executes SQL, synthesizes answer, persists messages, and returns DTO."""
         # 1. Validate request context and resolve the selected source
@@ -402,6 +422,12 @@ class ChatService:
             raise ValueError(
                 "Database session and authenticated user are required."
             )
+
+        def _check_cancelled() -> None:
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationCancelled("Generation cancelled by user or client disconnect.")
+
+        _check_cancelled()
 
         source_query = db_session.query(DataSource).filter(
             DataSource.id == source_id,
@@ -472,6 +498,7 @@ class ChatService:
                     log.info("chat_sql_cache_hit", key=cache_key)
 
                     # Persist the exchange so conversation history and audit logs are fully preserved
+                    _check_cancelled()
                     res_conv_id = self._persist_exchange(
                         db_session=db_session,
                         user=user,
@@ -536,6 +563,7 @@ class ChatService:
         if not source_tables:
             if permitted_table_ids is not None:
                 denied_msg = "Access Denied: You do not have permission to query any tables in this data source. Contact your enterprise administrator."
+                _check_cancelled()
                 res_conv_id = self._persist_exchange(
                     db_session=db_session,
                     user=user,
@@ -777,6 +805,7 @@ class ChatService:
 
             # 1. Attempt Multi-Query Data Execution for Strategy & Opportunity Questions
             try:
+                _check_cancelled()
                 multi_plan = self.llm_provider.plan_multi_queries(
                     question=question,
                     schema_text=schema_text,
@@ -788,6 +817,7 @@ class ChatService:
                         sub_sql = item.get("sql", "")
                         sub_val = self.sql_validator.validate_sql(sub_sql, dialect=source_dialect)
                         if sub_val != "UNANSWERABLE":
+                            _check_cancelled()
                             r_data, _, _, _, r_err, _ = self.sql_executor.execute_query(sub_val, source=active_source)
                             if not r_err and r_data:
                                 multi_results[sub_title] = r_data
@@ -797,6 +827,7 @@ class ChatService:
 
             # 2. If real data was gathered from the database, synthesize an Evidence-Backed Executive Report
             if multi_results:
+                _check_cancelled()
                 answer = self.answer_synthesizer.synthesize_multi_query_answer(
                     question=question,
                     multi_results=multi_results,
@@ -809,6 +840,7 @@ class ChatService:
                 combined_sql = ";\n\n".join(executed_sqls)
             else:
                 # 3. Fallback to schema-level strategic advice if queries could not be executed
+                _check_cancelled()
                 answer = self.answer_synthesizer.synthesize_strategy(
                     question=question,
                     schema_inventory=schema_inventory,
@@ -829,6 +861,7 @@ class ChatService:
             )
 
             generated_at = datetime.now(timezone.utc).isoformat()
+            _check_cancelled()
             res_conv_id = self._persist_exchange(
                 db_session=db_session,
                 user=user,
@@ -1830,6 +1863,7 @@ USER QUESTION:
 """.strip()
 
                      
+            _check_cancelled()
             direct_answer = self.llm_provider.generate_text(
                 prompt=analysis_prompt,
                 max_tokens=8192,
@@ -1843,6 +1877,7 @@ USER QUESTION:
                 schema_inventory=schema_inventory,
             )
 
+            _check_cancelled()
             res_conv_id = self._persist_exchange(
                 db_session=db_session,
                 user=user,
@@ -1906,6 +1941,7 @@ USER QUESTION:
         is_pattern_question = any(term in question.lower() for term in pattern_triggers) or decision.intent == "hybrid"
 
         if is_pattern_question:
+            _check_cancelled()
             multi_plan = self.llm_provider.plan_multi_queries(
                 question=question,
                 schema_text=schema_text,
@@ -1918,11 +1954,13 @@ USER QUESTION:
                     sub_sql = item.get("sql", "")
                     sub_val = self.sql_validator.validate_sql(sub_sql, catalog=catalog, dialect=source_dialect)
                     if sub_val != "UNANSWERABLE":
+                        _check_cancelled()
                         r_data, _, _, _, r_err, _ = self.sql_executor.execute_query(sub_val, source=active_source)
                         if not r_err and r_data:
                             multi_results[sub_title] = r_data
 
                 if multi_results:
+                    _check_cancelled()
                     multi_answer = self.answer_synthesizer.synthesize_multi_query_answer(
                         question=question,
                         multi_results=multi_results,
@@ -1938,6 +1976,7 @@ USER QUESTION:
                     first_table_rows = list(multi_results.values())[0] if multi_results else []
                     first_table_cols = list(first_table_rows[0].keys()) if first_table_rows else []
 
+                    _check_cancelled()
                     res_conv_id = self._persist_exchange(
                         db_session=db_session,
                         user=user,
@@ -2002,6 +2041,7 @@ USER QUESTION:
         )
         # 4b. Generate the initial SQL draft
         try:
+            _check_cancelled()
             raw_sql = self.llm_provider.generate_sql(
                 prompt=prompt,
                 question=question,
@@ -2037,6 +2077,7 @@ USER QUESTION:
             db_session.commit()
 
             denied_msg = f"{validation.message}"
+            _check_cancelled()
             res_conv_id = self._persist_exchange(
                 db_session=db_session,
                 user=user,
@@ -2074,6 +2115,7 @@ USER QUESTION:
             draft_sql == "UNANSWERABLE"
             and raw_sql.strip().upper() != "UNANSWERABLE"
         ):
+            _check_cancelled()
             corrected_raw_sql = self.llm_provider.refine_sql(
                 question=question,
                 failed_sql=raw_sql,
@@ -2096,6 +2138,7 @@ USER QUESTION:
         # Optional semantic review. Keep the validated draft if the reviewer
         # returns invalid SQL instead of discarding a usable query.
         if validated_sql != "UNANSWERABLE":
+            _check_cancelled()
             reviewed_sql = self.llm_provider.review_sql(
                 question=question,
                 candidate_sql=validated_sql,
@@ -2192,6 +2235,7 @@ USER QUESTION:
             )
 
             generated_at = datetime.now(timezone.utc).isoformat()
+            _check_cancelled()
             res_conv_id = self._persist_exchange(
                 db_session=db_session,
                 user=user,
@@ -2240,6 +2284,7 @@ USER QUESTION:
 
 
         # 6. Execute reviewed and validated SQL
+        _check_cancelled()
         (
             result_data,
             row_count,
@@ -2260,6 +2305,7 @@ USER QUESTION:
                 error=execution_error,
             ) 
 
+            _check_cancelled()
             refined_raw_sql = self.llm_provider.refine_sql(
                 question=question,
                 failed_sql=validated_sql,
@@ -2278,6 +2324,7 @@ USER QUESTION:
                     f"Original database error: {execution_error}"
                 ) 
         
+            _check_cancelled()
             (
                 retry_data,
                 retry_row_count,
@@ -2310,6 +2357,7 @@ USER QUESTION:
             )
 
         # 7. Synthesize an answer from verified query results
+        _check_cancelled()
         answer = self.answer_synthesizer.synthesize_answer(
             question=question,
             result_data=result_data,
@@ -2359,6 +2407,7 @@ USER QUESTION:
             )
         )
 
+        _check_cancelled()
         res_conv_id = self._persist_exchange(
             db_session=db_session,
             user=user,

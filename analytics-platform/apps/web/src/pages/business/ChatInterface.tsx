@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
-import { Download, Save, Send, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight, ChevronDown, GitBranch, FileCode2, FolderGit2, Sparkles, ArrowDown } from 'lucide-react';
+import { Download, Save, Send, Square, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight, ChevronDown, GitBranch, FileCode2, FolderGit2, Sparkles, ArrowDown } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
 import { ThoughtSteps } from '../../components/chat/ThoughtSteps';
 import { MarkdownRenderer } from '../../components/chat/MarkdownRenderer';
@@ -287,6 +287,44 @@ export const ChatInterface = () => {
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Abort controller and animation pump refs for stop generating feature
+  const abortRef = useRef<AbortController | null>(null);
+  const pumpRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const finishPumpRef = useRef<(() => void) | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const handleStop = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    if (pumpRef.current !== null) {
+      clearInterval(pumpRef.current);
+      pumpRef.current = null;
+    }
+    if (finishPumpRef.current) {
+      finishPumpRef.current();
+      finishPumpRef.current = null;
+    }
+    setLoading(false);
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
+  }, []);
+
+  // Keyboard shortcut: Esc stops generation when loading
+  useEffect(() => {
+    if (!loading) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handleStop();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [loading, handleStop]);
   const [searchQuery, setSearchQuery] = useState('');
   const [feedbackGiven, setFeedbackGiven] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
@@ -582,9 +620,16 @@ export const ChatInterface = () => {
     setInput('');
     setLoading(true);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     // Check if a code repository is selected
     const matchedRepo = codeRepos.find((r: any) => r.repo_id === selectedSourceId);
     const isRepoQuery = Boolean(matchedRepo);
+
+    const botMsgId = Date.now() + 1;
+    let generatedSql: string | null = null;
+    let finalData: any = null;
 
     try {
       if (isRepoQuery) {
@@ -592,6 +637,7 @@ export const ChatInterface = () => {
         // Route to GraphRAG code intelligence endpoint
         const data = await fetchApi(`/code-repos/${selectedSourceId}/query`, {
           method: 'POST',
+          signal: controller.signal,
           body: JSON.stringify({
             question: questionText,
             conversation_id: convId || undefined,
@@ -626,7 +672,6 @@ export const ChatInterface = () => {
         setMessages(prev => [...prev, botMsg]);
       } else {
         // Route to SQL chat streaming endpoint
-        const botMsgId = Date.now() + 1;
         const token = localStorage.getItem('token');
 
         // 1. Immediately create a placeholder assistant message for live typing
@@ -645,6 +690,7 @@ export const ChatInterface = () => {
 
         const streamRes = await fetch('/api/v1/chat/sql/stream', {
           method: 'POST',
+          signal: controller.signal,
           headers: {
             'Content-Type': 'application/json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -666,19 +712,26 @@ export const ChatInterface = () => {
         const decoder = new TextDecoder();
         let targetText = '';
         let displayedText = '';
-        let generatedSql: string | null = null;
-        let finalData: any = null;
         let isStreamFinished = false;
 
         // 60 FPS Smooth Easing Pump (Eliminates TCP pauses and jerks like ChatGPT)
         const pumpPromise = new Promise<void>((resolve) => {
-          const pumpInterval = setInterval(() => {
+          const finish = () => {
+            if (pumpRef.current !== null) {
+              clearInterval(pumpRef.current);
+              pumpRef.current = null;
+            }
+            finishPumpRef.current = null;
+            resolve();
+          };
+          finishPumpRef.current = finish;
+
+          pumpRef.current = setInterval(() => {
             if (displayedText.length < targetText.length) {
               const lag = targetText.length - displayedText.length;
               // Adaptive speed: types smoothly, but accelerates so long answers finish in 3-4s
               const step = Math.max(6, Math.min(60, Math.ceil(lag / 3)));
               displayedText = targetText.slice(0, displayedText.length + step);
-
 
               setMessages(prev => prev.map(m => m.id === botMsgId ? {
                 ...m,
@@ -691,8 +744,7 @@ export const ChatInterface = () => {
               // Smooth auto-scroll following the typed text
               messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
             } else if (isStreamFinished) {
-              clearInterval(pumpInterval);
-              resolve();
+              finish();
             }
           }, 16); // 16ms = 60 FPS
         });
@@ -713,7 +765,13 @@ export const ChatInterface = () => {
               try {
                 const payload = JSON.parse(line.substring(6));
 
-                if (payload.type === 'sql') {
+                if (payload.type === 'meta' && payload.conversation_id) {
+                  setConvId(payload.conversation_id);
+                  localStorage.setItem('active_conversation_id', payload.conversation_id);
+                } else if (payload.type === 'status') {
+                  const stageMessage = payload.message || payload.stage;
+                  setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, activeStage: stageMessage } : m));
+                } else if (payload.type === 'sql') {
                   generatedSql = payload.sql;
                   setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, sql: payload.sql } : m));
                 } else if (payload.type === 'token') {
@@ -771,9 +829,52 @@ export const ChatInterface = () => {
 
       await loadConversationsList();
     } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        setMessages(prev => {
+          const existing = prev.find(m => m.id === botMsgId);
+          const hasTypedText = Boolean(existing && (existing.content || existing.answer || existing.answer_markdown));
+          if (!hasTypedText) {
+            // Remove empty placeholder assistant message
+            return prev.filter(m => m.id !== botMsgId);
+          }
+          return prev.map(m => {
+            if (m.id !== botMsgId) return m;
+            const stoppedMsg: any = {
+              ...m,
+              isStreaming: false,
+              stopped: true,
+            };
+            if (finalData) {
+              stoppedMsg.sql = finalData.sql || generatedSql || m.sql;
+              stoppedMsg.result_data = Array.isArray(finalData.rows) ? finalData.rows : [];
+              stoppedMsg.rows = Array.isArray(finalData.rows) ? finalData.rows : [];
+              stoppedMsg.columns = finalData.columns || [];
+              stoppedMsg.column_types = finalData.column_types || {};
+              stoppedMsg.row_count = finalData.row_count || 0;
+              stoppedMsg.data_truncated = Boolean(finalData.data_truncated);
+              stoppedMsg.recommended_visualization = finalData.recommended_visualization;
+              stoppedMsg.visualization = finalData.visualization;
+              stoppedMsg.title = finalData.title;
+              stoppedMsg.execution_time_ms = finalData.execution_time_ms;
+              stoppedMsg.generated_at = finalData.generated_at;
+              stoppedMsg.database = finalData.database;
+              stoppedMsg.follow_up_questions = finalData.follow_up_questions || [];
+            }
+            return stoppedMsg;
+          });
+        });
+        await loadConversationsList();
+        return;
+      }
       setMessages(prev => [...prev, { role: 'assistant', content: err.message || 'Failed to process query.', isError: true }]);
     } finally {
       setLoading(false);
+      abortRef.current = null;
+      if (pumpRef.current !== null) {
+        clearInterval(pumpRef.current);
+        pumpRef.current = null;
+      }
+      finishPumpRef.current = null;
     }
   };
 
@@ -782,10 +883,14 @@ export const ChatInterface = () => {
     if (!questionText || loading) return;
 
     setLoading(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       if (isCodeRepoSelected) {
         const data = await fetchApi(`/code-repos/${selectedSourceId}/query`, {
           method: 'POST',
+          signal: controller.signal,
           body: JSON.stringify({
             question: questionText,
             conversation_id: convId || undefined,
@@ -805,6 +910,7 @@ export const ChatInterface = () => {
       } else {
         const data = await fetchApi('/api/v1/chat/sql', {
           method: 'POST',
+          signal: controller.signal,
           body: JSON.stringify({
             question: questionText,
             conversation_id: convId,
@@ -819,9 +925,13 @@ export const ChatInterface = () => {
         }
       }
     } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        return;
+      }
       alert(err.message || 'Failed to regenerate response.');
     } finally {
       setLoading(false);
+      abortRef.current = null;
     }
   };
 
@@ -970,6 +1080,8 @@ export const ChatInterface = () => {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
                         {/* 0. Expandable Reasoning & Thought Steps */}
                         <ThoughtSteps
+                          isLoading={m.isStreaming}
+                          activeStage={m.activeStage}
                           executionTimeMs={m.execution_time_ms}
                           intentReason={m.question}
                         />
@@ -1209,6 +1321,23 @@ export const ChatInterface = () => {
 
                     {m.role === 'assistant' && !m.isError && !m.isStreaming && (m.content || m.answer || m.answer_markdown) && (
                       <div className="flex items-center gap-4 mt-4 text-muted text-sm flex-wrap">
+                        {m.stopped && (
+                          <span
+                            style={{
+                              fontSize: '0.75rem',
+                              color: 'var(--text-muted)',
+                              background: 'var(--bg-card)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '4px',
+                              padding: '2px 8px',
+                              fontWeight: 600,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                            }}
+                          >
+                            Stopped
+                          </span>
+                        )}
                         {m.confidence_score && (
                           <div className="flex items-center gap-1" title={m.confidence_reason}>
                             <CheckCircle2 size={14} className="text-success" />
@@ -1396,10 +1525,10 @@ export const ChatInterface = () => {
       )}
 
       {/* Main Chat Area */}
-      <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', maxWidth: '100%', margin:0 }}>
 
 
-        <div className="chat-messages" style={{ padding: '0 1rem', flex: 1 }}>
+        <div className="chat-messages" style={{ padding: '0 2rem', flex: 1 }}>
           {messages.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.85, maxWidth: '560px' }}>
               <div style={{
@@ -1809,6 +1938,7 @@ export const ChatInterface = () => {
               </div>
 
               <textarea
+                ref={textareaRef}
                 style={{
                   flex: 1,
                   padding: '0.65rem 0',
@@ -1845,23 +1975,52 @@ export const ChatInterface = () => {
                 autoFocus
                 onFocus={() => setShowDomainPicker(false)}
               />
-              <button
-                type="submit"
-                disabled={loading || !input.trim()}
-                style={{
-                  borderRadius: '50%',
-                  width: '32px',
-                  height: '32px',
-                  padding: 0,
-                  background: input.trim() ? 'var(--primary)' : 'var(--bg-hover)',
-                  color: input.trim() ? 'white' : 'var(--text-muted)',
-                  marginRight: '0.5rem',
-                  transition: 'all 0.2s',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}
-              >
-                <Send size={15} style={{ transform: 'translateX(-1px)' }} />
-              </button>
+              {loading ? (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  aria-label="Stop generating"
+                  title="Stop generating"
+                  style={{
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    padding: 0,
+                    background: 'var(--bg-hover)',
+                    color: 'var(--text-main)',
+                    border: '1px solid var(--border-color)',
+                    marginRight: '0.5rem',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Square size={13} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  style={{
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    padding: 0,
+                    background: input.trim() ? 'var(--primary)' : 'var(--bg-hover)',
+                    color: input.trim() ? 'white' : 'var(--text-muted)',
+                    marginRight: '0.5rem',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: input.trim() ? 'pointer' : 'default',
+                  }}
+                >
+                  <Send size={15} style={{ transform: 'translateX(-1px)' }} />
+                </button>
+              )}
             </form>
           </div>
         </div>

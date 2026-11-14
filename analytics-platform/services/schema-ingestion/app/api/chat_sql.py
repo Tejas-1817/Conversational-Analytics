@@ -13,10 +13,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, verify_user_has_source_access, verify_user_has_domain_access
-from app.chat_sql.chat_service import ChatService, SourceNotFoundError
+import threading
+from datetime import datetime, timezone
+from app.chat_sql.chat_service import ChatService, SourceNotFoundError, GenerationCancelled
 from app.chat_sql.llm_provider import LLMTimeoutError, LLMUnavailableError
 from app.db import get_session
-from app.models import User
+from app.models import User, Conversation, ConversationMessage
 
 
 log = structlog.get_logger(__name__)
@@ -147,7 +149,46 @@ async def generate_sql_from_question_stream(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Domain not found")
         verify_user_has_domain_access(db, user, domain)
 
+    # 2. Resolve or create conversation early so client always knows conversation id even if stopped
+    conversation_id = req.conversation_id
+    if conversation_id:
+        conv = db.query(Conversation).filter(
+            Conversation.id == conversation_id,
+            Conversation.tenant_id == user.tenant_id,
+        ).first()
+        if not conv:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    else:
+        q_clean = req.question.strip()
+        title = (q_clean[:60] + "...") if len(q_clean) > 60 else (q_clean or "New Conversation")
+        conv = Conversation(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            title=title,
+            source_id=req.source_id,
+            domain_id=req.domain_id,
+        )
+        db.add(conv)
+        db.flush()
+        conversation_id = conv.id
+
+    # Persist user question message early so it is preserved even if generation is stopped
+    user_msg = ConversationMessage(
+        conversation_id=conversation_id,
+        role="user",
+        content=req.question.strip(),
+        status="complete",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(user_msg)
+    db.commit()
+
     async def event_generator():
+        cancel_event = threading.Event()
+
+        # Early Meta Event: Send conversation id immediately so client knows it
+        yield f"data: {json.dumps({'type': 'meta', 'conversation_id': str(conversation_id)})}\n\n"
+
         # Event 1: Initial status update (sent to UI immediately in ~20ms)
         yield f"data: {json.dumps({'type': 'status', 'stage': 'planning', 'message': 'Analyzing question & schema context...'})}\n\n"
         await asyncio.sleep(0.05)
@@ -164,11 +205,12 @@ async def generate_sql_from_question_stream(
                 lambda: chat_service.process_text_to_sql(
                     question=req.question.strip(),
                     source_id=req.source_id,
-                    conversation_id=req.conversation_id,
+                    conversation_id=conversation_id,
                     domain_id=req.domain_id,
                     requested_mode=req.mode,
                     db_session=db,
                     user=user,
+                    cancel_event=cancel_event,
                 ),
             )
 
@@ -199,11 +241,16 @@ async def generate_sql_from_question_stream(
                 # Crisp micro-pause between lines
                 await asyncio.sleep(0.002)
 
-
-
             # Event 5: Complete payload (contains full rows, columns, charts, follow-ups)
             yield f"data: {json.dumps({'type': 'complete', 'result': result})}\n\n"
 
+        except asyncio.CancelledError:
+            log.info("streaming_chat_sql_cancelled_by_client", conversation_id=str(conversation_id))
+            cancel_event.set()
+            raise
+        except GenerationCancelled:
+            log.info("streaming_chat_sql_generation_cancelled", conversation_id=str(conversation_id))
+            return
         except Exception as exc:
             log.exception("streaming_chat_sql_failed", error=str(exc))
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
