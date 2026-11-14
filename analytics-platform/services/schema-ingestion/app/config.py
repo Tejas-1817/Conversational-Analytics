@@ -86,6 +86,17 @@ class Settings(BaseSettings):
     rag_top_k: int = 10             # number of Chroma candidates to fetch per query
     rag_enabled: bool = True        # set False in CI / offline environments
 
+    # RAG v2. Off by default so existing retrieval stays in place.
+    rag_pipeline_v2: bool = False
+    rag_hybrid_enabled: bool = False
+    rag_query_rewrite_enabled: bool = False
+    rag_dense_k: int = 40
+    rag_rrf_k: int = 60
+    rag_rerank_top_n: int = 8
+    rag_rerank_min_score: float = 0.15
+    rag_max_query_variants: int = 4
+    rerank_provider: str = "flashrank"
+    
     # Text-to-SQL-specific retrieval and prompt limits
     chat_sql_rag_top_k: int = 12
     chat_sql_rag_distance_threshold: float = 0.75

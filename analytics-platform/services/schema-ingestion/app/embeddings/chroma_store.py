@@ -74,17 +74,23 @@ def _cosine_distance(v1: list[float], v2: list[float]) -> float:
 # Store
 # ---------------------------------------------------------------------------
 
-def _collection_name(tenant_id: str | uuid.UUID, source_id: str | uuid.UUID | None = None) -> str:
-    """Stable, Chroma-safe collection name for a tenant and optional data source.
-
-    Chroma collection names must match ^[a-zA-Z0-9_-]{3,63}$.
-    We format as 'tenant_' + tenant_hex + optional '_src_' + source_hex.
-    """
+def _collection_name(
+    tenant_id: str | uuid.UUID,
+    source_id: str | uuid.UUID | None = None,
+    collection_suffix: str | None = None,
+) -> str:
+    """Stable, Chroma-safe collection name. Optional suffix isolates the v2 index."""
     hex_tenant = str(tenant_id).replace("-", "").lower()
     if source_id:
         hex_source = str(source_id).replace("-", "").lower()
-        return f"tenant_{hex_tenant[:16]}_src_{hex_source[:16]}"
-    return f"tenant_{hex_tenant}"
+        base = f"tenant_{hex_tenant[:16]}_src_{hex_source[:16]}"
+    else:
+        base = f"tenant_{hex_tenant}"
+    if collection_suffix:
+        safe = "".join(ch for ch in collection_suffix if ch.isalnum() or ch in ("_", "-"))[:8]
+        if safe:
+            base = f"{base}_{safe}"
+    return base[:63]
 
 
 class ChromaStore:
