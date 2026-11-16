@@ -53,9 +53,8 @@ def trigger_ingestion(
         if not job_created:
             is_stale = True
         else:
-            if job_created.tzinfo is None:
-                job_created = job_created.replace(tzinfo=timezone.utc)
-            is_stale = (job_created < stale_cutoff)
+            job_created_utc = job_created.astimezone(timezone.utc)
+            is_stale = (job_created_utc < stale_cutoff)
 
         if is_stale:
             r_job.status = "failed"
