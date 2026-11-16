@@ -46,11 +46,18 @@ def trigger_ingestion(
     )
 
     for r_job in running_jobs:
-        # If job created over 2 minutes ago and still running, mark as timed out so user can re-run
         job_created = r_job.created_at
-        if job_created and job_created.tzinfo is None:
-            job_created = job_created.replace(tzinfo=timezone.utc)
-        if job_created and job_created < stale_cutoff:
+        
+        # Check if job is older than 2 minutes OR if created_at was missing/empty
+        is_stale = False
+        if not job_created:
+            is_stale = True
+        else:
+            if job_created.tzinfo is None:
+                job_created = job_created.replace(tzinfo=timezone.utc)
+            is_stale = (job_created < stale_cutoff)
+
+        if is_stale:
             r_job.status = "failed"
             r_job.error = "Job timed out or worker was restarted"
             session.commit()
