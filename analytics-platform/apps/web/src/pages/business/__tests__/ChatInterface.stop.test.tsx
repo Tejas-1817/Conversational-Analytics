@@ -84,6 +84,28 @@ describe('ChatInterface - Stop Generating feature', () => {
     expect(capturedSignal?.aborted).toBe(false);
   });
 
+  it('shows the scroll-to-bottom button only when the chat is not at the bottom', async () => {
+    render(<ChatInterface />);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Ask about your data...')).toBeDefined();
+    });
+
+    const messages = document.querySelector('.chat-messages') as HTMLDivElement;
+    Object.defineProperties(messages, {
+      scrollHeight: { configurable: true, value: 500 },
+      clientHeight: { configurable: true, value: 300 },
+      scrollTop: { configurable: true, writable: true, value: 0 },
+    });
+
+    fireEvent.scroll(messages);
+    expect(screen.getByRole('button', { name: 'Scroll to latest response' })).toBeDefined();
+
+    messages.scrollTop = 200;
+    fireEvent.scroll(messages);
+    expect(screen.queryByRole('button', { name: 'Scroll to latest response' })).toBeNull();
+  });
+
   it('clicking Stop calls abort on controller, shows no error bubble, and re-enables textarea', async () => {
     let capturedSignal: any = null;
     globalThis.fetch = vi.fn().mockImplementation((_url: string, options: any) => {

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { fetchApi } from '../services/api';
 import { addMockDomain, updateMockDomainDocs, mockDomains } from '../pages/business/Domains';
 
-const ALLOWED_EXTENSIONS = ['pdf', 'docx', 'csv', 'xlsx'] as const;
+const ALLOWED_EXTENSIONS = ['pdf', 'docx', 'csv', 'xlsx', 'md'] as const;
 
 const domainSchema = z.object({
   name: z.string().min(1, 'Domain name is required').max(200),
@@ -624,13 +624,13 @@ export const DomainModal: React.FC<DomainModalProps> = ({
                   Drag & drop files here
                 </p>
                 <p className="text-muted text-sm" style={{ margin: '0.25rem 0 0 0' }}>
-                  or click to browse — PDF, DOCX, CSV, XLSX
+                  or click to browse — PDF, DOCX, CSV, XLSX, MD
                 </p>
                 <input
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept=".pdf,.docx,.csv,.xlsx"
+                  accept=".pdf,.docx,.csv,.xlsx,.md"
                   style={{ display: 'none' }}
                   onChange={handleFileInputChange}
                 />
@@ -641,7 +641,7 @@ export const DomainModal: React.FC<DomainModalProps> = ({
                   <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
                   <div>
                     <strong style={{ display: 'block', marginBottom: '2px' }}>Unsupported file type</strong>
-                    {rejectedFiles.join(', ')} — only PDF, DOCX, CSV, XLSX are allowed.
+                    {rejectedFiles.join(', ')} — only PDF, DOCX, CSV, XLSX, and MD are allowed.
                   </div>
                 </div>
               )}
