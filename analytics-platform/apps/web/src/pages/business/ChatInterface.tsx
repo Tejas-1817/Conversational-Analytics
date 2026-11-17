@@ -331,6 +331,7 @@ export const ChatInterface = () => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const isDragging = useRef(false);
@@ -1532,8 +1533,25 @@ export const ChatInterface = () => {
       <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', maxWidth: '100%', margin:0 }}>
 
 
-        <div className="chat-messages" style={{ padding: '0 2rem', flex: 1 }}>
-          {messages.length === 0 && (
+        <div
+          className="chat-messages"
+          style={{ padding: '0 1rem', flex: 1 }}
+          onScroll={(event) => {
+            const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+            setIsAtBottom(scrollHeight - clientHeight - scrollTop <= 24);
+          }}
+        >
+          <div
+            style={{
+              maxWidth: '800px',
+              width: '100%',
+              margin: '0 auto',
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: '100%',
+            }}
+          >
+            {messages.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.85, maxWidth: '560px' }}>
               <div style={{
                 width: '64px',
@@ -1597,44 +1615,48 @@ export const ChatInterface = () => {
             </div>
           )}
           <div ref={messagesEndRef} style={{ height: '1px' }} />
+          </div>
         </div>
 
-        <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: 0, zIndex: 20, paddingBottom: '1.5rem', paddingTop: '1rem' }}>
+        <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: 0, zIndex: 20, paddingBottom: '1.5rem', paddingTop: '1rem', paddingLeft: '1rem', paddingRight: '1rem' }}>
           <div style={{ margin: '0 auto', maxWidth: '800px', position: 'relative' }}>
             {/* Floating Scroll to Bottom Arrow Button */}
-            <div style={{ position: 'absolute', top: '-52px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
-              <button
-                type="button"
-                onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
-                style={{
-                  width: '42px',
-                  height: '42px',
-                  borderRadius: '50%',
-                  backgroundColor: '#FFFFFF',
-                  border: '1.5px solid #E2E8F0',
-                  boxShadow: '0 4px 14px rgba(0, 0, 0, 0.12)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#2563EB',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#93C5FD';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 6px 18px rgba(37, 99, 235, 0.2)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#E2E8F0';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 4px 14px rgba(0, 0, 0, 0.12)';
-                }}
-                title="Scroll to latest response"
-              >
-                <ArrowDown size={22} strokeWidth={2.4} style={{ color: '#2563EB' }} />
-              </button>
-            </div>
+            {!isAtBottom && (
+              <div style={{ position: 'absolute', top: '-52px', left: '50%', transform: 'translateX(-50%)', zIndex: 30 }}>
+                <button
+                  type="button"
+                  onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                  aria-label="Scroll to latest response"
+                  style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '50%',
+                    backgroundColor: '#FFFFFF',
+                    border: '1.5px solid #E2E8F0',
+                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#2563EB',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#93C5FD';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 6px 18px rgba(37, 99, 235, 0.2)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#E2E8F0';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(0, 0, 0, 0.12)';
+                  }}
+                  title="Scroll to latest response"
+                >
+                  <ArrowDown size={22} strokeWidth={2.4} style={{ color: '#2563EB' }} />
+                </button>
+              </div>
+            )}
 
             {/* Database & Domain Selection Bar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem', paddingLeft: '0.25rem', flexWrap: 'wrap' }}>

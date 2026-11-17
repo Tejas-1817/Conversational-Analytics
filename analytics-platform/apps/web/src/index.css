@@ -801,7 +801,8 @@ tr:last-child td {
 
 .message-bubble.assistant {
   margin-right: auto;
-  max-width: 95%;
+  max-width: 100%;
+  width: 100%;
 }
 
 .message-avatar {
