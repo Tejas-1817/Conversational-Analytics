@@ -1012,14 +1012,14 @@ export const ChatInterface = () => {
   };
 
   const handleApproveResponse = async (messageId: string) => {
+    if (!convId) return;
     const isCurrentlyApproved = feedbackGiven[messageId] === 'approved';
 
     try {
       if (isCurrentlyApproved) {
         // UNDO: Call unapprove endpoint and remove green checkmark
-        await fetchApi('/engine/examples/unapprove', {
-          method: 'POST',
-          body: JSON.stringify({ message_id: messageId })
+        await fetchApi(`/engine/conversations/${convId}/messages/${messageId}/feedback`, {
+          method: 'DELETE'
         });
         setFeedbackGiven(prev => {
           const next = { ...prev };
@@ -1027,10 +1027,10 @@ export const ChatInterface = () => {
           return next;
         });
       } else {
-        // APPROVE: Call approve endpoint and show green checkmark
-        await fetchApi('/engine/examples/approve', {
+        // POSITIVE FEEDBACK: Submit positive feedback (and register golden SQL if query exists
+        await fetchApi(`/engine/conversations/${convId}/messages/${messageId}/feedback`, {
           method: 'POST',
-          body: JSON.stringify({ message_id: messageId })
+          body: JSON.stringify({ is_positive: true })
         });
         setFeedbackGiven(prev => ({ ...prev, [messageId]: 'approved' }));
       }
@@ -1078,15 +1078,15 @@ export const ChatInterface = () => {
               )}
 
 
-                    {!m.isError && (m.sql || m.content || m.answer) && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
-                        {/* 0. Expandable Reasoning & Thought Steps */}
-                        <ThoughtSteps
-                          isLoading={m.isStreaming}
-                          activeStage={m.activeStage}
-                          executionTimeMs={m.execution_time_ms}
-                          intentReason={m.question}
-                        />
+              {!m.isError && (m.sql || m.content || m.answer) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
+                  {/* 0. Expandable Reasoning & Thought Steps */}
+                  <ThoughtSteps
+                    isLoading={m.isStreaming}
+                    activeStage={m.activeStage}
+                    executionTimeMs={m.execution_time_ms}
+                    intentReason={m.question}
+                  />
 
 
                   {/* 1. Structured Cards & Markdown Synthesis */}
@@ -1099,257 +1099,257 @@ export const ChatInterface = () => {
 
 
 
-                        {/* 2. Primary Visualization */}
-                        {m.result_data && m.result_data.length > 0 && (
-                          <div style={{ marginTop: '0.5rem', width: '100%' }}>
-                            <div className="flex justify-between items-center mb-4">
-                              <div className="flex items-center gap-2">
-                                <BarChart2 size={18} className="text-primary" style={{ color: '#6366F1' }} />
-                                <span className="text-base font-bold" style={{ color: 'var(--text-main)' }}>
-                                  {m.title || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : null) || m.question || 'Query Result'}
-                                </span>
-                              </div>
-                              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                <button className="btn-secondary" onClick={() => handleDownloadCSV(m)} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }} title="Download CSV">
-                                  <Download size={14} style={{ marginRight: '0.25rem' }} /> Download CSV
-                                </button>
-                                <button className="btn-secondary" onClick={() => handleSaveInsight(m)} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }}>
-                                  <Save size={14} style={{ marginRight: '0.25rem' }} /> Save Insight
-                                </button>
-                              </div>
-                            </div>
-                            {m.data_truncated && (
-                              <div
-                                className="badge badge-warning"
-                                style={{
-                                  marginBottom: '1rem',
-                                  padding: '0.5rem 0.75rem',
-                                  borderRadius: '8px',
-                                  display: 'block',
-                                }}
-                              >
-                                Showing the first {m.row_count} rows. Download or refine the query for a complete result.
-                              </div>
-                            )}
-
-                            {(() => {
-                              const rows = m.result_data || m.rows || [];
-                              const cols = m.columns || (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
-
-                              let resolvedType = m.visualization || m.chart_recommendation;
-                              if (typeof m.recommended_visualization === 'object' && m.recommended_visualization !== null) {
-                                resolvedType = m.recommended_visualization.visualization || m.recommended_visualization.chart_type || resolvedType;
-                              } else if (typeof m.recommended_visualization === 'string') {
-                                resolvedType = m.recommended_visualization;
-                              }
-
-                              // 1. Explicit prompt override: If user asked for a specific chart, prioritize it
-                              const qLower = (m.question || '').toLowerCase();
-                              if (rows.length > 0 && cols.length >= 2) {
-                                if (qLower.includes('bar chart') || qLower.includes('bar graph') || qLower.includes('horizontal bar')) {
-                                  resolvedType = 'bar_chart';
-                                } else if (qLower.includes('line chart') || qLower.includes('line graph') || qLower.includes('trend') || qLower.includes('over time')) {
-                                  resolvedType = 'line_chart';
-                                } else if (qLower.includes('pie chart') || qLower.includes('donut chart') || qLower.includes('share of') || qLower.includes('percentage distribution')) {
-                                  resolvedType = 'pie_chart';
-                                } else if (qLower.includes('area chart')) {
-                                  resolvedType = 'area_chart';
-                                }
-                              }
-
-                              // 2. Fallback heuristic: Clean comparative datasets (2 to 5 columns, <= 20 rows) render as Bar Chart instead of raw table
-                              if (!resolvedType || resolvedType === 'table') {
-                                if (rows.length === 1 && cols.length === 1) resolvedType = 'kpi_card';
-                                else if (rows.length === 1 && cols.length > 1) resolvedType = 'detail_card';
-                                else if (rows.length > 1 && rows.length <= 20 && cols.length >= 2 && cols.length <= 5) resolvedType = 'bar_chart';
-                                else resolvedType = resolvedType || 'table';
-                              }
-
-                              const cardTitle = m.title || (m.result_data && m.result_data.title) || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
-
-                              // Resolve column_types from API response or persisted result_data
-                              const columnTypes: Record<string, string> =
-                                m.column_types ||
-                                (m.result_data && typeof m.result_data === 'object' && !Array.isArray(m.result_data) ? m.result_data.column_types : undefined) ||
-                                (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.profile?.column_types : undefined) ||
-                                {};
-
-                              const containerHeight = resolvedType === 'kpi_card' ? '180px' : (resolvedType === 'detail_card' ? '220px' : (resolvedType === 'multi_kpi' ? '160px' : '380px'));
-
-                              return (
-                                <div style={{ height: containerHeight, width: '100%' }}>
-                                  <ChartRenderer
-                                    data={rows}
-                                    chartType={resolvedType}
-                                    title={cardTitle}
-                                    columns={cols}
-                                    columnTypes={columnTypes}
-                                    onPointClick={(pt) => {
-                                      if (pt.category) {
-                                        setInput(`Break down ${pt.category} in more detail`);
-                                      }
-                                    }}
-                                  />
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        )}
-
-                        {/* 3. Collapsible SQL Accordion */}
-                        {m.sql && (
-                          <SqlAccordion sql={m.sql} />
-                        )}
-
-                        {/* 4. Collapsible Raw Data Accordion — renders a proper HTML table, never ChartRenderer */}
-                        {m.result_data && m.result_data.length > 0 && (() => {
-                          const rawRows: any[] = m.result_data || [];
-                          const rawCols: string[] = m.columns || (rawRows.length > 0 ? Object.keys(rawRows[0]) : []);
-                          return (
-                            <details className="raw-data-accordion" style={{
-                              backgroundColor: 'var(--bg-card, #1a1a24)',
-                              border: '1px solid var(--border-color, #2b2b40)',
-                              borderRadius: '10px',
-                              padding: '0.6rem 1rem',
-                              fontSize: '0.85rem'
-                            }}>
-                              <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.85rem', userSelect: 'none', outline: 'none' }}>
-                                View Raw Data Grid ({m.row_count || rawRows.length} rows)
-                              </summary>
-                              <div style={{ marginTop: '0.75rem', maxHeight: '320px', overflowY: 'auto', overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                                  <thead>
-                                    <tr>
-                                      {rawCols.map(col => (
-                                        <th key={col} style={{
-                                          padding: '0.4rem 0.75rem',
-                                          textAlign: 'left',
-                                          borderBottom: '2px solid var(--border-color)',
-                                          color: 'var(--text-muted)',
-                                          fontWeight: 700,
-                                          textTransform: 'uppercase',
-                                          letterSpacing: '0.05em',
-                                          whiteSpace: 'nowrap'
-                                        }}>{col.replace(/_/g, ' ')}</th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {rawRows.map((row, ri) => (
-                                      <tr key={ri} style={{ borderBottom: '1px solid var(--border-color)', background: ri % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.02)' }}>
-                                        {rawCols.map(col => (
-                                          <td key={col} style={{ padding: '0.4rem 0.75rem', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>
-                                            {row[col] === null || row[col] === undefined ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>null</span> : String(row[col])}
-                                          </td>
-                                        ))}
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </details>
-                          );
-                        })()}
-
-                        {/* Code Intelligence: Referenced Files & Symbols */}
-                        {((m.referenced_files && m.referenced_files.length > 0) || (m.referenced_symbols && m.referenced_symbols.length > 0)) && (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
-                            {m.referenced_files?.map((fp: string) => (
-                              <span
-                                key={fp}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.35rem',
-                                  padding: '0.2rem 0.55rem',
-                                  background: 'rgba(236,72,153,0.08)',
-                                  border: '1px solid rgba(236,72,153,0.25)',
-                                  borderRadius: '6px',
-                                  fontSize: '0.75rem',
-                                  color: '#ec4899',
-                                  fontFamily: 'monospace',
-                                }}
-                                title={`Referenced File: ${fp}`}
-                              >
-                                <FileCode2 size={12} />
-                                {fp}
-                              </span>
-                            ))}
-                            {m.referenced_symbols?.map((sym: string) => (
-                              <span
-                                key={sym}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.35rem',
-                                  padding: '0.2rem 0.55rem',
-                                  background: 'rgba(99,102,241,0.08)',
-                                  border: '1px solid rgba(99,102,241,0.25)',
-                                  borderRadius: '6px',
-                                  fontSize: '0.75rem',
-                                  color: 'var(--primary)',
-                                  fontFamily: 'monospace',
-                                  cursor: 'pointer',
-                                }}
-                                onClick={() => setInput(`Explain how ${sym} is implemented and where it is called`)}
-                                title={`Click to ask about ${sym}`}
-                              >
-                                <Code size={12} />
-                                {sym}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Code Intelligence: Neo4j Graph Architecture Facts */}
-                        {m.graph_facts && m.graph_facts.length > 0 && (
-                          <GraphFactsAccordion facts={m.graph_facts} />
-                        )}
-
-                        {/* Code Intelligence: ChromaDB Retrieved Code Chunks */}
-                        {m.retrieved_chunks && m.retrieved_chunks.length > 0 && (
-                          <CodeSnippetAccordion chunks={m.retrieved_chunks} />
-                        )}
-
-                        {/* 5. Arrow Suggested Follow-Ups */}
-                        {m.follow_up_questions?.length > 0 && (
-                          <FollowUpSuggestions
-                            questions={m.follow_up_questions}
-                            onSelect={(q) => {
-                              setInput(q);
-                            }}
-                          />
-                        )}
-                      </div>
-                    )}
-
-                    {m.role === 'assistant' && !m.isError && !m.isStreaming && (m.content || m.answer || m.answer_markdown) && (
-                      <div className="flex items-center gap-4 mt-4 text-muted text-sm flex-wrap">
-                        {m.stopped && (
-                          <span
-                            style={{
-                              fontSize: '0.75rem',
-                              color: 'var(--text-muted)',
-                              background: 'var(--bg-card)',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: '4px',
-                              padding: '2px 8px',
-                              fontWeight: 600,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                            }}
-                          >
-                            Stopped
+                  {/* 2. Primary Visualization */}
+                  {m.result_data && m.result_data.length > 0 && (
+                    <div style={{ marginTop: '0.5rem', width: '100%' }}>
+                      <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2">
+                          <BarChart2 size={18} className="text-primary" style={{ color: '#6366F1' }} />
+                          <span className="text-base font-bold" style={{ color: 'var(--text-main)' }}>
+                            {m.title || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : null) || m.question || 'Query Result'}
                           </span>
-                        )}
-                        {m.confidence_score && (
-                          <div className="flex items-center gap-1" title={m.confidence_reason}>
-                            <CheckCircle2 size={14} className="text-success" />
-                            <span>Confidence: {(m.confidence_score * 100).toFixed(0)}%</span>
-                          </div>
-                        )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button className="btn-secondary" onClick={() => handleDownloadCSV(m)} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }} title="Download CSV">
+                            <Download size={14} style={{ marginRight: '0.25rem' }} /> Download CSV
+                          </button>
+                          <button className="btn-secondary" onClick={() => handleSaveInsight(m)} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }}>
+                            <Save size={14} style={{ marginRight: '0.25rem' }} /> Save Insight
+                          </button>
+                        </div>
+                      </div>
+                      {m.data_truncated && (
+                        <div
+                          className="badge badge-warning"
+                          style={{
+                            marginBottom: '1rem',
+                            padding: '0.5rem 0.75rem',
+                            borderRadius: '8px',
+                            display: 'block',
+                          }}
+                        >
+                          Showing the first {m.row_count} rows. Download or refine the query for a complete result.
+                        </div>
+                      )}
 
-                        <div className="flex-1" />
+                      {(() => {
+                        const rows = m.result_data || m.rows || [];
+                        const cols = m.columns || (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
+
+                        let resolvedType = m.visualization || m.chart_recommendation;
+                        if (typeof m.recommended_visualization === 'object' && m.recommended_visualization !== null) {
+                          resolvedType = m.recommended_visualization.visualization || m.recommended_visualization.chart_type || resolvedType;
+                        } else if (typeof m.recommended_visualization === 'string') {
+                          resolvedType = m.recommended_visualization;
+                        }
+
+                        // 1. Explicit prompt override: If user asked for a specific chart, prioritize it
+                        const qLower = (m.question || '').toLowerCase();
+                        if (rows.length > 0 && cols.length >= 2) {
+                          if (qLower.includes('bar chart') || qLower.includes('bar graph') || qLower.includes('horizontal bar')) {
+                            resolvedType = 'bar_chart';
+                          } else if (qLower.includes('line chart') || qLower.includes('line graph') || qLower.includes('trend') || qLower.includes('over time')) {
+                            resolvedType = 'line_chart';
+                          } else if (qLower.includes('pie chart') || qLower.includes('donut chart') || qLower.includes('share of') || qLower.includes('percentage distribution')) {
+                            resolvedType = 'pie_chart';
+                          } else if (qLower.includes('area chart')) {
+                            resolvedType = 'area_chart';
+                          }
+                        }
+
+                        // 2. Fallback heuristic: Clean comparative datasets (2 to 5 columns, <= 20 rows) render as Bar Chart instead of raw table
+                        if (!resolvedType || resolvedType === 'table') {
+                          if (rows.length === 1 && cols.length === 1) resolvedType = 'kpi_card';
+                          else if (rows.length === 1 && cols.length > 1) resolvedType = 'detail_card';
+                          else if (rows.length > 1 && rows.length <= 20 && cols.length >= 2 && cols.length <= 5) resolvedType = 'bar_chart';
+                          else resolvedType = resolvedType || 'table';
+                        }
+
+                        const cardTitle = m.title || (m.result_data && m.result_data.title) || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
+
+                        // Resolve column_types from API response or persisted result_data
+                        const columnTypes: Record<string, string> =
+                          m.column_types ||
+                          (m.result_data && typeof m.result_data === 'object' && !Array.isArray(m.result_data) ? m.result_data.column_types : undefined) ||
+                          (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.profile?.column_types : undefined) ||
+                          {};
+
+                        const containerHeight = resolvedType === 'kpi_card' ? '180px' : (resolvedType === 'detail_card' ? '220px' : (resolvedType === 'multi_kpi' ? '160px' : '380px'));
+
+                        return (
+                          <div style={{ height: containerHeight, width: '100%' }}>
+                            <ChartRenderer
+                              data={rows}
+                              chartType={resolvedType}
+                              title={cardTitle}
+                              columns={cols}
+                              columnTypes={columnTypes}
+                              onPointClick={(pt) => {
+                                if (pt.category) {
+                                  setInput(`Break down ${pt.category} in more detail`);
+                                }
+                              }}
+                            />
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* 3. Collapsible SQL Accordion */}
+                  {m.sql && (
+                    <SqlAccordion sql={m.sql} />
+                  )}
+
+                  {/* 4. Collapsible Raw Data Accordion — renders a proper HTML table, never ChartRenderer */}
+                  {m.result_data && m.result_data.length > 0 && (() => {
+                    const rawRows: any[] = m.result_data || [];
+                    const rawCols: string[] = m.columns || (rawRows.length > 0 ? Object.keys(rawRows[0]) : []);
+                    return (
+                      <details className="raw-data-accordion" style={{
+                        backgroundColor: 'var(--bg-card, #1a1a24)',
+                        border: '1px solid var(--border-color, #2b2b40)',
+                        borderRadius: '10px',
+                        padding: '0.6rem 1rem',
+                        fontSize: '0.85rem'
+                      }}>
+                        <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.85rem', userSelect: 'none', outline: 'none' }}>
+                          View Raw Data Grid ({m.row_count || rawRows.length} rows)
+                        </summary>
+                        <div style={{ marginTop: '0.75rem', maxHeight: '320px', overflowY: 'auto', overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                            <thead>
+                              <tr>
+                                {rawCols.map(col => (
+                                  <th key={col} style={{
+                                    padding: '0.4rem 0.75rem',
+                                    textAlign: 'left',
+                                    borderBottom: '2px solid var(--border-color)',
+                                    color: 'var(--text-muted)',
+                                    fontWeight: 700,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.05em',
+                                    whiteSpace: 'nowrap'
+                                  }}>{col.replace(/_/g, ' ')}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rawRows.map((row, ri) => (
+                                <tr key={ri} style={{ borderBottom: '1px solid var(--border-color)', background: ri % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.02)' }}>
+                                  {rawCols.map(col => (
+                                    <td key={col} style={{ padding: '0.4rem 0.75rem', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>
+                                      {row[col] === null || row[col] === undefined ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>null</span> : String(row[col])}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    );
+                  })()}
+
+                  {/* Code Intelligence: Referenced Files & Symbols */}
+                  {((m.referenced_files && m.referenced_files.length > 0) || (m.referenced_symbols && m.referenced_symbols.length > 0)) && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
+                      {m.referenced_files?.map((fp: string) => (
+                        <span
+                          key={fp}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.2rem 0.55rem',
+                            background: 'rgba(236,72,153,0.08)',
+                            border: '1px solid rgba(236,72,153,0.25)',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            color: '#ec4899',
+                            fontFamily: 'monospace',
+                          }}
+                          title={`Referenced File: ${fp}`}
+                        >
+                          <FileCode2 size={12} />
+                          {fp}
+                        </span>
+                      ))}
+                      {m.referenced_symbols?.map((sym: string) => (
+                        <span
+                          key={sym}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.2rem 0.55rem',
+                            background: 'rgba(99,102,241,0.08)',
+                            border: '1px solid rgba(99,102,241,0.25)',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            color: 'var(--primary)',
+                            fontFamily: 'monospace',
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => setInput(`Explain how ${sym} is implemented and where it is called`)}
+                          title={`Click to ask about ${sym}`}
+                        >
+                          <Code size={12} />
+                          {sym}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Code Intelligence: Neo4j Graph Architecture Facts */}
+                  {m.graph_facts && m.graph_facts.length > 0 && (
+                    <GraphFactsAccordion facts={m.graph_facts} />
+                  )}
+
+                  {/* Code Intelligence: ChromaDB Retrieved Code Chunks */}
+                  {m.retrieved_chunks && m.retrieved_chunks.length > 0 && (
+                    <CodeSnippetAccordion chunks={m.retrieved_chunks} />
+                  )}
+
+                  {/* 5. Arrow Suggested Follow-Ups */}
+                  {m.follow_up_questions?.length > 0 && (
+                    <FollowUpSuggestions
+                      questions={m.follow_up_questions}
+                      onSelect={(q) => {
+                        setInput(q);
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {m.role === 'assistant' && !m.isError && !m.isStreaming && (m.content || m.answer || m.answer_markdown) && (
+                <div className="flex items-center gap-4 mt-4 text-muted text-sm flex-wrap">
+                  {m.stopped && (
+                    <span
+                      style={{
+                        fontSize: '0.75rem',
+                        color: 'var(--text-muted)',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        padding: '2px 8px',
+                        fontWeight: 600,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      Stopped
+                    </span>
+                  )}
+                  {m.confidence_score && (
+                    <div className="flex items-center gap-1" title={m.confidence_reason}>
+                      <CheckCircle2 size={14} className="text-success" />
+                      <span>Confidence: {(m.confidence_score * 100).toFixed(0)}%</span>
+                    </div>
+                  )}
+
+                  <div className="flex-1" />
 
 
                   <div className="flex items-center gap-2">
@@ -1530,7 +1530,7 @@ export const ChatInterface = () => {
       )}
 
       {/* Main Chat Area */}
-      <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', maxWidth: '100%', margin:0 }}>
+      <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', maxWidth: '100%', margin: 0 }}>
 
 
         <div
@@ -1552,69 +1552,69 @@ export const ChatInterface = () => {
             }}
           >
             {messages.length === 0 && (
-            <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.85, maxWidth: '560px' }}>
-              <div style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '50%',
-                background: isCodeRepoSelected ? 'rgba(236, 72, 153, 0.12)' : 'rgba(79, 70, 229, 0.1)',
-                color: isCodeRepoSelected ? '#ec4899' : 'var(--primary)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 1.5rem',
-              }}>
-                {isCodeRepoSelected ? <FolderGit2 size={32} /> : <Bot size={32} />}
-              </div>
-              <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>
-                {isCodeRepoSelected ? 'Ask Code Intelligence' : 'How can I help you today?'}
-              </h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                {isCodeRepoSelected
-                  ? 'Ask questions about repository architecture, call hierarchies, AST functions, and API logic.'
-                  : 'Ask a question about your business data in plain English to generate SQL & view live results.'}
-              </p>
+              <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.85, maxWidth: '560px' }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  background: isCodeRepoSelected ? 'rgba(236, 72, 153, 0.12)' : 'rgba(79, 70, 229, 0.1)',
+                  color: isCodeRepoSelected ? '#ec4899' : 'var(--primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 1.5rem',
+                }}>
+                  {isCodeRepoSelected ? <FolderGit2 size={32} /> : <Bot size={32} />}
+                </div>
+                <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>
+                  {isCodeRepoSelected ? 'Ask Code Intelligence' : 'How can I help you today?'}
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                  {isCodeRepoSelected
+                    ? 'Ask questions about repository architecture, call hierarchies, AST functions, and API logic.'
+                    : 'Ask a question about your business data in plain English to generate SQL & view live results.'}
+                </p>
 
-              <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left' }}>
-                {isCodeRepoSelected ? (
-                  <>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("How does request authentication and token verification work?")}>
-                      <span className="text-sm">"How does request authentication and token verification work?"</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("What are the main API routes and their handler functions?")}>
-                      <span className="text-sm">"What are the main API routes and their handler functions?"</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Explain the core data models and database connections used.")}>
-                      <span className="text-sm">"Explain the core data models and database connections used."</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Which functions execute background tasks or jobs?")}>
-                      <span className="text-sm">"Which functions execute background tasks or jobs?"</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
-                      <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me top 5 users by created_at date")}>
-                      <span className="text-sm">"Show me top 5 users by created_at date"</span>
-                    </div>
-                  </>
-                )}
+                <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left' }}>
+                  {isCodeRepoSelected ? (
+                    <>
+                      <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("How does request authentication and token verification work?")}>
+                        <span className="text-sm">"How does request authentication and token verification work?"</span>
+                      </div>
+                      <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("What are the main API routes and their handler functions?")}>
+                        <span className="text-sm">"What are the main API routes and their handler functions?"</span>
+                      </div>
+                      <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Explain the core data models and database connections used.")}>
+                        <span className="text-sm">"Explain the core data models and database connections used."</span>
+                      </div>
+                      <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Which functions execute background tasks or jobs?")}>
+                        <span className="text-sm">"Which functions execute background tasks or jobs?"</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
+                        <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
+                      </div>
+                      <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me top 5 users by created_at date")}>
+                        <span className="text-sm">"Show me top 5 users by created_at date"</span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {renderedMessages}
-          {/* Initial live loading state with live thought timer */}
-          {loading && !messages.some(m => m.status === 'processing') && (
-            <div className="message-bubble assistant">
-              <div className="message-content">
-                <ThoughtSteps isLoading={true} />
+            {renderedMessages}
+            {/* Initial live loading state with live thought timer */}
+            {loading && !messages.some(m => m.status === 'processing') && (
+              <div className="message-bubble assistant">
+                <div className="message-content">
+                  <ThoughtSteps isLoading={true} />
+                </div>
               </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} style={{ height: '1px' }} />
+            )}
+            <div ref={messagesEndRef} style={{ height: '1px' }} />
           </div>
         </div>
 
