@@ -1739,6 +1739,8 @@ USER QUESTION:
             question=question,
             columns=columns,
             schema_inventory=schema_inventory,
+            sql=validated_sql,
+            domain_context=domain_context_str,
         )
 
         format_date = lambda d: d.strftime("%d %b %Y, %I:%M %p")
