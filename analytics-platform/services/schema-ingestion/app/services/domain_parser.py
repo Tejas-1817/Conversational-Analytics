@@ -4,35 +4,98 @@ Supports PDF (.pdf), Word (.docx), CSV (.csv), and Excel (.xlsx) formats.
 """
 from __future__ import annotations
 
+import csv
 import io
 import os
-import csv
+import tempfile
+import threading
+
 import structlog
-from typing import List, Dict, Any
-from docx import Document
 
 log = structlog.get_logger(__name__)
 
 
+_DOCLING_LOCK = threading.Lock()
+_DOCLING_CONVERTER = None
+_DOCLING_EXTENSIONS = {"pdf", "docx", "pptx", "xlsx", "html", "md"}
+
+
+def _get_docling_converter():
+    """Lazily initialize a single reusable Docling DocumentConverter."""
+    global _DOCLING_CONVERTER
+    if _DOCLING_CONVERTER is not None:
+        return _DOCLING_CONVERTER
+
+    with _DOCLING_LOCK:
+        if _DOCLING_CONVERTER is not None:
+            return _DOCLING_CONVERTER
+
+        from docling.datamodel.base_models import InputFormat
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.document_converter import DocumentConverter, PdfFormatOption
+
+        from app.config import get_settings
+
+        settings = get_settings()
+        pdf_opts = PdfPipelineOptions()
+        pdf_opts.do_ocr = bool(getattr(settings, "domain_docling_ocr", False))
+        pdf_opts.do_table_structure = True
+
+        _DOCLING_CONVERTER = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_opts),
+            }
+        )
+        log.info("docling_converter_initialized", ocr=pdf_opts.do_ocr)
+        return _DOCLING_CONVERTER
+
+
+def _parse_with_docling(file_bytes: bytes, file_name: str) -> str:
+    """Convert PDF/DOCX/PPTX/XLSX to layout-aware Markdown via Docling."""
+    ext = file_name.split(".")[-1].lower() if "." in file_name else "pdf"
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
+
+        converter = _get_docling_converter()
+        result = converter.convert(tmp_path)
+        return (result.document.export_to_markdown() or "").strip()
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
 def parse_document(file_bytes: bytes, file_name: str) -> str:
-    """Extract raw plain text from document bytes based on file extension."""
+    """Extract structured Markdown/plain text from document bytes."""
     ext = file_name.split(".")[-1].lower() if "." in file_name else ""
-    
+
+    if ext == "doc":
+        raise ValueError("Legacy .doc files are unsupported. Convert the file to .docx.")
+
+    if ext in _DOCLING_EXTENSIONS:
+        try:
+            from app.config import get_settings
+            if getattr(get_settings(), "domain_use_docling", False):
+                md_text = _parse_with_docling(file_bytes, file_name)
+                if md_text:
+                    log.info("domain_doc_parsed_with_docling", file=file_name, chars=len(md_text))
+                    return md_text
+        except Exception as exc:
+            log.warning("docling_parse_fallback_to_legacy", file=file_name, error=str(exc))
+
     if ext == "pdf":
         return _parse_pdf(file_bytes)
     elif ext == "docx":
         return _parse_docx(file_bytes)
-
-    elif ext == "doc":
-        raise ValueError("Legacy .doc files are unsupported. Convert the file to .docx.")
-
     elif ext == "csv":
         return _parse_csv(file_bytes)
-
     elif ext in ("xlsx", "xls"):
         return _parse_excel(file_bytes)
     else:
-        # Fallback to UTF-8 text decode
         try:
             return file_bytes.decode("utf-8", errors="ignore")
         except Exception:
@@ -61,6 +124,8 @@ def _parse_pdf(file_bytes: bytes) -> str:
 def _parse_docx(file_bytes: bytes) -> str:
     """Extract text and tables from a valid DOCX document."""
     try:
+        from docx import Document
+
         document = Document(io.BytesIO(file_bytes))
 
         paragraphs = [
@@ -100,7 +165,7 @@ def _parse_csv(file_bytes: bytes) -> str:
     lines = text_content.splitlines()
     if not lines:
         return ""
-    
+
     # Read headers and top sample rows
     reader = csv.reader(lines)
     rows = list(reader)
@@ -109,7 +174,7 @@ def _parse_csv(file_bytes: bytes) -> str:
 
     headers = rows[0]
     output = [f"CSV Structure (Total Rows: {len(rows) - 1})", f"Columns: {', '.join(headers)}", "\nSample Data Rows:"]
-    for row in rows[1:30]:  # Include top 30 rows
+    for row in rows[1:500]:  # Include top 500 rows
         output.append(" | ".join(row))
     return "\n".join(output)
 
@@ -133,11 +198,11 @@ def _parse_excel(file_bytes: bytes) -> str:
         return _parse_csv(file_bytes)
 
 
-def chunk_text(text: str, max_chars: int = 1000, overlap: int = 100) -> List[str]:
+def chunk_text(text: str, max_chars: int = 1000, overlap: int = 100) -> list[str]:
     """Split extracted text into overlapping chunks for RAG embedding."""
     if not text or not text.strip():
         return []
-    
+
     cleaned = text.strip()
     chunks = []
     start = 0

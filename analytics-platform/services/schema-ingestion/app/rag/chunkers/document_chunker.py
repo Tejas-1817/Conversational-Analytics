@@ -8,7 +8,7 @@ from app.rag.models import Chunk
 _HEADING = re.compile(r"^(#{1,6}\s+.+|=== Sheet:.+|--- Page \d+ ---)\s*$")
 
 
-def _children(parent_text: str, size: int = 700, overlap: int = 80) -> list[str]:
+def _children(parent_text: str, size: int = 1200, overlap: int = 150) -> list[str]:
     text = parent_text.strip()
     if not text:
         return []

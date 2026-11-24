@@ -331,6 +331,24 @@ def export_human_readable_schema(
 
             lines.append(f"- {c.column_name} ({c.data_type}{flag_str}) -- {' | '.join(comment_parts)}")
 
+            if getattr(c, "description", None):
+                comment_parts.append(f"Desc: {c.description}")
+
+            profile_dict = c.profile if isinstance(c.profile, dict) else {}
+            distinct_cnt = profile_dict.get("distinct_count_sampled")
+            sample_vals = profile_dict.get("sample_values") or []
+            if (
+                sample_vals
+                and distinct_cnt is not None
+                and distinct_cnt <= 25
+                and not getattr(c, "is_primary_key", False)
+                and not c.column_name.lower().endswith("_id")
+            ):
+                safe_vals = [repr(str(v)[:40]) for v in sample_vals[:12] if v is not None]
+                if safe_vals:
+                    comment_parts.append(f"Values: [{', '.join(safe_vals)}]")
+
+            lines.append(f"- {c.column_name} ({c.data_type}{flag_str}) -- {' | '.join(comment_parts)}")
             # Collect Business Glossary metadata
             b_name = getattr(c, "business_name", None)
             syns = getattr(c, "synonyms", None) or []
@@ -348,7 +366,8 @@ def export_human_readable_schema(
             if r.from_column_id in col_id_to_meta and r.to_column_id in col_id_to_meta:
                 f_tbl, f_col = col_id_to_meta[r.from_column_id]
                 t_tbl, t_col = col_id_to_meta[r.to_column_id]
-                lines.append(f"- FK: {f_tbl}.{f_col} -> {t_tbl}.{t_col} (Cardinality: {r.cardinality})")
+                self_note = " [SELF-FK: Hierarchical Tree]" if f_tbl == t_tbl else ""
+                lines.append(f"- FK: {f_tbl}.{f_col} -> {t_tbl}.{t_col} (Cardinality: {r.cardinality}){self_note}")
         lines.append("")
 
     # Append Business Glossary Section

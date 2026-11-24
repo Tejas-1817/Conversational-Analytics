@@ -28,6 +28,14 @@ EXPLICIT_STRATEGY_REQUESTS = (
     "provide a detailed action plan",
     "give me detailed recommendations",
     "provide detailed recommendations",
+    "customer 360",
+    "customer360",
+    "account brief",
+    "account briefing",
+    "account profile",
+    "executive brief",
+    "white-space",
+    "whitespace",
 )
 
 EXPLICIT_PREDICTION_REQUESTS = (
@@ -304,7 +312,7 @@ class AnswerSynthesizer:
             if domain_context and domain_context.strip()
             else "None"
         )
-        business_context = business_context[:4_000]
+        business_context = business_context[:12_000]
 
         if analysis_mode == "standard":
             response_format = """

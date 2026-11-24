@@ -1,0 +1,7 @@
+{
+  "venvPath": "analytics-platform/services/schema-ingestion",
+  "venv": "venv",
+  "extraPaths": [
+    "analytics-platform/services/schema-ingestion"
+  ]
+}

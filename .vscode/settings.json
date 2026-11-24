@@ -1,0 +1,6 @@
+{
+    "python.defaultInterpreterPath": "${workspaceFolder}/analytics-platform/services/schema-ingestion/venv/Scripts/python.exe",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/analytics-platform/services/schema-ingestion"
+    ]
+}

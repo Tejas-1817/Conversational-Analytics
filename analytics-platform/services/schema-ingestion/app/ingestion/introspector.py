@@ -94,13 +94,23 @@ def run_introspection(session: Session, source: DataSource, engine: Engine) -> d
 
     for schema in schemas:
         try:
-            table_names = inspector.get_table_names(schema=schema)
+            table_names = list(inspector.get_table_names(schema=schema))
         except Exception:
             try:
-                table_names = inspector.get_table_names()
+                table_names = list(inspector.get_table_names())
             except Exception as exc:
                 log.warning("schema_table_names_failed", schema=schema, error=str(exc))
                 continue
+
+        for view_getter in ("get_view_names", "get_materialized_view_names"):
+            if hasattr(inspector, view_getter):
+                try:
+                    extra_views = getattr(inspector, view_getter)(schema=schema) or []
+                    for v in extra_views:
+                        if v not in table_names:
+                            table_names.append(v)
+                except Exception as view_exc:
+                    log.debug("view_introspection_skipped", getter=view_getter, schema=schema, error=str(view_exc))
 
         for table_name in table_names:
             if (

@@ -291,7 +291,7 @@ export const UploadFilesModal: React.FC<UploadFilesModalProps> = ({
               ref={fileInputRef}
               onChange={(e) => handleFileSelection(e.target.files)}
               multiple
-              accept=".pdf,.csv,.xlsx,.xls,.docx,.doc,.txt,.json,.md"
+              accept=".pdf,.pptx,.csv,.xlsx,.xls,.docx,.doc,.txt,.json,.md"
               style={{ display: 'none' }}
             />
 
