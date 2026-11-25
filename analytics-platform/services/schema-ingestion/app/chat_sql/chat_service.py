@@ -1331,6 +1331,12 @@ USER QUESTION:
                     generated_at = datetime.now(timezone.utc).isoformat()
                     first_table_rows = list(multi_results.values())[0] if multi_results else []
                     first_table_cols = list(first_table_rows[0].keys()) if first_table_rows else []
+                    from app.engine.chart_recommender import ChartRecommender
+                    dynamic_title = ChartRecommender.infer_title(
+                        rows=first_table_rows,
+                        columns=first_table_cols,
+                        question=question,
+                    )
 
                     _check_cancelled()
                     res_conv_id = self._persist_exchange(
@@ -1341,7 +1347,7 @@ USER QUESTION:
                         domain_id=domain_id,
                         question=question,
                         answer=multi_answer,
-                        title="Multi-Domain Pattern Analysis",
+                        title=dynamic_title,
                         intent="hybrid",
                         sql=";\n\n".join([item["sql"] for item in multi_plan if "sql" in item]),
                         rows=first_table_rows,
@@ -1369,10 +1375,10 @@ USER QUESTION:
                         "row_count": sum(len(v) for v in multi_results.values()),
                         "column_count": len(first_table_cols),
                         "visualization": "table",
-                        "title": "Multi-Domain Pattern Analysis",
+                        "title": dynamic_title,
                         "recommended_visualization": {
                             "visualization": "table",
-                            "title": "Multi-Domain Pattern Analysis",
+                            "title": dynamic_title,
                         },
                         "follow_up_questions": rec_follow_ups,
                         "sql": ";\n\n".join([item["sql"] for item in multi_plan if "sql" in item]),

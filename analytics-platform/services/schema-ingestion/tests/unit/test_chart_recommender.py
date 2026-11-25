@@ -53,3 +53,30 @@ def test_chart_recommender_table_fallback():
     plan.time_intelligence = None
     plan.dimension_ids = [uuid.uuid4(), uuid.uuid4()]
     assert ChartRecommender.recommend(plan, row_count=50, column_count=5) == "table"
+
+
+def test_chart_recommender_pattern_a_titles():
+    # 1. Multi-metric categorical comparison (e.g. Risk & News by Customer)
+    rows = [
+        {"customer_name": "Acme Corp", "negative_news_count": 3, "revenue_at_risk": 500000},
+        {"customer_name": "Globex", "negative_news_count": 2, "revenue_at_risk": 250000},
+    ]
+    cols = ["customer_name", "negative_news_count", "revenue_at_risk"]
+    rec = ChartRecommender.recommend_visualization(rows, cols, question="Show accounts at risk")
+    assert rec["title"] == "Negative News Count & Revenue At Risk by Customer"
+
+    # 2. Direct static method infer_title with time series
+    time_rows = [
+        {"created_month": "2026-01-01", "mrr": 120000},
+        {"created_month": "2026-02-01", "mrr": 135000},
+    ]
+    t_title = ChartRecommender.infer_title(time_rows, ["created_month", "mrr"])
+    assert "MRR over Created Month" in t_title or "MRR by Created Month" in t_title
+
+    # 3. Healthcare / IoT arbitrary schema
+    iot_rows = [
+        {"sensor_location": "Building A", "avg_temperature": 22.4, "alert_count": 5},
+    ]
+    iot_title = ChartRecommender.infer_title(iot_rows, ["sensor_location", "avg_temperature", "alert_count"])
+    assert "Sensor Location" in iot_title and "Avg Temperature" in iot_title
+

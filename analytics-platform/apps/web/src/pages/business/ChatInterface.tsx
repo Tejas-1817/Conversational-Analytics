@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { fetchApi } from '../../services/api';
 import { ChartRenderer } from '../../components/visualizations/ChartRenderer';
-import { Download, Save, Send, Square, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight, ChevronDown, GitBranch, FileCode2, FolderGit2, Sparkles, ArrowDown } from 'lucide-react';
+import { Download, Save, Send, Square, AlertTriangle, Info, CheckCircle2, Copy, Check, RefreshCcw, ThumbsUp, ThumbsDown, User, Bot, Database, Code, Table, Plus, MessageSquare, Search, Trash2, Edit2, Clock, BarChart2, X, ChevronLeft, ChevronRight, ChevronDown, GitBranch, FileCode2, FolderGit2, Sparkles, ArrowDown, Layers, Bookmark } from 'lucide-react';
 import { PipelineProgress } from '../../components/chat/PipelineProgress';
 import { ThoughtSteps } from '../../components/chat/ThoughtSteps';
 import { MarkdownRenderer } from '../../components/chat/MarkdownRenderer';
+import { AnswerCardsContainer } from '../../components/chat/cards/AnswerCardsContainer';
+import { evaluateCardEligibility } from '../../components/chat/cards/cardParser';
 import { FollowUpSuggestions } from '../../components/chat/FollowUpSuggestions';
+import { SaveInsightModal } from '../../components/chat/SaveInsightModal';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -21,7 +25,16 @@ function SqlAccordion({ sql }: { sql: string }) {
   };
 
   return (
-    <div style={{ border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden', fontSize: '0.85rem' }}>
+    <div style={{
+      border: '1px solid var(--border-color)',
+      borderRadius: '10px',
+      overflow: 'hidden',
+      fontSize: '0.85rem',
+      width: '100%',
+      maxWidth: '680px',
+      margin: '0 auto',
+      boxSizing: 'border-box',
+    }}>
       {/* Single header bar */}
       <div
         onClick={() => setIsOpen(!isOpen)}
@@ -294,6 +307,16 @@ export const ChatInterface = () => {
   const finishPumpRef = useRef<(() => void) | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // Keep textarea height synced with input value (resets to original 1-row height after sending)
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    if (input) {
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, [input]);
+
   const handleStop = useCallback(() => {
     if (abortRef.current) {
       abortRef.current.abort();
@@ -325,68 +348,76 @@ export const ChatInterface = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [loading, handleStop]);
-  const [searchQuery, setSearchQuery] = useState('');
   const [feedbackGiven, setFeedbackGiven] = useState<Record<string, string>>({});
-  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [sidebarWidth, setSidebarWidth] = useState(260);
-  const isDragging = useRef(false);
-  const dragStartX = useRef(0);
-  const dragStartWidth = useRef(260);
 
-  const handleDragStart = (e: React.MouseEvent) => {
-    isDragging.current = true;
-    dragStartX.current = e.clientX;
-    dragStartWidth.current = sidebarWidth;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
+  // Save Insight state
+  const [saveInsightModalMsg, setSaveInsightModalMsg] = useState<any | null>(null);
+  const [savedInsightMessageIds, setSavedInsightMessageIds] = useState<Set<string>>(new Set());
+  const [saveToast, setSaveToast] = useState<{
+    visible: boolean;
+    insightName: string;
+    dashboardName: string;
+    dashboardId: string;
+  } | null>(null);
 
-    const onMove = (ev: MouseEvent) => {
-      if (!isDragging.current) return;
-      const delta = ev.clientX - dragStartX.current;
-      const newWidth = Math.min(480, Math.max(180, dragStartWidth.current + delta));
-      setSidebarWidth(newWidth);
-    };
-    const onUp = () => {
-      isDragging.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
+  // Multi-answer selection state (Phase 2 Task 1)
+  const [showInChatPanel, setShowInChatPanel] = useState(false);
+  const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
+  const [bulkSaveMessages, setBulkSaveMessages] = useState<any[] | null>(null);
 
-  const handleDeleteClick = (e: React.MouseEvent, conversation: any) => {
-    e.stopPropagation();
-    setDeleteTarget(conversation);
-  };
+  const chatAnswers = useMemo(() => {
+    return messages.filter(
+      (m) =>
+        m.role === 'assistant' &&
+        (m.result_data || m.sql || m.generated_sql || m.visualization || m.chart_recommendation)
+    );
+  }, [messages]);
 
-  const confirmDeleteChat = async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
-    try {
-      await fetchApi(`/engine/conversations/${deleteTarget.id}`, { method: 'DELETE' });
-      const updated = await loadConversationsList();
+  const addableAnswers = useMemo(() => {
+    return chatAnswers.filter((m) => Boolean(m.sql || m.generated_sql));
+  }, [chatAnswers]);
 
-      if (convId === deleteTarget.id) {
-        if (updated.length > 0) {
-          await loadConversation(updated[0].id);
-        } else {
-          await handleNewChat();
-        }
-      }
-      setDeleteTarget(null);
-    } catch (e: any) {
-      alert(e.message || 'Failed to delete chat');
-    } finally {
-      setIsDeleting(false);
+  useEffect(() => {
+    if (!saveToast?.visible) return;
+    const timer = setTimeout(() => {
+      setSaveToast(null);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [saveToast]);
+
+  const handleInsightSaved = (insight: any, targetDashId: string, dashboardName: string) => {
+    if (saveInsightModalMsg?.id) {
+      setSavedInsightMessageIds((prev) => new Set(prev).add(saveInsightModalMsg.id));
     }
+    setSaveToast({
+      visible: true,
+      insightName: insight.name,
+      dashboardName: dashboardName,
+      dashboardId: targetDashId,
+    });
+  };
+
+  const handleBulkSaved = (result: any, targetDashId: string, dashboardName: string) => {
+    if (bulkSaveMessages) {
+      setSavedInsightMessageIds((prev) => {
+        const next = new Set(prev);
+        bulkSaveMessages.forEach((m) => {
+          if (m.id) next.add(m.id);
+        });
+        return next;
+      });
+    }
+    setSelectedMsgIds(new Set());
+    setShowInChatPanel(false);
+    setBulkSaveMessages(null);
+    setSaveToast({
+      visible: true,
+      insightName: `${result?.saved_count ?? bulkSaveMessages?.length ?? 1} insights`,
+      dashboardName: dashboardName,
+      dashboardId: targetDashId,
+    });
   };
 
   const loadConversationsList = async () => {
@@ -402,7 +433,25 @@ export const ChatInterface = () => {
 
   const loadConversations = async () => {
     const data = await loadConversationsList();
-    const savedConvId = localStorage.getItem('active_conversation_id');
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const isNew = params?.get('new') === 'true';
+    const queryConvId = params?.get('id');
+
+    if (isNew) {
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+      try { localStorage.removeItem('active_conversation_id'); } catch {}
+      await handleNewChat();
+      return;
+    }
+
+    if (queryConvId) {
+      await loadConversation(queryConvId);
+      return;
+    }
+
+    const savedConvId = typeof localStorage !== 'undefined' ? localStorage.getItem('active_conversation_id') : null;
     const targetConv = data.find((c: any) => c.id === savedConvId);
 
     if (targetConv) {
@@ -416,6 +465,12 @@ export const ChatInterface = () => {
 
   useEffect(() => {
     loadConversations();
+
+    const handleNewChatEvent = () => {
+      handleNewChat();
+    };
+    window.addEventListener('app:new-chat', handleNewChatEvent);
+    return () => window.removeEventListener('app:new-chat', handleNewChatEvent);
   }, []);
 
   const loadConversation = async (id: string) => {
@@ -729,10 +784,17 @@ export const ChatInterface = () => {
 
           pumpRef.current = setInterval(() => {
             if (displayedText.length < targetText.length) {
-              const lag = targetText.length - displayedText.length;
-              // Adaptive speed: types smoothly, but accelerates so long answers finish in 3-4s
-              const step = Math.max(6, Math.min(60, Math.ceil(lag / 3)));
-              displayedText = targetText.slice(0, displayedText.length + step);
+              const isEligible = evaluateCardEligibility(targetText, { isCodeIntel: Boolean(matchedRepo) });
+              if (isEligible) {
+                // In cards mode, advance displayedText directly to targetText so the card queue
+                // in AnswerCardsContainer acts as the single typing engine (zero double typing!)
+                displayedText = targetText;
+              } else {
+                const lag = targetText.length - displayedText.length;
+                // Adaptive speed: types smoothly, but accelerates so long answers finish in 3-4s
+                const step = Math.max(6, Math.min(60, Math.ceil(lag / 3)));
+                displayedText = targetText.slice(0, displayedText.length + step);
+              }
 
               setMessages(prev => prev.map(m => m.id === botMsgId ? {
                 ...m,
@@ -776,7 +838,7 @@ export const ChatInterface = () => {
                   generatedSql = payload.sql;
                   setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, sql: payload.sql } : m));
                 } else if (payload.type === 'token') {
-                  targetText += payload.delta; // Silently queues into the 60fps pump (no jerk!)
+                  targetText += payload.delta; // Accumulate arriving tokens
                 } else if (payload.type === 'complete') {
                   finalData = payload.result;
                 } else if (payload.type === 'error') {
@@ -790,7 +852,7 @@ export const ChatInterface = () => {
         }
 
         isStreamFinished = true;
-        await pumpPromise; // Wait for the smooth pump to finish typing remaining characters
+        await pumpPromise; // Wait for pump to finish
 
         // 2. Finalize message with complete charts, tables, & follow-up questions
         if (finalData) {
@@ -965,28 +1027,8 @@ export const ChatInterface = () => {
   };
 
 
-  const handleSaveInsight = async (msg: any) => {
-    const name = prompt('Enter a name for this insight:');
-    if (!name) return;
-    try {
-      await fetchApi('/dashboards/insights', {
-        method: 'POST',
-        body: JSON.stringify({
-          name,
-          description: msg.question || msg.intent?.original_query || name,
-          query: msg.sql || msg.generated_sql || '', // Pass verified SQL
-          chart_config: {
-            chartType: msg.chart_recommendation || (msg.recommended_visualization && msg.recommended_visualization.chart_type) || 'table',
-            data: msg.result_data || [],
-            columns: msg.columns,
-            columnTypes: msg.column_types || (msg.result_data && typeof msg.result_data === 'object' && !Array.isArray(msg.result_data) ? msg.result_data.column_types : undefined) || (msg.recommended_visualization && msg.recommended_visualization.profile?.column_types)
-          }
-        })
-      });
-      alert('Insight saved! It will automatically guide future AI answers.');
-    } catch (e: any) {
-      alert(e.message);
-    }
+  const handleSaveInsight = (msg: any) => {
+    setSaveInsightModalMsg(msg);
   };
 
   const handleDownloadCSV = (msg: any) => {
@@ -1040,10 +1082,6 @@ export const ChatInterface = () => {
   };
 
 
-  const filteredConversations = conversations.filter(c =>
-    c.title?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   // Memoize rendered message list so typing in the input box never re-renders past charts/tables
   const renderedMessages = useMemo(() => {
     return messages.map((m, i) => (
@@ -1070,13 +1108,12 @@ export const ChatInterface = () => {
           {m.role === 'user' ? (
             <div>{m.content}</div>
           ) : (
-            <div style={{ width: '100%' }}>
+            <div style={{ width: '100%', maxWidth: '680px', margin: '0 auto' }}>
               {m.isError && (
                 <div className="badge badge-danger" style={{ marginBottom: '1rem', padding: '0.5rem', borderRadius: '8px' }}>
                   <AlertTriangle size={16} style={{ marginRight: '8px' }} /> {m.content}
                 </div>
               )}
-
 
               {!m.isError && (m.sql || m.content || m.answer) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
@@ -1092,236 +1129,237 @@ export const ChatInterface = () => {
                   {/* 1. Structured Cards & Markdown Synthesis */}
                   {m.answer_markdown && (
                     <div className="business-answer">
-                      <MarkdownRenderer content={m.answer_markdown} isStreaming={m.isStreaming} />
+                      <AnswerCardsContainer
+                        content={m.answer_markdown}
+                        isStreaming={m.isStreaming}
+                        stopped={m.stopped}
+                        isCodeIntel={m.isCodeIntel}
+                      />
                     </div>
                   )}
 
 
 
 
-                  {/* 2. Primary Visualization */}
-                  {m.result_data && m.result_data.length > 0 && (
-                    <div style={{ marginTop: '0.5rem', width: '100%' }}>
-                      <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-2">
-                          <BarChart2 size={18} className="text-primary" style={{ color: '#6366F1' }} />
-                          <span className="text-base font-bold" style={{ color: 'var(--text-main)' }}>
-                            {m.title || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : null) || m.question || 'Query Result'}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button className="btn-secondary" onClick={() => handleDownloadCSV(m)} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }} title="Download CSV">
-                            <Download size={14} style={{ marginRight: '0.25rem' }} /> Download CSV
-                          </button>
-                          <button className="btn-secondary" onClick={() => handleSaveInsight(m)} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem' }}>
-                            <Save size={14} style={{ marginRight: '0.25rem' }} /> Save Insight
-                          </button>
-                        </div>
-                      </div>
-                      {m.data_truncated && (
-                        <div
-                          className="badge badge-warning"
-                          style={{
-                            marginBottom: '1rem',
-                            padding: '0.5rem 0.75rem',
-                            borderRadius: '8px',
-                            display: 'block',
-                          }}
-                        >
-                          Showing the first {m.row_count} rows. Download or refine the query for a complete result.
-                        </div>
-                      )}
+                        {/* 2. Primary Visualization */}
+                        {m.result_data && m.result_data.length > 0 && (
+                          <div style={{ marginTop: '0.5rem', width: '100%', maxWidth: '680px', margin: '0.5rem auto 0', boxSizing: 'border-box' }}>
+                            {m.data_truncated && (
+                              <div
+                                className="badge badge-warning"
+                                style={{
+                                  marginBottom: '1rem',
+                                  padding: '0.5rem 0.75rem',
+                                  borderRadius: '8px',
+                                  display: 'block',
+                                }}
+                              >
+                                Showing the first {m.row_count} rows. Download or refine the query for a complete result.
+                              </div>
+                            )}
 
-                      {(() => {
-                        const rows = m.result_data || m.rows || [];
-                        const cols = m.columns || (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
+                            {(() => {
+                              const rows = m.result_data || m.rows || [];
+                              const cols = m.columns || (rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
 
-                        let resolvedType = m.visualization || m.chart_recommendation;
-                        if (typeof m.recommended_visualization === 'object' && m.recommended_visualization !== null) {
-                          resolvedType = m.recommended_visualization.visualization || m.recommended_visualization.chart_type || resolvedType;
-                        } else if (typeof m.recommended_visualization === 'string') {
-                          resolvedType = m.recommended_visualization;
-                        }
+                              let resolvedType = m.visualization || m.chart_recommendation;
+                              if (typeof m.recommended_visualization === 'object' && m.recommended_visualization !== null) {
+                                resolvedType = m.recommended_visualization.visualization || m.recommended_visualization.chart_type || resolvedType;
+                              } else if (typeof m.recommended_visualization === 'string') {
+                                resolvedType = m.recommended_visualization;
+                              }
 
-                        // 1. Explicit prompt override: If user asked for a specific chart, prioritize it
-                        const qLower = (m.question || '').toLowerCase();
-                        if (rows.length > 0 && cols.length >= 2) {
-                          if (qLower.includes('bar chart') || qLower.includes('bar graph') || qLower.includes('horizontal bar')) {
-                            resolvedType = 'bar_chart';
-                          } else if (qLower.includes('line chart') || qLower.includes('line graph') || qLower.includes('trend') || qLower.includes('over time')) {
-                            resolvedType = 'line_chart';
-                          } else if (qLower.includes('pie chart') || qLower.includes('donut chart') || qLower.includes('share of') || qLower.includes('percentage distribution')) {
-                            resolvedType = 'pie_chart';
-                          } else if (qLower.includes('area chart')) {
-                            resolvedType = 'area_chart';
-                          }
-                        }
-
-                        // 2. Fallback heuristic: Clean comparative datasets (2 to 5 columns, <= 20 rows) render as Bar Chart instead of raw table
-                        if (!resolvedType || resolvedType === 'table') {
-                          if (rows.length === 1 && cols.length === 1) resolvedType = 'kpi_card';
-                          else if (rows.length === 1 && cols.length > 1) resolvedType = 'detail_card';
-                          else if (rows.length > 1 && rows.length <= 20 && cols.length >= 2 && cols.length <= 5) resolvedType = 'bar_chart';
-                          else resolvedType = resolvedType || 'table';
-                        }
-
-                        const cardTitle = m.title || (m.result_data && m.result_data.title) || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
-
-                        // Resolve column_types from API response or persisted result_data
-                        const columnTypes: Record<string, string> =
-                          m.column_types ||
-                          (m.result_data && typeof m.result_data === 'object' && !Array.isArray(m.result_data) ? m.result_data.column_types : undefined) ||
-                          (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.profile?.column_types : undefined) ||
-                          {};
-
-                        const containerHeight = resolvedType === 'kpi_card' ? '180px' : (resolvedType === 'detail_card' ? '220px' : (resolvedType === 'multi_kpi' ? '160px' : '380px'));
-
-                        return (
-                          <div style={{ height: containerHeight, width: '100%' }}>
-                            <ChartRenderer
-                              data={rows}
-                              chartType={resolvedType}
-                              title={cardTitle}
-                              columns={cols}
-                              columnTypes={columnTypes}
-                              onPointClick={(pt) => {
-                                if (pt.category) {
-                                  setInput(`Break down ${pt.category} in more detail`);
+                              // 1. Explicit prompt override: If user asked for a specific chart, prioritize it
+                              const qLower = (m.question || '').toLowerCase();
+                              if (rows.length > 0 && cols.length >= 2) {
+                                if (qLower.includes('bar chart') || qLower.includes('bar graph') || qLower.includes('horizontal bar')) {
+                                  resolvedType = 'bar_chart';
+                                } else if (qLower.includes('line chart') || qLower.includes('line graph') || qLower.includes('trend') || qLower.includes('over time')) {
+                                  resolvedType = 'line_chart';
+                                } else if (qLower.includes('pie chart') || qLower.includes('donut chart') || qLower.includes('share of') || qLower.includes('percentage distribution')) {
+                                  resolvedType = 'pie_chart';
+                                } else if (qLower.includes('area chart')) {
+                                  resolvedType = 'area_chart';
                                 }
-                              }}
-                            />
+                              }
+
+                              // 2. Fallback heuristic: Clean comparative datasets (2 to 5 columns, <= 20 rows) render as Bar Chart instead of raw table
+                              if (!resolvedType || resolvedType === 'table') {
+                                if (rows.length === 1 && cols.length === 1) resolvedType = 'kpi_card';
+                                else if (rows.length === 1 && cols.length > 1) resolvedType = 'detail_card';
+                                else if (rows.length > 1 && rows.length <= 20 && cols.length >= 2 && cols.length <= 5) resolvedType = 'bar_chart';
+                                else resolvedType = resolvedType || 'table';
+                              }
+
+                              const cardTitle = m.title || (m.result_data && m.result_data.title) || (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.title : undefined) || m.question;
+
+                              // Resolve column_types from API response or persisted result_data
+                              const columnTypes: Record<string, string> =
+                                m.column_types ||
+                                (m.result_data && typeof m.result_data === 'object' && !Array.isArray(m.result_data) ? m.result_data.column_types : undefined) ||
+                                (m.recommended_visualization && typeof m.recommended_visualization === 'object' ? m.recommended_visualization.profile?.column_types : undefined) ||
+                                {};
+
+                              const containerHeight = resolvedType === 'kpi_card' ? '180px' : (resolvedType === 'detail_card' ? '220px' : (resolvedType === 'multi_kpi' ? '160px' : '380px'));
+                              const isAutoHeight = resolvedType === 'kpi_card' || resolvedType === 'detail_card' || resolvedType === 'multi_kpi' || resolvedType === 'table';
+
+                              return (
+                                <div style={{ width: '100%', ...(isAutoHeight ? { height: 'auto', minHeight: containerHeight } : { height: containerHeight }) }}>
+                                  <ChartRenderer
+                                    data={rows}
+                                    chartType={resolvedType}
+                                    title={cardTitle}
+                                    columns={cols}
+                                    columnTypes={columnTypes}
+                                    onSaveInsight={
+                                      Boolean((m.sql || m.generated_sql) && m.result_data && m.result_data.length > 0 && !m.isCodeIntel)
+                                        ? () => handleSaveInsight(m)
+                                        : undefined
+                                    }
+                                    isSaved={savedInsightMessageIds.has(m.id)}
+                                    onDownloadCSV={() => handleDownloadCSV(m)}
+                                    onPointClick={(pt) => {
+                                      if (pt.category) {
+                                        setInput(`Break down ${pt.category} in more detail`);
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              );
+                            })()}
                           </div>
-                        );
-                      })()}
-                    </div>
-                  )}
+                        )}
 
-                  {/* 3. Collapsible SQL Accordion */}
-                  {m.sql && (
-                    <SqlAccordion sql={m.sql} />
-                  )}
+                        {/* 3. Collapsible SQL Accordion */}
+                        {m.sql && (
+                          <SqlAccordion sql={m.sql} />
+                        )}
 
-                  {/* 4. Collapsible Raw Data Accordion — renders a proper HTML table, never ChartRenderer */}
-                  {m.result_data && m.result_data.length > 0 && (() => {
-                    const rawRows: any[] = m.result_data || [];
-                    const rawCols: string[] = m.columns || (rawRows.length > 0 ? Object.keys(rawRows[0]) : []);
-                    return (
-                      <details className="raw-data-accordion" style={{
-                        backgroundColor: 'var(--bg-card, #1a1a24)',
-                        border: '1px solid var(--border-color, #2b2b40)',
-                        borderRadius: '10px',
-                        padding: '0.6rem 1rem',
-                        fontSize: '0.85rem'
-                      }}>
-                        <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.85rem', userSelect: 'none', outline: 'none' }}>
-                          View Raw Data Grid ({m.row_count || rawRows.length} rows)
-                        </summary>
-                        <div style={{ marginTop: '0.75rem', maxHeight: '320px', overflowY: 'auto', overflowX: 'auto' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                            <thead>
-                              <tr>
-                                {rawCols.map(col => (
-                                  <th key={col} style={{
-                                    padding: '0.4rem 0.75rem',
-                                    textAlign: 'left',
-                                    borderBottom: '2px solid var(--border-color)',
-                                    color: 'var(--text-muted)',
-                                    fontWeight: 700,
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.05em',
-                                    whiteSpace: 'nowrap'
-                                  }}>{col.replace(/_/g, ' ')}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {rawRows.map((row, ri) => (
-                                <tr key={ri} style={{ borderBottom: '1px solid var(--border-color)', background: ri % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.02)' }}>
-                                  {rawCols.map(col => (
-                                    <td key={col} style={{ padding: '0.4rem 0.75rem', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>
-                                      {row[col] === null || row[col] === undefined ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>null</span> : String(row[col])}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </details>
-                    );
-                  })()}
+                        {/* 4. Collapsible Raw Data Accordion — renders a proper HTML table, never ChartRenderer */}
+                        {m.result_data && m.result_data.length > 0 && (() => {
+                          const rawRows: any[] = m.result_data || [];
+                          const rawCols: string[] = m.columns || (rawRows.length > 0 ? Object.keys(rawRows[0]) : []);
+                          return (
+                            <details className="raw-data-accordion" style={{
+                              backgroundColor: 'var(--bg-card, #1a1a24)',
+                              border: '1px solid var(--border-color, #2b2b40)',
+                              borderRadius: '10px',
+                              padding: '0.6rem 1rem',
+                              fontSize: '0.85rem',
+                              width: '100%',
+                              maxWidth: '680px',
+                              margin: '0 auto',
+                              boxSizing: 'border-box',
+                            }}>
+                              <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.85rem', userSelect: 'none', outline: 'none' }}>
+                                View Raw Data Grid ({m.row_count || rawRows.length} rows)
+                              </summary>
+                              <div style={{ marginTop: '0.75rem', maxHeight: '320px', overflowY: 'auto', overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                  <thead>
+                                    <tr>
+                                      {rawCols.map(col => (
+                                        <th key={col} style={{
+                                          padding: '0.4rem 0.75rem',
+                                          textAlign: 'left',
+                                          borderBottom: '2px solid var(--border-color)',
+                                          color: 'var(--text-muted)',
+                                          fontWeight: 700,
+                                          textTransform: 'uppercase',
+                                          letterSpacing: '0.05em',
+                                          whiteSpace: 'nowrap'
+                                        }}>{col.replace(/_/g, ' ')}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {rawRows.map((row, ri) => (
+                                      <tr key={ri} style={{ borderBottom: '1px solid var(--border-color)', background: ri % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.02)' }}>
+                                        {rawCols.map(col => (
+                                          <td key={col} style={{ padding: '0.4rem 0.75rem', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>
+                                            {row[col] === null || row[col] === undefined ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>null</span> : String(row[col])}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </details>
+                          );
+                        })()}
 
-                  {/* Code Intelligence: Referenced Files & Symbols */}
-                  {((m.referenced_files && m.referenced_files.length > 0) || (m.referenced_symbols && m.referenced_symbols.length > 0)) && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
-                      {m.referenced_files?.map((fp: string) => (
-                        <span
-                          key={fp}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            padding: '0.2rem 0.55rem',
-                            background: 'rgba(236,72,153,0.08)',
-                            border: '1px solid rgba(236,72,153,0.25)',
-                            borderRadius: '6px',
-                            fontSize: '0.75rem',
-                            color: '#ec4899',
-                            fontFamily: 'monospace',
-                          }}
-                          title={`Referenced File: ${fp}`}
-                        >
-                          <FileCode2 size={12} />
-                          {fp}
-                        </span>
-                      ))}
-                      {m.referenced_symbols?.map((sym: string) => (
-                        <span
-                          key={sym}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            padding: '0.2rem 0.55rem',
-                            background: 'rgba(99,102,241,0.08)',
-                            border: '1px solid rgba(99,102,241,0.25)',
-                            borderRadius: '6px',
-                            fontSize: '0.75rem',
-                            color: 'var(--primary)',
-                            fontFamily: 'monospace',
-                            cursor: 'pointer',
-                          }}
-                          onClick={() => setInput(`Explain how ${sym} is implemented and where it is called`)}
-                          title={`Click to ask about ${sym}`}
-                        >
-                          <Code size={12} />
-                          {sym}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                        {/* Code Intelligence: Referenced Files & Symbols */}
+                        {((m.referenced_files && m.referenced_files.length > 0) || (m.referenced_symbols && m.referenced_symbols.length > 0)) && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
+                            {m.referenced_files?.map((fp: string) => (
+                              <span
+                                key={fp}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  padding: '0.2rem 0.55rem',
+                                  background: 'rgba(236,72,153,0.08)',
+                                  border: '1px solid rgba(236,72,153,0.25)',
+                                  borderRadius: '6px',
+                                  fontSize: '0.75rem',
+                                  color: '#ec4899',
+                                  fontFamily: 'monospace',
+                                }}
+                                title={`Referenced File: ${fp}`}
+                              >
+                                <FileCode2 size={12} />
+                                {fp}
+                              </span>
+                            ))}
+                            {m.referenced_symbols?.map((sym: string) => (
+                              <span
+                                key={sym}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  padding: '0.2rem 0.55rem',
+                                  background: 'rgba(99,102,241,0.08)',
+                                  border: '1px solid rgba(99,102,241,0.25)',
+                                  borderRadius: '6px',
+                                  fontSize: '0.75rem',
+                                  color: 'var(--primary)',
+                                  fontFamily: 'monospace',
+                                  cursor: 'pointer',
+                                }}
+                                onClick={() => setInput(`Explain how ${sym} is implemented and where it is called`)}
+                                title={`Click to ask about ${sym}`}
+                              >
+                                <Code size={12} />
+                                {sym}
+                              </span>
+                            ))}
+                          </div>
+                        )}
 
-                  {/* Code Intelligence: Neo4j Graph Architecture Facts */}
-                  {m.graph_facts && m.graph_facts.length > 0 && (
-                    <GraphFactsAccordion facts={m.graph_facts} />
-                  )}
+                        {/* Code Intelligence: Neo4j Graph Architecture Facts */}
+                        {m.graph_facts && m.graph_facts.length > 0 && (
+                          <GraphFactsAccordion facts={m.graph_facts} />
+                        )}
 
-                  {/* Code Intelligence: ChromaDB Retrieved Code Chunks */}
-                  {m.retrieved_chunks && m.retrieved_chunks.length > 0 && (
-                    <CodeSnippetAccordion chunks={m.retrieved_chunks} />
-                  )}
+                        {/* Code Intelligence: ChromaDB Retrieved Code Chunks */}
+                        {m.retrieved_chunks && m.retrieved_chunks.length > 0 && (
+                          <CodeSnippetAccordion chunks={m.retrieved_chunks} />
+                        )}
 
-                  {/* 5. Arrow Suggested Follow-Ups */}
-                  {m.follow_up_questions?.length > 0 && (
-                    <FollowUpSuggestions
-                      questions={m.follow_up_questions}
-                      onSelect={(q) => {
-                        setInput(q);
-                      }}
-                    />
-                  )}
-                </div>
-              )}
+                        {/* 5. Arrow Suggested Follow-Ups */}
+                        {m.follow_up_questions?.length > 0 && (
+                          <FollowUpSuggestions
+                            questions={m.follow_up_questions}
+                            onSelect={(q) => {
+                              setInput(q);
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
 
               {m.role === 'assistant' && !m.isError && !m.isStreaming && (m.content || m.answer || m.answer_markdown) && (
                 <div className="flex items-center gap-4 mt-4 text-muted text-sm flex-wrap">
@@ -1403,139 +1441,13 @@ export const ChatInterface = () => {
   }, [messages, feedbackGiven]);
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      {/* Sidebar */}
-      <div style={{
-        width: sidebarCollapsed ? '48px' : `${sidebarWidth}px`,
-        minWidth: sidebarCollapsed ? '48px' : '180px',
-        display: 'flex',
-        flexDirection: 'column',
-        flexShrink: 0,
-        borderRight: '1px solid var(--border-color)',
-        transition: sidebarCollapsed ? 'width 0.2s ease' : undefined,
-        overflow: 'hidden',
-        background: 'var(--bg-sidebar)',
-      }}>
-        {/* Collapse toggle row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'space-between', padding: '0.75rem 0.75rem 0.5rem' }}>
-          {!sidebarCollapsed && (
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Conversations</span>
-          )}
-          <button
-            className="btn-ghost"
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            onClick={() => setSidebarCollapsed(c => !c)}
-            style={{ padding: '0.25rem', borderRadius: 'var(--radius-sm)', flexShrink: 0 }}
-          >
-            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </button>
-        </div>
 
-        {!sidebarCollapsed && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '0 0.75rem 1rem', flex: 1, overflow: 'hidden' }}>
-            <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={handleNewChat}>
-              <Plus size={16} style={{ marginRight: '0.5rem' }} /> New Chat
-            </button>
-
-            <div style={{ position: 'relative' }}>
-              <Search size={14} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input
-                type="text"
-                placeholder="Search history..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem 0.5rem 0.5rem 2.25rem', fontSize: '0.85rem' }}
-              />
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              <h3 style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-                Recent Chats
-              </h3>
-              {filteredConversations.map(c => (
-                <div
-                  key={c.id}
-                  onClick={() => loadConversation(c.id)}
-                  style={{
-                    padding: '0.5rem 0.75rem',
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                    background: convId === c.id ? 'rgba(79, 70, 229, 0.1)' : 'transparent',
-                    color: convId === c.id ? 'var(--primary)' : 'var(--text-main)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '0.5rem',
-                    fontSize: '0.85rem'
-                  }}
-                  className="hover-bg-light group"
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden', flex: 1 }}>
-                    <MessageSquare size={14} style={{ flexShrink: 0 }} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || 'New Conversation'}</span>
-                  </div>
-                  <button
-                    className="btn-ghost"
-                    title="Delete Chat"
-                    onClick={(e) => handleDeleteClick(e, c)}
-                    style={{
-                      padding: '0.2rem 0.35rem',
-                      borderRadius: '4px',
-                      color: 'var(--text-muted)',
-                      opacity: convId === c.id ? 0.9 : 0.6,
-                      transition: 'all 0.15s ease',
-                      lineHeight: 1
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.opacity = '1'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.opacity = convId === c.id ? '0.9' : '0.6'; }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))}
-              {filteredConversations.length === 0 && (
-                <div className="text-muted text-sm text-center py-4">No conversations found.</div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {sidebarCollapsed && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0' }}>
-            <button className="btn-ghost" title="New Chat" onClick={handleNewChat} style={{ padding: '0.4rem' }}>
-              <Plus size={16} />
-            </button>
-            <button className="btn-ghost" title="Search" style={{ padding: '0.4rem' }}>
-              <Search size={16} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Drag-to-resize handle */}
-      {!sidebarCollapsed && (
-        <div
-          onMouseDown={handleDragStart}
-          style={{
-            width: '5px',
-            cursor: 'col-resize',
-            flexShrink: 0,
-            background: 'transparent',
-            transition: 'background 0.15s',
-            zIndex: 10,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.opacity = '0.3'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        />
-      )}
-
-      {/* Main Chat Area */}
-      <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', maxWidth: '100%', margin: 0 }}>
-
+    <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', maxWidth: '100%', margin: 0, overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
         <div
           className="chat-messages"
-          style={{ padding: '0 1rem', flex: 1 }}
+          style={{ padding: '0 1rem', flex: 1, overflowY: 'auto' }}
           onScroll={(event) => {
             const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
             setIsAtBottom(scrollHeight - clientHeight - scrollTop <= 24);
@@ -1617,6 +1529,174 @@ export const ChatInterface = () => {
             <div ref={messagesEndRef} style={{ height: '1px' }} />
           </div>
         </div>
+
+        {/* In This Chat Drawer Panel */}
+        {showInChatPanel && (
+          <aside
+            style={{
+              width: '360px',
+              borderLeft: '1px solid var(--border-color)',
+              background: 'var(--bg-card)',
+              display: 'flex',
+              flexDirection: 'column',
+              zIndex: 15,
+              height: '100%',
+              overflow: 'hidden',
+            }}
+            aria-label="In this chat answers"
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '1rem 1.25rem',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.45rem', color: 'var(--text-main)' }}>
+                  <Layers size={17} style={{ color: 'var(--primary)' }} />
+                  <span>In this chat</span>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                  {chatAnswers.length} answer{chatAnswers.length !== 1 ? 's' : ''} found
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setShowInChatPanel(false)}
+                style={{ padding: '0.35rem', borderRadius: 'var(--radius-sm)' }}
+                aria-label="Close panel"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Selection actions toolbar */}
+            <div
+              style={{
+                padding: '0.75rem 1.25rem',
+                borderBottom: '1px solid var(--border-color)',
+                background: 'var(--bg-main)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.5rem',
+              }}
+            >
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-main)' }}>
+                <input
+                  type="checkbox"
+                  checked={addableAnswers.length > 0 && selectedMsgIds.size === addableAnswers.length}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedMsgIds(new Set(addableAnswers.map((a) => a.id)));
+                    } else {
+                      setSelectedMsgIds(new Set());
+                    }
+                  }}
+                  disabled={addableAnswers.length === 0}
+                />
+                <span>Select all ({addableAnswers.length})</span>
+              </label>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={selectedMsgIds.size === 0}
+                onClick={() => {
+                  const toSave = chatAnswers.filter((a) => selectedMsgIds.has(a.id));
+                  setBulkSaveMessages(toSave);
+                }}
+                style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                <Bookmark size={14} /> Add to dashboard ({selectedMsgIds.size})
+              </button>
+            </div>
+
+            {/* Answer List */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              {chatAnswers.map((ans, idx) => {
+                const hasSQL = Boolean(ans.sql || ans.generated_sql);
+                const isSelected = selectedMsgIds.has(ans.id);
+                const isSaved = savedInsightMessageIds.has(ans.id);
+                const title =
+                  ans.title ||
+                  (ans.recommended_visualization && typeof ans.recommended_visualization === 'object'
+                    ? ans.recommended_visualization.title
+                    : null) ||
+                  ans.question ||
+                  `Answer ${idx + 1}`;
+                const chartType = ans.visualization || ans.chart_recommendation || (ans.recommended_visualization && typeof ans.recommended_visualization === 'object' ? ans.recommended_visualization.chart_type : 'table') || 'table';
+
+                return (
+                  <div
+                    key={ans.id || idx}
+                    style={{
+                      border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border-color)',
+                      background: isSelected ? 'rgba(99, 102, 241, 0.05)' : 'var(--bg-card)',
+                      borderRadius: '8px',
+                      padding: '0.75rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.45rem',
+                      opacity: hasSQL ? 1 : 0.7,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={!hasSQL}
+                        onChange={() => {
+                          setSelectedMsgIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(ans.id)) {
+                              next.delete(ans.id);
+                            } else {
+                              next.add(ans.id);
+                            }
+                            return next;
+                          });
+                        }}
+                        style={{ marginTop: '0.2rem', cursor: hasSQL ? 'pointer' : 'not-allowed' }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.3, marginBottom: '0.2rem' }}>
+                          {title}
+                        </div>
+                        {ans.question && ans.question !== title && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {ans.question}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.75rem', paddingTop: '0.25rem', borderTop: '1px solid var(--border-color)' }}>
+                      <span style={{ textTransform: 'capitalize', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <BarChart2 size={12} /> {chartType}
+                      </span>
+                      {isSaved && (
+                        <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 500 }}>
+                          <Check size={12} /> Saved
+                        </span>
+                      )}
+                      {!hasSQL && (
+                        <span style={{ color: '#f59e0b', fontSize: '0.7rem' }}>
+                          Cannot add: No SQL query generated
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </aside>
+        )}
+      </div>
 
         <div style={{ background: 'var(--bg-main)', position: 'sticky', bottom: 0, zIndex: 20, paddingBottom: '1.5rem', paddingTop: '1rem', paddingLeft: '1rem', paddingRight: '1rem' }}>
           <div style={{ margin: '0 auto', maxWidth: '800px', position: 'relative' }}>
@@ -1852,6 +1932,33 @@ export const ChatInterface = () => {
                   </span>
                 ) : null;
               })()}
+
+              {/* In this chat selection trigger */}
+              {chatAnswers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowInChatPanel(prev => !prev)}
+                  style={{
+                    marginLeft: 'auto',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '0.25rem 0.65rem',
+                    background: showInChatPanel ? 'rgba(99,102,241,0.15)' : 'var(--bg-card)',
+                    border: showInChatPanel ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                    borderRadius: '99px',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    color: showInChatPanel ? 'var(--primary)' : 'var(--text-main)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title="Select answers from this chat to add to dashboard"
+                >
+                  <Layers size={13} style={{ color: 'var(--primary)' }} />
+                  <span>In this chat ({chatAnswers.length})</span>
+                </button>
+              )}
             </div>
 
             <form onSubmit={sendMessage} className="chat-input-wrapper" style={{ position: 'relative' }}>
@@ -1984,11 +2091,7 @@ export const ChatInterface = () => {
                 rows={1}
                 placeholder={isCodeRepoSelected ? "Ask about architecture, functions, call hierarchies, endpoints..." : "Ask about your data..."}
                 value={input}
-                onChange={e => {
-                  setInput(e.target.value);
-                  e.target.style.height = 'auto';
-                  e.target.style.height = `${e.target.scrollHeight}px`;
-                }}
+                onChange={e => setInput(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -2050,43 +2153,86 @@ export const ChatInterface = () => {
             </form>
           </div>
         </div>
-      </div>
 
-      {/* Delete Confirmation Modal */}
-      {deleteTarget && (
-        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
-          <div className="modal-content" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                <AlertTriangle size={18} style={{ color: '#ef4444' }} /> Delete Chat
-              </div>
-              <button className="btn-ghost" onClick={() => setDeleteTarget(null)} disabled={isDeleting} style={{ padding: '4px' }}>
-                <X size={18} />
-              </button>
+        {/* Save Insight Success Toast */}
+        {saveToast?.visible && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              position: 'fixed',
+              bottom: '5.5rem',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1)',
+              borderRadius: 'var(--radius)',
+              padding: '0.75rem 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem',
+              zIndex: 1000,
+              maxWidth: '90vw',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+              <CheckCircle2 size={18} style={{ color: '#10b981', flexShrink: 0 }} />
+              <span>
+                Saved <strong>"{saveToast.insightName}"</strong> to <strong>"{saveToast.dashboardName}"</strong>
+              </span>
             </div>
-            <div className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
-              <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
-                Are you sure you want to delete this chat?
-              </p>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem', background: 'var(--bg-main)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                "{deleteTarget.title || 'New Conversation'}"
-              </div>
-            </div>
-            <div className="modal-footer" style={{ padding: '0.75rem 1.25rem', gap: '0.5rem' }}>
-              <button className="btn-secondary" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
-                Cancel
-              </button>
-              <button
-                onClick={confirmDeleteChat}
-                disabled={isDeleting}
-                style={{ background: '#ef4444', borderColor: '#ef4444', color: 'white' }}
-              >
-                {isDeleting ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
+            <Link
+              to={`/dashboards?id=${saveToast.dashboardId}`}
+              style={{
+                fontSize: '0.825rem',
+                fontWeight: 600,
+                color: 'var(--primary)',
+                textDecoration: 'none',
+                padding: '0.25rem 0.6rem',
+                background: 'rgba(99, 102, 241, 0.1)',
+                borderRadius: 'var(--radius-sm)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Open Dashboard →
+            </Link>
+            <button
+              onClick={() => setSaveToast(null)}
+              className="btn-ghost"
+              style={{ padding: '0.2rem', color: 'var(--text-muted)' }}
+              aria-label="Dismiss notification"
+            >
+              <X size={14} />
+            </button>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* Save Insight Modal (Single) */}
+        {saveInsightModalMsg && (
+          <SaveInsightModal
+            isOpen={Boolean(saveInsightModalMsg)}
+            onClose={() => setSaveInsightModalMsg(null)}
+            message={saveInsightModalMsg}
+            sourceId={selectedSourceId}
+            domainId={selectedDomainId}
+            conversationId={convId || undefined}
+            onSaved={handleInsightSaved}
+          />
+        )}
+
+        {/* Save Insight Modal (Bulk Selection) */}
+        {bulkSaveMessages && (
+          <SaveInsightModal
+            isOpen={Boolean(bulkSaveMessages)}
+            onClose={() => setBulkSaveMessages(null)}
+            messages={bulkSaveMessages}
+            sourceId={selectedSourceId}
+            domainId={selectedDomainId}
+            conversationId={convId || undefined}
+            onSaved={handleBulkSaved}
+          />
+        )}
+      </div>
   );
 };

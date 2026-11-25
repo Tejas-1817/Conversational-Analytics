@@ -5,10 +5,6 @@ import {
   TrendingUp,
   Award,
   Table as TableIcon,
-  Search,
-  ArrowUpDown,
-  ChevronLeft,
-  ChevronRight,
   AlertCircle,
   Layers,
   BarChart2,
@@ -17,8 +13,26 @@ import {
   Percent,
   FileSpreadsheet,
   Image as ImageIcon,
-  Sparkles
+  Sparkles,
+  SlidersHorizontal,
+  MoreVertical,
+  Save,
+  Check,
+  Download
 } from 'lucide-react';
+import { InstantFilterTable } from './InstantFilterTable';
+
+export interface ComboLayoutSpec {
+  schema_version: number;
+  x_axis: string;
+  y_axes: Array<{
+    position: 'left' | 'right';
+    series_type: 'bar' | 'column' | 'line' | 'area';
+    columns: string[];
+    unit?: string | null;
+  }>;
+  split_by?: string | null;
+}
 
 export interface ChartProps {
   data: any;
@@ -28,6 +42,10 @@ export interface ChartProps {
   columnTypes?: Record<string, string>; // e.g. { revenue: 'NUMERIC', month: 'TIME_SERIES' }
   onPointClick?: (point: { category: string; value: any; seriesName?: string }) => void;
   hideToolbar?: boolean;
+  comboSpec?: ComboLayoutSpec | null;
+  onSaveInsight?: () => void;
+  isSaved?: boolean;
+  onDownloadCSV?: () => void;
 }
 
 // Signature Vibrant SaaS Palette & Gradients
@@ -78,8 +96,25 @@ export const ChartRenderer: React.FC<ChartProps> = ({
   columnTypes = {},
   onPointClick,
   hideToolbar = false,
+  comboSpec,
+  onSaveInsight,
+  isSaved = false,
+  onDownloadCSV,
 }) => {
   const echartsRef = useRef<any>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMenuOpen]);
 
   // Active chart type state with support for interactive switching
   const [activeType, setActiveType] = useState<string>(chartType);
@@ -87,6 +122,14 @@ export const ChartRenderer: React.FC<ChartProps> = ({
   useEffect(() => {
     setActiveType(chartType);
   }, [chartType]);
+
+  // Rule Combo Dual-Axis Chart Layout Spec
+  const effectiveComboSpec: ComboLayoutSpec | null = useMemo(() => {
+    if (comboSpec && comboSpec.schema_version === 1) return comboSpec;
+    if (data?.combo_spec && data.combo_spec.schema_version === 1) return data.combo_spec;
+    if (data?.chart_config?.combo_spec && data.chart_config.combo_spec.schema_version === 1) return data.chart_config.combo_spec;
+    return null;
+  }, [comboSpec, data]);
 
   // Normalize input data into columns & rows format
   let rows: any[] = [];
@@ -106,13 +149,6 @@ export const ChartRenderer: React.FC<ChartProps> = ({
       columns = rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : [];
     }
   }
-
-  // State for Table Pagination, Sorting & Filtering
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
 
   // Zero Rows State
   if (!rows || rows.length === 0 || columns.length === 0) {
@@ -166,7 +202,8 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(`${header}\n${body}`);
     const link = document.createElement('a');
     link.setAttribute('href', csvContent);
-    link.setAttribute('download', `${(title || 'analytics_export').toLowerCase().replace(/\s+/g, '_')}.csv`);
+    const exportName = (title && !['multi-domain pattern analysis', 'query results', 'query result'].includes(title.toLowerCase().trim())) ? title : 'analytics_export';
+    link.setAttribute('download', `${exportName.toLowerCase().replace(/\s+/g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -184,7 +221,8 @@ export const ChartRenderer: React.FC<ChartProps> = ({
         });
         const link = document.createElement('a');
         link.href = url;
-        link.download = `${(title || 'chart_export').toLowerCase().replace(/\s+/g, '_')}.png`;
+        const exportName = (title && !['multi-domain pattern analysis', 'query results', 'query result'].includes(title.toLowerCase().trim())) ? title : 'chart_export';
+        link.download = `${exportName.toLowerCase().replace(/\s+/g, '_')}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -430,191 +468,17 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     );
   }
 
-  // Interactive Table View
+  // Interactive Table View with Instant Filters
   if (activeType === 'table') {
-    const filteredRows = rows.filter(r =>
-      columns.some(col => String(r[col] ?? '').toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-
-    const sortedRows = [...filteredRows].sort((a, b) => {
-      if (!sortColumn) return 0;
-      const valA = a[sortColumn];
-      const valB = b[sortColumn];
-      if (valA === valB) return 0;
-      if (valA === null || valA === undefined) return 1;
-      if (valB === null || valB === undefined) return -1;
-      if (typeof valA === 'number' && typeof valB === 'number') {
-        return sortDirection === 'asc' ? valA - valB : valB - valA;
-      }
-      return sortDirection === 'asc'
-        ? String(valA).localeCompare(String(valB))
-        : String(valB).localeCompare(String(valA));
-    });
-
-    const totalPages = Math.ceil(sortedRows.length / pageSize) || 1;
-    const paginatedRows = sortedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-
     return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.75rem',
-        width: '100%',
-        backgroundColor: 'var(--bg-card, #FFFFFF)',
-        border: '1px solid var(--border-color, rgba(148, 163, 184, 0.2))',
-        borderRadius: '14px',
-        padding: '1rem',
-        fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.04)'
-      }}>
-        {/* Table Header & Controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', width: '220px' }}>
-            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              placeholder="Search table..."
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              style={{
-                width: '100%',
-                padding: '0.4rem 0.6rem 0.4rem 2rem',
-                fontSize: '0.8rem',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color, rgba(148, 163, 184, 0.25))',
-                background: 'rgba(148, 163, 184, 0.05)',
-                color: 'var(--text-main)'
-              }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {/* Chart Type Switcher Toolbar */}
-            {!hideToolbar && rows.length > 0 && columns.length >= 2 && (
-              <div style={{ display: 'flex', background: 'rgba(148, 163, 184, 0.1)', padding: '2px', borderRadius: '8px', gap: '2px' }}>
-                <button
-                  className="btn-ghost"
-                  style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem' }}
-                  onClick={() => setActiveType('bar_chart')}
-                  title="Switch to Bar Chart"
-                >
-                  <BarChart2 size={14} />
-                </button>
-                <button
-                  className="btn-ghost"
-                  style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem' }}
-                  onClick={() => setActiveType('line_chart')}
-                  title="Switch to Line Chart"
-                >
-                  <TrendingUp size={14} />
-                </button>
-                <button
-                  className="btn-ghost"
-                  style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem' }}
-                  onClick={() => setActiveType('area_chart')}
-                  title="Switch to Area Chart"
-                >
-                  <Layers size={14} />
-                </button>
-                <button
-                  className="btn-ghost"
-                  style={{ padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem' }}
-                  onClick={() => setActiveType('pie_chart')}
-                  title="Switch to Donut Chart"
-                >
-                  <PieChart size={14} />
-                </button>
-              </div>
-            )}
-            <button
-              onClick={handleExportCSV}
-              className="btn-secondary"
-              style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-              title="Export CSV"
-            >
-              <FileSpreadsheet size={13} /> Export CSV
-            </button>
-          </div>
-        </div>
-
-        {/* Scrollable Table */}
-        <div style={{ overflowX: 'auto', maxHeight: '340px', border: '1px solid var(--border-color, rgba(148, 163, 184, 0.18))', borderRadius: '10px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: 'rgba(148, 163, 184, 0.08)', borderBottom: '1px solid var(--border-color, rgba(148, 163, 184, 0.2))' }}>
-                {columns.map(col => (
-                  <th
-                    key={col}
-                    onClick={() => {
-                      if (sortColumn === col) {
-                        setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortColumn(col);
-                        setSortDirection('asc');
-                      }
-                    }}
-                    style={{
-                      padding: '0.65rem 0.85rem',
-                      fontWeight: 600,
-                      color: 'var(--text-main, #0F172A)',
-                      cursor: 'pointer',
-                      userSelect: 'none',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      {col.replace(/_/g, ' ').toUpperCase()}
-                      <ArrowUpDown size={12} style={{ opacity: sortColumn === col ? 1 : 0.3 }} />
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedRows.map((row, rIdx) => (
-                <tr
-                  key={rIdx}
-                  style={{
-                    borderBottom: '1px solid var(--border-color, rgba(148, 163, 184, 0.1))',
-                    backgroundColor: rIdx % 2 === 0 ? 'transparent' : 'rgba(148, 163, 184, 0.03)',
-                    transition: 'background-color 0.15s'
-                  }}
-                  className="hover-bg-light"
-                >
-                  {columns.map(col => (
-                    <td key={col} style={{ padding: '0.6rem 0.85rem', color: 'var(--text-main, #334155)', whiteSpace: 'nowrap' }}>
-                      {formatVal(row[col])}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted, #64748B)' }}>
-          <span>Showing {paginatedRows.length} of {filteredRows.length} records</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <button
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              className="btn-secondary"
-              style={{ padding: '0.25rem 0.5rem', opacity: currentPage === 1 ? 0.5 : 1 }}
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <span>Page {currentPage} of {totalPages}</span>
-            <button
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              className="btn-secondary"
-              style={{ padding: '0.25rem 0.5rem', opacity: currentPage === totalPages ? 0.5 : 1 }}
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
+      <div style={{ width: '100%', height: '100%', minHeight: '260px', display: 'flex', flexDirection: 'column' }}>
+        <InstantFilterTable
+          data={rows}
+          columns={columns}
+          columnTypes={columnTypes}
+          truncated={Boolean((data as any)?.truncated || rows.length >= 10000)}
+          title={title}
+        />
       </div>
     );
   }
@@ -703,33 +567,39 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     },
     legend: {
       show: activeYKeys.length > 1,
-      textStyle: { color: '#64748B', fontSize: 12, fontWeight: 500 },
+      textStyle: { color: '#64748B', fontSize: 11, fontWeight: 500 },
       top: 0,
       icon: 'circle',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 14,
       formatter: (name: string) => formatTitle(name),
     },
     grid: {
       left: 12,
       right: 16,
       top: activeYKeys.length > 1 ? 40 : 20,
-      bottom: rows.length > 8 ? 44 : 20,
+      bottom: rows.length > 8 ? 68 : (rows.length > 5 ? 52 : 24),
       containLabel: true
     },
   };
 
+  const isXRotated = rows.length > 5;
   const commonXAxis = {
     type: 'category',
     data: rows.map(r => r[xAxisKey]),
-    axisLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.25)' } },
-    axisTick: { show: false },
+    axisLine: { show: true, lineStyle: { color: 'rgba(148, 163, 184, 0.35)' } },
+    axisTick: { show: true, alignWithLabel: true, lineStyle: { color: 'rgba(148, 163, 184, 0.35)' } },
     axisLabel: {
       color: '#64748B',
       fontSize: 11,
       interval: 0,
       hideOverlap: false,
-      rotate: rows.length > 5 ? 20 : 0,
-      align: 'center',
-      width: 80,
+      rotate: isXRotated ? 35 : 0,
+      align: isXRotated ? 'right' : 'center',
+      verticalAlign: isXRotated ? 'middle' : 'top',
+      margin: isXRotated ? 16 : 10,
+      width: isXRotated ? 95 : 80,
       overflow: 'truncate'
     }
   };
@@ -753,14 +623,15 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     {
       type: 'slider',
       show: true,
-      bottom: 2,
+      showDetail: false,
+      showDataShadow: false,
+      bottom: 4,
       height: 14,
       borderColor: 'transparent',
       backgroundColor: 'rgba(148, 163, 184, 0.08)',
       fillerColor: 'rgba(99, 102, 241, 0.16)',
       handleSize: '100%',
-      handleStyle: { color: '#6366F1', borderColor: '#818CF8' },
-      textStyle: { fontSize: 10, color: '#94A3B8' }
+      handleStyle: { color: '#6366F1', borderColor: '#818CF8' }
     }
   ] : [];
 
@@ -1059,7 +930,11 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     legend: {
       show: true,
       data: [formatTitle(paretoMetric), 'Cumulative %'],
-      textStyle: { color: '#64748B', fontSize: 11 }
+      icon: 'circle',
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 14,
+      textStyle: { color: '#64748B', fontSize: 11, fontWeight: 500 }
     },
     series: [
       {
@@ -1184,13 +1059,13 @@ export const ChartRenderer: React.FC<ChartProps> = ({
       orient: 'horizontal',
       bottom: 10,
       left: 'center',
-      icon: 'roundRect',
-      itemWidth: 22,
-      itemHeight: 11,
+      icon: 'circle',
+      itemWidth: 8,
+      itemHeight: 8,
       itemGap: 14,
       textStyle: {
         color: '#475569',
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: 500,
       },
       data: sortedFunnelRows.map(r => r.name)
@@ -1405,6 +1280,176 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     }]
   };
 
+  // Rule Combo Dual-Axis Chart
+  let comboOption: any = null;
+  const isComboRequested = activeType === 'combo' || activeType === 'combo_chart';
+
+  if (isComboRequested || effectiveComboSpec) {
+    const spec = effectiveComboSpec || {
+      schema_version: 1,
+      x_axis: xAxisKey,
+      y_axes: [
+        {
+          position: 'left' as const,
+          series_type: 'bar' as const,
+          columns: [activeYKeys[0] || secondCol],
+          unit: null,
+        },
+        ...(activeYKeys.length > 1 ? [{
+          position: 'right' as const,
+          series_type: 'line' as const,
+          columns: [activeYKeys[1]],
+          unit: activeYKeys[1]?.toLowerCase().includes('pct') || activeYKeys[1]?.toLowerCase().includes('margin') || activeYKeys[1]?.toLowerCase().includes('rate') ? '%' : null,
+        }] : [])
+      ]
+    };
+
+    const xCol = spec.x_axis || xAxisKey;
+    const xData = rows.map(r => String(r[xCol] ?? ''));
+
+    const leftAxisDef = spec.y_axes.find(a => a.position === 'left') || spec.y_axes[0];
+    const rightAxisDef = spec.y_axes.find(a => a.position === 'right') || (spec.y_axes.length > 1 ? spec.y_axes[1] : null);
+
+    const series: any[] = [];
+    let colorIdx = 0;
+
+    spec.y_axes.forEach((yAxisDef) => {
+      const isRight = yAxisDef.position === 'right';
+      const yAxisIndex = isRight ? 1 : 0;
+      const typeStr = yAxisDef.series_type === 'column' ? 'bar' : yAxisDef.series_type;
+      const isArea = typeStr === 'area';
+      const eType = isArea ? 'line' : typeStr;
+
+      (yAxisDef.columns || []).forEach((c) => {
+        const seriesName = formatTitle(c);
+        const sColor = COLORS[colorIdx % COLORS.length];
+        colorIdx++;
+
+        series.push({
+          name: seriesName,
+          type: eType,
+          yAxisIndex,
+          data: rows.map(r => {
+            const val = r[c];
+            return val === null || val === undefined || isNaN(Number(val)) ? null : Number(val);
+          }),
+          itemStyle: { color: sColor },
+          ...(isArea ? {
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: sColor },
+                { offset: 1, color: 'transparent' }
+              ]),
+              opacity: 0.3
+            },
+            smooth: true
+          } : {}),
+          ...(eType === 'line' ? {
+            smooth: true,
+            symbolSize: 6,
+            lineStyle: { width: 3 }
+          } : {}),
+          ...(eType === 'bar' ? {
+            borderRadius: [4, 4, 0, 0],
+            barMaxWidth: 36
+          } : {})
+        });
+      });
+    });
+
+    comboOption = {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'cross', crossStyle: { color: '#999' } },
+        backgroundColor: 'rgba(255, 255, 255, 0.96)',
+        borderColor: '#E2E8F0',
+        borderWidth: 1,
+        textStyle: { color: '#1E293B', fontSize: 12 },
+        formatter: (params: any[]) => {
+          if (!params || !params.length) return '';
+          let tip = `<div style="font-weight:600;margin-bottom:4px;border-bottom:1px solid #E2E8F0;padding-bottom:3px">${params[0].axisValueLabel}</div>`;
+          params.forEach((p) => {
+            const yDef = spec.y_axes.find(a => (a.columns || []).some(col => formatTitle(col) === p.seriesName));
+            const unit = yDef?.unit || '';
+            const valStr = p.value !== null && p.value !== undefined ? (typeof p.value === 'number' ? p.value.toLocaleString() : p.value) : '-';
+            tip += `<div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color}"></span>
+              <span style="color:#64748B">${p.seriesName}:</span>
+              <strong>${valStr}${unit ? ` ${unit}` : ''}</strong>
+            </div>`;
+          });
+          return tip;
+        }
+      },
+      legend: {
+        show: true,
+        top: 0,
+        icon: 'circle',
+        itemWidth: 8,
+        itemHeight: 8,
+        itemGap: 14,
+        textStyle: { color: '#64748B', fontSize: 11, fontWeight: 500 },
+      },
+      grid: {
+        left: 12,
+        right: rightAxisDef ? 48 : 16,
+        top: 35,
+        bottom: rows.length > 8 ? 68 : (xData.length > 5 ? 52 : 24),
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        data: xData,
+        axisLine: { show: true, lineStyle: { color: 'rgba(148, 163, 184, 0.35)' } },
+        axisTick: { show: true, alignWithLabel: true, lineStyle: { color: 'rgba(148, 163, 184, 0.35)' } },
+        axisLabel: {
+          color: '#64748B',
+          fontSize: 11,
+          interval: 0,
+          hideOverlap: false,
+          rotate: xData.length > 5 ? 35 : 0,
+          align: xData.length > 5 ? 'right' : 'center',
+          verticalAlign: xData.length > 5 ? 'middle' : 'top',
+          margin: xData.length > 5 ? 16 : 10,
+          width: xData.length > 5 ? 95 : 80,
+          overflow: 'truncate'
+        }
+      },
+      yAxis: [
+        {
+          type: 'value',
+          position: 'left',
+          axisLine: { show: true, lineStyle: { color: 'rgba(148, 163, 184, 0.25)' } },
+          axisLabel: {
+            color: '#64748B',
+            fontSize: 11,
+            formatter: (v: number) => {
+              const u = leftAxisDef?.unit || '';
+              return `${formatVal(v)}${u}`;
+            }
+          },
+          splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.12)', type: 'dashed' } }
+        },
+        ...(rightAxisDef ? [{
+          type: 'value',
+          position: 'right',
+          axisLine: { show: true, lineStyle: { color: 'rgba(148, 163, 184, 0.25)' } },
+          axisLabel: {
+            color: '#64748B',
+            fontSize: 11,
+            formatter: (v: number) => {
+              const u = rightAxisDef?.unit || '';
+              return `${formatVal(v)}${u}`;
+            }
+          },
+          splitLine: { show: false }
+        }] : [])
+      ],
+      series
+    };
+  }
+
   // Resolve active chart option
   let selectedOption: any = barOption;
   if (activeType === 'line_chart') selectedOption = lineOption;
@@ -1417,6 +1462,53 @@ export const ChartRenderer: React.FC<ChartProps> = ({
   else if (activeType === 'treemap') selectedOption = treemapOption;
   else if (activeType === 'gantt_chart' || activeType === 'gantt') selectedOption = ganttOption;
   else if (activeType === 'geo_map' || activeType === 'geo_chart' || activeType === 'map') selectedOption = geoOption;
+  else if (activeType === 'combo' || activeType === 'combo_chart') selectedOption = comboOption || barOption;
+
+  // Determine Pattern A Dynamic Title
+  const isGenericTitle = (t?: string) => {
+    if (!t) return true;
+    const clean = t.trim().toLowerCase();
+    return (
+      clean === 'multi-domain pattern analysis' ||
+      clean === 'query results' ||
+      clean === 'query result' ||
+      clean === 'metric overview' ||
+      clean === 'data overview' ||
+      clean === 'table' ||
+      clean === 'chart'
+    );
+  };
+
+  const getComputedChartTitle = () => {
+    if (title && !isGenericTitle(title)) return title;
+    const validYKeys = (activeYKeys || []).filter(Boolean);
+    if (validYKeys.length === 0) return 'Data Overview';
+
+    const formatDim = (col: string) => {
+      const stripped = col.replace(/_(name|id|code|pk|fk|uuid)$/i, '');
+      const base = stripped.length >= 2 ? stripped : col;
+      return base.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()).trim();
+    };
+
+    const formatMetric = (col: string) => {
+      return col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()).trim();
+    };
+
+    const metricsStr =
+      validYKeys.length === 1
+        ? formatMetric(validYKeys[0])
+        : `${formatMetric(validYKeys[0])} & ${formatMetric(validYKeys[1])}`;
+
+    if (xAxisKey && !validYKeys.includes(xAxisKey)) {
+      const isTime = /date|time|timestamp|month|year|day|quarter|week/i.test(xAxisKey);
+      const dimStr = formatDim(xAxisKey);
+      return `${metricsStr} ${isTime ? 'over' : 'by'} ${dimStr}`;
+    }
+
+    return metricsStr || 'Data Overview';
+  };
+
+  const chartDisplayTitle = getComputedChartTitle();
 
   return (
     <div style={{
@@ -1428,10 +1520,10 @@ export const ChartRenderer: React.FC<ChartProps> = ({
       flexDirection: 'column',
       backgroundColor: 'var(--bg-card, #FFFFFF)',
       borderRadius: '14px',
-      border: '1px solid var(--border-color, rgba(148, 163, 184, 0.2))',
+      border: 'none',
       padding: '0.85rem 1rem 0.5rem 1rem',
       fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+      boxShadow: '0 4px 16px rgba(16, 24, 40, 0.08), 0 1px 3px rgba(16, 24, 40, 0.04)',
       boxSizing: 'border-box'
     }}>
       {/* Top Interactive Toolbar */}
@@ -1444,7 +1536,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
           flexShrink: 0
         }}>
           <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main, #0F172A)' }}>
-            {title || formatTitle(activeYKeys[0] || 'Metric Overview')}
+            {chartDisplayTitle}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1544,6 +1636,22 @@ export const ChartRenderer: React.FC<ChartProps> = ({
                 <Percent size={13} />
               </button>
 
+              {/* Combo Dual-Axis Button */}
+              <button
+                className="btn-ghost"
+                onClick={() => setActiveType('combo')}
+                title="Combo Dual-Axis Chart"
+                style={{
+                  padding: '4px 6px',
+                  borderRadius: '6px',
+                  background: activeType === 'combo' ? 'var(--bg-card, #FFFFFF)' : 'transparent',
+                  color: activeType === 'combo' ? 'var(--primary, #6366F1)' : 'var(--text-muted)',
+                  boxShadow: activeType === 'combo' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none'
+                }}
+              >
+                <SlidersHorizontal size={13} />
+              </button>
+
               <button
                 className="btn-ghost"
                 onClick={() => setActiveType('table')}
@@ -1560,23 +1668,233 @@ export const ChartRenderer: React.FC<ChartProps> = ({
               </button>
             </div>
 
-            {/* Export Actions */}
-            <button
-              className="btn-ghost"
-              onClick={handleExportPNG}
-              title="Download PNG Image"
-              style={{ padding: '4px 6px', borderRadius: '6px', color: 'var(--text-muted)' }}
-            >
-              <ImageIcon size={13} />
-            </button>
-            <button
-              className="btn-ghost"
-              onClick={handleExportCSV}
-              title="Export CSV"
-              style={{ padding: '4px 6px', borderRadius: '6px', color: 'var(--text-muted)' }}
-            >
-              <FileSpreadsheet size={13} />
-            </button>
+            {/* Dropdown Options (3 Vertical Dots) */}
+            <div ref={menuRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMenuOpen((prev) => !prev);
+                }}
+                title="More options"
+                style={{
+                  padding: '4px 6px',
+                  borderRadius: '6px',
+                  color: isMenuOpen ? 'var(--primary, #6366F1)' : 'var(--text-muted)',
+                  background: 'transparent',
+                  backgroundColor: 'transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  border: 'none',
+                  outline: 'none',
+                  boxShadow: 'none',
+                  transition: 'color 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--primary, #6366F1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = isMenuOpen ? 'var(--primary, #6366F1)' : 'var(--text-muted)';
+                }}
+              >
+                <MoreVertical size={14} />
+              </button>
+
+              {isMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '4px',
+                    backgroundColor: 'var(--bg-card, #FFFFFF)',
+                    border: '1px solid var(--border-color, #E2E8F0)',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+                    zIndex: 50,
+                    minWidth: '220px',
+                    padding: '6px 0',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {onSaveInsight && (
+                    <button
+                      type="button"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'flex-start',
+                        gap: '10px',
+                        width: '100%',
+                        padding: '8px 14px',
+                        fontSize: '0.82rem',
+                        fontWeight: 500,
+                        color: isSaved ? '#10B981' : 'var(--text-main, #0F172A)',
+                        background: 'transparent',
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        outline: 'none',
+                        boxShadow: 'none',
+                        textAlign: 'left',
+                        cursor: isSaved ? 'default' : 'pointer',
+                        opacity: isSaved ? 0.8 : 1,
+                        transition: 'color 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        if (!isSaved) e.currentTarget.style.color = 'var(--primary, #6366F1)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = isSaved ? '#10B981' : 'var(--text-main, #0F172A)';
+                      }}
+                      onClick={() => {
+                        if (!isSaved) {
+                          onSaveInsight();
+                          setIsMenuOpen(false);
+                        }
+                      }}
+                      disabled={isSaved}
+                    >
+                      <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {isSaved ? <Check size={14} style={{ color: '#10B981' }} /> : <Save size={14} />}
+                      </span>
+                      <span style={{ whiteSpace: 'nowrap' }}>{isSaved ? 'Insight saved' : 'Save insight to dashboard'}</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      gap: '10px',
+                      width: '100%',
+                      padding: '8px 14px',
+                      fontSize: '0.82rem',
+                      fontWeight: 500,
+                      color: 'var(--text-main, #0F172A)',
+                      background: 'transparent',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      boxShadow: 'none',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'color 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--primary, #6366F1)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--text-main, #0F172A)';
+                    }}
+                    onClick={() => {
+                      if (onDownloadCSV) {
+                        onDownloadCSV();
+                      } else {
+                        handleExportCSV();
+                      }
+                      setIsMenuOpen(false);
+                    }}
+                  >
+                    <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Download size={14} />
+                    </span>
+                    <span style={{ whiteSpace: 'nowrap' }}>Download CSV</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      gap: '10px',
+                      width: '100%',
+                      padding: '8px 14px',
+                      fontSize: '0.82rem',
+                      fontWeight: 500,
+                      color: 'var(--text-main, #0F172A)',
+                      background: 'transparent',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      boxShadow: 'none',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'color 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--primary, #6366F1)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--text-main, #0F172A)';
+                    }}
+                    onClick={() => {
+                      handleExportPNG();
+                      setIsMenuOpen(false);
+                    }}
+                  >
+                    <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <ImageIcon size={14} />
+                    </span>
+                    <span style={{ whiteSpace: 'nowrap' }}>Download PNG image</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      gap: '10px',
+                      width: '100%',
+                      padding: '8px 14px',
+                      fontSize: '0.82rem',
+                      fontWeight: 500,
+                      color: 'var(--text-main, #0F172A)',
+                      background: 'transparent',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      boxShadow: 'none',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'color 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--primary, #6366F1)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                      e.currentTarget.style.color = 'var(--text-main, #0F172A)';
+                    }}
+                    onClick={() => {
+                      handleExportCSV();
+                      setIsMenuOpen(false);
+                    }}
+                  >
+                    <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <FileSpreadsheet size={14} />
+                    </span>
+                    <span style={{ whiteSpace: 'nowrap' }}>Export CSV</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

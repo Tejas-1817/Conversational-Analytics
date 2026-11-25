@@ -27,6 +27,10 @@ const apiProxy = {
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'process.env.DRAGGABLE_DEBUG': 'false',
+    'process.env': {},
+  },
   server: {
     proxy: {
       '/auth': apiProxy,

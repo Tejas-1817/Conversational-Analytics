@@ -48,7 +48,20 @@ Built with a **Local-First**, privacy-focused architecture powered by an AI Sema
 
 ---
 
-### 🧠 Local Vector Embedding & ChromaDB RAG Pipeline
+### 📈 Interactive Dashboards & Live Saved Insights (Phase 1 & Phase 2)
+- **Multi-Answer Bulk Save from Chat**: Select multiple answers with visualizations or tables via the "In this chat" drawer and add them simultaneously to an existing or new dashboard in a single transaction (`POST /dashboards/bulk-save`), with automatic free position placement and duplicate query detection.
+- **Dashboard Tabs**: Split dashboards into named tabs with URL deep-linking (`?tab=<id>`), tab reordering, and cross-tab widget move and clone actions. Single-tab dashboards maintain a clean tabless layout; the first tab addition automatically migrates existing widgets to a "Main" tab.
+- **Narrative Text Widgets & Overview Section**: Add Markdown text widgets alongside charts with strict security controls (raw HTML rejected/escaped, links limited to `http`, `https`, and `mailto`). Includes a collapsible executive **Overview Summary** at the top of each dashboard with client-side collapse persistence.
+- **Instant Table Filters (`InstantFilterTable`)**: In-place filtering with value checklists, row counts, search, and `(Blank)` support, plus column hiding with 1-column protection and an active filter reset bar. Enforces a 10,000-row execution limit with visible truncation badges.
+- **Dual-Axis Combo Charts**: Support for dual-y-axes charts (bar + line, area + bar) driven by versioned layout specs (`schema_version: 1`). Automatically suggested by `ChartRecommender` on disparate metric scales and editable via the widget configuration modal.
+- **Permission-Fingerprinted Result Cache & Freshness**: Fast Redis/memory caching scoped to viewer permissions (`dashcache:{tenant}:{user}:{perm_hash}:{insight}:{sql_hash}`). Re-verifies source and table permissions on every fetch. Dashboard header displays **Data as of <time>** computed from the oldest result with cached badges, plus a one-click **Refresh data** action that bypasses the cache.
+- **Playground Dashboard Model**: Drag-and-drop responsive grid layouts (`react-grid-layout`), widget renaming, duplication, and instant chart switching (Table, Bar, Line, Pie, Combo).
+- **Dynamic Live Query Execution**: Dashboards execute live queries dynamically on load (`POST /dashboards/insights/{id}/run`) using short-lived read-only database connections with statement timeouts.
+- **Viewer-Level RBAC & Lock States**: Table permissions checked via `sqlglot` AST parsing. When viewers lack access to underlying tables, widgets gracefully display an explanatory locked placeholder without leaking data.
+- **Governance Separation**: Saving personal insights does not auto-promote SQL into `ApprovedSQLExample`, keeping semantic layer administration clean and privileged.
+- **Privacy & Visibility Scoping**: Supports `private` dashboards (author and tenant admins only) and `published` dashboards (all tenant members read-only), with strict read-only enforcement for `VIEWER` (Observer) roles.
+
+---
 - **On-Device Embedding Engine**: High-performance local sentence-transformers model (`all-MiniLM-L6-v2`) running on-device with zero cloud API latency or costs.
 - **Tenant-Isolated Vector Storage**: Persistent ChromaDB vector collections (`ChromaStore`) isolated strictly per `tenant_id` and `repo_id`.
 - **Automated Schema Snapshot & Vector Sync**: Ingesting database schemas exports versioned PII-masked DDL snapshots (`v1.json`, `.txt`), generates embeddings, and syncs vector records to ChromaDB.
