@@ -72,18 +72,28 @@ def _build_table_schema_block(table: TableMeta) -> str:
 
     for column in active_columns:
         flags: list[str] = []
-
         if column.is_primary_key:
             flags.append("PRIMARY KEY")
-
         if not column.is_nullable:
             flags.append("NOT NULL")
-
         suffix = f" [{', '.join(flags)}]" if flags else ""
 
-        lines.append(
-            f"- {column.column_name} ({column.data_type}){suffix}"
-        )
+        profile_dict = column.profile if isinstance(column.profile, dict) else {}
+        distinct_cnt = profile_dict.get("distinct_count_sampled")
+        sample_vals = profile_dict.get("sample_values") or []
+        val_hint = ""
+        if (
+            sample_vals
+            and distinct_cnt is not None
+            and distinct_cnt <= 25
+            and not column.is_primary_key
+            and not column.column_name.lower().endswith("_id")
+        ):
+            safe_vals = [repr(str(v)[:40]) for v in sample_vals[:10] if v is not None]
+            if safe_vals:
+                val_hint = f" -- Values: [{', '.join(safe_vals)}]"
+
+        lines.append(f"- {column.column_name} ({column.data_type}){suffix}{val_hint}")
 
     return "\n".join(lines)
 
@@ -230,7 +240,7 @@ class IntentRouter:
             reason="The question requests a factual database result.",
         )
 
-    def _schema_text_from_rag_v2(question, conversation_context, user, active_source, db_session, max_schema_chars) -> str:
+def _schema_text_from_rag_v2(question, conversation_context, user, active_source, db_session, max_schema_chars) -> str:
         settings = get_settings()
         if not settings.rag_pipeline_v2:
             return ""
@@ -539,10 +549,11 @@ class ChatService:
                 if message.content
             )[:6_000]
 
-        # Multi-Tenant Safe Cache Key (Incorporating tenant_id and source_id)
+        # Multi-Tenant Safe Cache Key (Incorporating tenant_id, source_id, and domain_id)
         normalized_q = " ".join(question.strip().lower().split())
         q_hash = hashlib.sha256(normalized_q.encode("utf-8")).hexdigest()
-        cache_key = f"cache:analytics:{user.tenant_id}:{source_id}:{q_hash}"
+        cache_domain = str(domain_id) if domain_id else "no_domain"
+        cache_key = f"cache:analytics:{user.tenant_id}:{source_id}:{cache_domain}:{q_hash}"
 
         # 1b. Check Redis Cache for standalone root queries (sub-second response)
         if getattr(self, "redis_client", None) and not conversation_context:
@@ -792,114 +803,114 @@ class ChatService:
             if not schema_text:
                 retrieval_query = question
 
-            if conversation_context:
-                retrieval_query = (
-                f"CURRENT QUESTION:\n{question}\n\n"
-                f"RECENT CONVERSATION:\n"
-                f"{conversation_context[-2_000:]}"
-            )
+                if conversation_context:
+                    retrieval_query = (
+                        f"CURRENT QUESTION:\n{question}\n\n"
+                        f"RECENT CONVERSATION:\n"
+                        f"{conversation_context[-2_000:]}"
+                    )
 
-            retrieval = RetrievalService.retrieve(
-                query_text=retrieval_query,
-                tenant_id=user.tenant_id,
-                db=db_session,
-                source_id=active_source.id,
-                object_types=[
-                    "table",
-                    "schema_chunk",
-                    "relationship",
-                    "approved_example",
-                    "metric",
-                ],
-                top_k=settings.chat_sql_rag_top_k,
-                distance_threshold=settings.chat_sql_rag_distance_threshold,
-            )
-
-            table_chunks: list[str] = []
-
-            # Keep complete schema chunks produced during schema ingestion.
-            # Use a case-insensitive comparison for TABLE:/Table:.
-            for result in retrieval.raw_results:
-                object_type = str(
-                    result.metadata.get("object_type", "")
-                ).strip().lower()
-                result_text = (result.text or "").strip()
-
-                if not result_text:
-                    continue
-
-                # Accept actual table objects and schema blocks containing TABLE:.
-                if (
-                    object_type in {
+                retrieval = RetrievalService.retrieve(
+                    query_text=retrieval_query,
+                    tenant_id=user.tenant_id,
+                    db=db_session,
+                    source_id=active_source.id,
+                    object_types=[
                         "table",
                         "schema_chunk",
                         "relationship",
-                    }
-                    or "TABLE:" in result_text.upper()
-                ):
-                    table_chunks.append(result_text)
-
-            # Hydrated table results contain authoritative physical columns.
-            for table, _distance in retrieval.tables:
-                table_chunks.append(
-                    _build_table_schema_block(table)
+                        "approved_example",
+                        "metric",
+                    ],
+                    top_k=settings.chat_sql_rag_top_k,
+                    distance_threshold=settings.chat_sql_rag_distance_threshold,
                 )
 
-            # Remove duplicate chunks without changing their order.
-            table_chunks = list(dict.fromkeys(table_chunks))
+                table_chunks: list[str] = []
 
-            if table_chunks:
-                selected_chunks: list[str] = []
-                selected_length = 0
+                # Keep complete schema chunks produced during schema ingestion.
+                # Use a case-insensitive comparison for TABLE:/Table:.
+                for result in retrieval.raw_results:
+                    object_type = str(
+                        result.metadata.get("object_type", "")
+                    ).strip().lower()
+                    result_text = (result.text or "").strip()
 
-                for chunk in table_chunks:
-                    additional_length = len(chunk) + 2
-
-                    if (
-                        selected_chunks
-                        and selected_length + additional_length
-                        > max_schema_chars
-                    ):
+                    if not result_text:
                         continue
 
-                    selected_chunks.append(chunk)
-                    selected_length += additional_length
-
-                schema_text = "\n\n".join(selected_chunks)
-            
-            else:
-                log.warning(
-                    "schema_retrieval_empty_using_compact_fallback",
-                    source_id=str(active_source.id),
-                    used_rag=retrieval.used_rag,
-                    threshold=retrieval.threshold,
-                    question=question[:200],
-                )
-
-                fallback_blocks: list[str] = []
-                fallback_length = 0
-
-                for table in source_tables:
-                    block = _build_table_schema_block(table)
-                    additional_length = len(block) + 2
-
+                    # Accept actual table objects and schema blocks containing TABLE:.
                     if (
-                        fallback_blocks
-                        and fallback_length + additional_length > max_schema_chars
+                        object_type in {
+                            "table",
+                            "schema_chunk",
+                            "relationship",
+                        }
+                        or "TABLE:" in result_text.upper()
                     ):
-                        break
+                        table_chunks.append(result_text)
 
-                    fallback_blocks.append(block)
-                    fallback_length += additional_length
-
-                if not fallback_blocks:
-                    raise ValueError(
-                        "No active table metadata is available for schema fallback."
+                # Hydrated table results contain authoritative physical columns.
+                for table, _distance in retrieval.tables:
+                    table_chunks.append(
+                        _build_table_schema_block(table)
                     )
 
-                schema_text = "\n\n".join(fallback_blocks)
+                # Remove duplicate chunks without changing their order.
+                table_chunks = list(dict.fromkeys(table_chunks))
+
+                if table_chunks:
+                    selected_chunks: list[str] = []
+                    selected_length = 0
+
+                    for chunk in table_chunks:
+                        additional_length = len(chunk) + 2
+
+                        if (
+                            selected_chunks
+                            and selected_length + additional_length
+                            > max_schema_chars
+                        ):
+                            continue
+
+                        selected_chunks.append(chunk)
+                        selected_length += additional_length
+
+                    schema_text = "\n\n".join(selected_chunks)
+
+                else:
+                    log.warning(
+                        "schema_retrieval_empty_using_compact_fallback",
+                        source_id=str(active_source.id),
+                        used_rag=retrieval.used_rag,
+                        threshold=retrieval.threshold,
+                        question=question[:200],
+                    )
+
+                    fallback_blocks: list[str] = []
+                    fallback_length = 0
+
+                    for table in source_tables:
+                        block = _build_table_schema_block(table)
+                        additional_length = len(block) + 2
+
+                        if (
+                            fallback_blocks
+                            and fallback_length + additional_length > max_schema_chars
+                        ):
+                            break
+
+                        fallback_blocks.append(block)
+                        fallback_length += additional_length
+
+                    if not fallback_blocks:
+                        raise ValueError(
+                            "No active table metadata is available for schema fallback."
+                        )
+
+                    schema_text = "\n\n".join(fallback_blocks)
                 
-                # 3. Assemble Unified Context Layer (Data, Business, Governance)
+        # 3. Assemble Unified Context Layer (Data, Business, Governance)
         context_layer_str = ""
         try:
             from app.context_layer.engine import ContextLayerEngine
@@ -927,39 +938,77 @@ class ChatService:
             context_layer_str = "None"
 
 
-            # # Semantic RAG retrieval for domain document chunks & embedded knowledge
-            # rag_chunks: list[str] = []
-            # try:
-            #     from app.embeddings.chroma_store import ChromaStore
-            #     from app.embeddings.registry import get_embedding_provider
+        domain_rag_sections: list[str] = []
+        if domain_id:
+            try:
+                parsed_did = uuid.UUID(str(domain_id))
+                domain_obj = (
+                    db_session.query(Domain)
+                    .filter(Domain.id == parsed_did, Domain.tenant_id == user.tenant_id)
+                    .first()
+                )
+                if domain_obj:
+                    d_terms = (
+                        db_session.query(DomainTerm)
+                        .filter(DomainTerm.domain_id == domain_obj.id)
+                        .limit(25)
+                        .all()
+                    )
+                    if d_terms:
+                        term_lines = [f"- {t.term}: {t.definition}" for t in d_terms]
+                        domain_rag_sections.append(
+                            f"DOMAIN GLOSSARY ({domain_obj.name}):\n" + "\n".join(term_lines)
+                        )
 
-            #     embed_provider = get_embedding_provider()
-            #     query_vec = embed_provider.embed([question])[0]
+                    doc_snippets: list[str] = []
+                    if settings.rag_pipeline_v2:
+                        from app.rag.pipeline import RetrievalScope, retrieve
+                        v2_chunks = retrieve(
+                            question=question,
+                            scope=RetrievalScope(
+                                tenant_id=str(user.tenant_id),
+                                source_id=str(domain_obj.source_id) if domain_obj.source_id else None,
+                                domain_id=str(domain_obj.id),
+                                object_types=["domain_child"],
+                            ),
+                            db=db_session,
+                            conversation_context=conversation_context or "",
+                        )
+                        for ch in v2_chunks[:6]:
+                            doc_snippets.append(
+                                f"[Doc: {ch.file_name or 'DomainFile'} | {ch.section_path or 'Section'}]\n{ch.text.strip()}"
+                            )
+                    else:
+                        from app.embeddings.chroma_store import ChromaStore
+                        from app.embeddings.registry import get_embedding_provider
+                        q_vec = get_embedding_provider().embed([question])[0]
+                        hits = ChromaStore().query(
+                            tenant_id=user.tenant_id,
+                            query_embedding=q_vec,
+                            n_results=8,
+                            source_id=domain_obj.source_id,
+                            object_types=["domain_document", "domain_knowledge", "domain_term"],
+                        )
+                        for h in hits:
+                            hit_did = str(h.metadata.get("domain_id", "")).strip()
+                            if not hit_did or hit_did == str(domain_obj.id):
+                                txt = (h.text or "").strip()
+                                if txt:
+                                    fname = h.metadata.get("file_name", "DomainFile")
+                                    doc_snippets.append(f"[Doc: {fname}]\n{txt}")
 
-            #     store = ChromaStore()
-            #     domain_hits = store.query(
-            #         tenant_id=user.tenant_id,
-            #         query_embedding=query_vec,
-            #         n_results=6,
-            #         source_id=active_source.id if domain.source_id else None,
-            #         object_types=["domain_document", "domain_knowledge", "domain_term"],
-            #     )
+                    if doc_snippets:
+                        domain_rag_sections.append(
+                            "VERIFIED UPLOADED DOMAIN DOCUMENTS:\n" + "\n\n".join(doc_snippets[:6])
+                        )
+            except Exception as dom_err:
+                log.warning("domain_context_retrieval_failed", domain_id=str(domain_id), error=str(dom_err))
 
-            #     for hit in domain_hits:
-            #         hit_domain_id = str(hit.metadata.get("domain_id", "")).strip()
-            #         if not hit_domain_id or hit_domain_id == str(domain.id):
-            #             txt = (hit.text or "").strip()
-            #             if txt and txt not in rag_chunks:
-            #                 rag_chunks.append(txt)
-            # except Exception as rag_err:
-            #     log.warning("domain_rag_retrieval_warning", domain_id=str(domain.id), error=str(rag_err))
+        if domain_rag_sections:
+            base_ctx = "" if context_layer_str in ("", "None") else context_layer_str + "\n\n"
+            context_layer_str = base_ctx + "\n\n".join(domain_rag_sections)
 
-            # if rag_chunks:
-            #     context_sections.append("Relevant Domain Knowledge & Document Context:")
-            #     context_sections.extend([f"- {chunk}" for chunk in rag_chunks[:5]])
-
-        domain_context_str = context_layer_str
-        
+        domain_context_str = context_layer_str        
         schema_inventory = "\n".join(
             f"- {table.schema_name}.{table.table_name}: "
             + ", ".join(
@@ -987,7 +1036,7 @@ class ChatService:
                     for item in multi_plan:
                         sub_title = item.get("title", "Analysis")
                         sub_sql = item.get("sql", "")
-                        sub_val = self.sql_validator.validate_sql(sub_sql, dialect=source_dialect)
+                        sub_val = self.sql_validator.validate_sql(sub_sql, catalog=catalog, dialect=source_dialect)
                         if sub_val != "UNANSWERABLE":
                             _check_cancelled()
                             r_data, _, _, _, r_err, _ = self.sql_executor.execute_query(sub_val, source=active_source)
@@ -1473,58 +1522,58 @@ USER QUESTION:
                     "sql_review_rejected_using_validated_draft"
                 )
 
-         # Preflight the reviewed SQL and allow one correction attempt.
-        # if validated_sql != "UNANSWERABLE":
-        #     attempted_sql: list[str] = []
-        #     candidate_sql = validated_sql
-        #     last_error: str | None = None
+        # Preflight the reviewed SQL and allow one correction attempt.
+        if validated_sql != "UNANSWERABLE":
+            attempted_sql: list[str] = []
+            candidate_sql = validated_sql
+            last_error: str | None = None
 
-        #     for attempt_number in range(2):
-        #         attempted_sql.append(candidate_sql)
+            for attempt_number in range(2):
+                attempted_sql.append(candidate_sql)
 
-        #         preflight_error = self.sql_executor.preflight_query(
-        #             candidate_sql,
-        #             source=active_source,
-        #         )
+                preflight_error = self.sql_executor.preflight_query(
+                    candidate_sql,
+                    source=active_source,
+                )
 
-        #         if preflight_error is None:
-        #             break
+                if preflight_error is None:
+                    break
 
-        #         last_error = preflight_error
+                last_error = preflight_error
 
-        #         if attempt_number == 1:
-        #             candidate_sql = "UNANSWERABLE"
-        #             break
+                if attempt_number == 1:
+                    candidate_sql = "UNANSWERABLE"
+                    break
 
-        #         corrected_sql = self.llm_provider.refine_sql(
-        #             question=question,
-        #             failed_sql=candidate_sql,
-        #             error_message=(
-        #                 f"{preflight_error}\n\n"
-        #                 "Previously rejected queries:\n"
-        #                 + "\n---\n".join(attempted_sql)
-        #             ),
-        #             schema_text=schema_text,
-        #             dialect=source_dialect,
-        #         )
+                corrected_sql = self.llm_provider.refine_sql(
+                    question=question,
+                    failed_sql=candidate_sql,
+                    error_message=(
+                        f"{preflight_error}\n\n"
+                        "Previously rejected queries:\n"
+                        + "\n---\n".join(attempted_sql)
+                    ),
+                    schema_text=schema_text,
+                    dialect=source_dialect,
+                )
 
-        #         candidate_sql = self.sql_validator.validate_sql(
-        #             corrected_sql,
-        #             catalog=catalog,
-        #             dialect=source_dialect,
-        #         )
+                candidate_sql = self.sql_validator.validate_sql(
+                    corrected_sql,
+                    catalog=catalog,
+                    dialect=source_dialect,
+                )
 
-        #         if candidate_sql == "UNANSWERABLE":
-        #             break
+                if candidate_sql == "UNANSWERABLE":
+                    break
 
-        #     validated_sql = candidate_sql
+            validated_sql = candidate_sql
 
-        #     if validated_sql == "UNANSWERABLE":
-        #         log.warning(
-        #             "sql_preflight_failed_after_correction",
-        #             error=last_error,
-        #             attempted_sql_count=len(attempted_sql),
-        #         )
+            if validated_sql == "UNANSWERABLE":
+                log.warning(
+                    "sql_preflight_failed_after_correction",
+                    error=last_error,
+                    attempted_sql_count=len(attempted_sql),
+                )
 
                 # Handle genuinely UNANSWERABLE queries
         if validated_sql == "UNANSWERABLE":
@@ -1696,6 +1745,8 @@ USER QUESTION:
             question=question,
             columns=columns,
             schema_inventory=schema_inventory,
+            sql=validated_sql,
+            domain_context=domain_context_str,
         )
 
         format_date = lambda d: d.strftime("%d %b %Y, %I:%M %p")

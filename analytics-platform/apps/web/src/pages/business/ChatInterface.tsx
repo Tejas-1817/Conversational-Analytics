@@ -1054,14 +1054,14 @@ export const ChatInterface = () => {
   };
 
   const handleApproveResponse = async (messageId: string) => {
+    if (!convId) return;
     const isCurrentlyApproved = feedbackGiven[messageId] === 'approved';
 
     try {
       if (isCurrentlyApproved) {
         // UNDO: Call unapprove endpoint and remove green checkmark
-        await fetchApi('/engine/examples/unapprove', {
-          method: 'POST',
-          body: JSON.stringify({ message_id: messageId })
+        await fetchApi(`/engine/conversations/${convId}/messages/${messageId}/feedback`, {
+          method: 'DELETE'
         });
         setFeedbackGiven(prev => {
           const next = { ...prev };
@@ -1069,10 +1069,10 @@ export const ChatInterface = () => {
           return next;
         });
       } else {
-        // APPROVE: Call approve endpoint and show green checkmark
-        await fetchApi('/engine/examples/approve', {
+        // POSITIVE FEEDBACK: Submit positive feedback (and register golden SQL if query exists
+        await fetchApi(`/engine/conversations/${convId}/messages/${messageId}/feedback`, {
           method: 'POST',
-          body: JSON.stringify({ message_id: messageId })
+          body: JSON.stringify({ is_positive: true })
         });
         setFeedbackGiven(prev => ({ ...prev, [messageId]: 'approved' }));
       }
@@ -1115,16 +1115,15 @@ export const ChatInterface = () => {
                 </div>
               )}
 
-
-                    {!m.isError && (m.sql || m.content || m.answer) && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', maxWidth: '680px', margin: '0 auto' }}>
-                        {/* 0. Expandable Reasoning & Thought Steps */}
-                        <ThoughtSteps
-                          isLoading={m.isStreaming}
-                          activeStage={m.activeStage}
-                          executionTimeMs={m.execution_time_ms}
-                          intentReason={m.question}
-                        />
+              {!m.isError && (m.sql || m.content || m.answer) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
+                  {/* 0. Expandable Reasoning & Thought Steps */}
+                  <ThoughtSteps
+                    isLoading={m.isStreaming}
+                    activeStage={m.activeStage}
+                    executionTimeMs={m.execution_time_ms}
+                    intentReason={m.question}
+                  />
 
 
                   {/* 1. Structured Cards & Markdown Synthesis */}
@@ -1362,33 +1361,33 @@ export const ChatInterface = () => {
                       </div>
                     )}
 
-                    {m.role === 'assistant' && !m.isError && !m.isStreaming && (m.content || m.answer || m.answer_markdown) && (
-                      <div className="flex items-center gap-4 mt-4 text-muted text-sm flex-wrap">
-                        {m.stopped && (
-                          <span
-                            style={{
-                              fontSize: '0.75rem',
-                              color: 'var(--text-muted)',
-                              background: 'var(--bg-card)',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: '4px',
-                              padding: '2px 8px',
-                              fontWeight: 600,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                            }}
-                          >
-                            Stopped
-                          </span>
-                        )}
-                        {m.confidence_score && (
-                          <div className="flex items-center gap-1" title={m.confidence_reason}>
-                            <CheckCircle2 size={14} className="text-success" />
-                            <span>Confidence: {(m.confidence_score * 100).toFixed(0)}%</span>
-                          </div>
-                        )}
+              {m.role === 'assistant' && !m.isError && !m.isStreaming && (m.content || m.answer || m.answer_markdown) && (
+                <div className="flex items-center gap-4 mt-4 text-muted text-sm flex-wrap">
+                  {m.stopped && (
+                    <span
+                      style={{
+                        fontSize: '0.75rem',
+                        color: 'var(--text-muted)',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        padding: '2px 8px',
+                        fontWeight: 600,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      Stopped
+                    </span>
+                  )}
+                  {m.confidence_score && (
+                    <div className="flex items-center gap-1" title={m.confidence_reason}>
+                      <CheckCircle2 size={14} className="text-success" />
+                      <span>Confidence: {(m.confidence_score * 100).toFixed(0)}%</span>
+                    </div>
+                  )}
 
-                        <div className="flex-1" />
+                  <div className="flex-1" />
 
 
                   <div className="flex items-center gap-2">
@@ -1442,8 +1441,10 @@ export const ChatInterface = () => {
   }, [messages, feedbackGiven]);
 
   return (
+
     <div className="chat-container" style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', maxWidth: '100%', margin: 0, overflow: 'hidden' }}>
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+
         <div
           className="chat-messages"
           style={{ padding: '0 1rem', flex: 1, overflowY: 'auto' }}
@@ -1463,69 +1464,69 @@ export const ChatInterface = () => {
             }}
           >
             {messages.length === 0 && (
-            <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.85, maxWidth: '560px' }}>
-              <div style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '50%',
-                background: isCodeRepoSelected ? 'rgba(236, 72, 153, 0.12)' : 'rgba(79, 70, 229, 0.1)',
-                color: isCodeRepoSelected ? '#ec4899' : 'var(--primary)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 1.5rem',
-              }}>
-                {isCodeRepoSelected ? <FolderGit2 size={32} /> : <Bot size={32} />}
-              </div>
-              <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>
-                {isCodeRepoSelected ? 'Ask Code Intelligence' : 'How can I help you today?'}
-              </h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-                {isCodeRepoSelected
-                  ? 'Ask questions about repository architecture, call hierarchies, AST functions, and API logic.'
-                  : 'Ask a question about your business data in plain English to generate SQL & view live results.'}
-              </p>
+              <div style={{ margin: 'auto', textAlign: 'center', opacity: 0.85, maxWidth: '560px' }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  background: isCodeRepoSelected ? 'rgba(236, 72, 153, 0.12)' : 'rgba(79, 70, 229, 0.1)',
+                  color: isCodeRepoSelected ? '#ec4899' : 'var(--primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 1.5rem',
+                }}>
+                  {isCodeRepoSelected ? <FolderGit2 size={32} /> : <Bot size={32} />}
+                </div>
+                <h2 style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>
+                  {isCodeRepoSelected ? 'Ask Code Intelligence' : 'How can I help you today?'}
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                  {isCodeRepoSelected
+                    ? 'Ask questions about repository architecture, call hierarchies, AST functions, and API logic.'
+                    : 'Ask a question about your business data in plain English to generate SQL & view live results.'}
+                </p>
 
-              <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left' }}>
-                {isCodeRepoSelected ? (
-                  <>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("How does request authentication and token verification work?")}>
-                      <span className="text-sm">"How does request authentication and token verification work?"</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("What are the main API routes and their handler functions?")}>
-                      <span className="text-sm">"What are the main API routes and their handler functions?"</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Explain the core data models and database connections used.")}>
-                      <span className="text-sm">"Explain the core data models and database connections used."</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Which functions execute background tasks or jobs?")}>
-                      <span className="text-sm">"Which functions execute background tasks or jobs?"</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
-                      <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
-                    </div>
-                    <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me top 5 users by created_at date")}>
-                      <span className="text-sm">"Show me top 5 users by created_at date"</span>
-                    </div>
-                  </>
-                )}
+                <div className="grid grid-cols-2 gap-3 mt-4" style={{ textAlign: 'left' }}>
+                  {isCodeRepoSelected ? (
+                    <>
+                      <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("How does request authentication and token verification work?")}>
+                        <span className="text-sm">"How does request authentication and token verification work?"</span>
+                      </div>
+                      <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("What are the main API routes and their handler functions?")}>
+                        <span className="text-sm">"What are the main API routes and their handler functions?"</span>
+                      </div>
+                      <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Explain the core data models and database connections used.")}>
+                        <span className="text-sm">"Explain the core data models and database connections used."</span>
+                      </div>
+                      <div className="card hover-bg-light" style={{ padding: '0.9rem 1rem', cursor: 'pointer', transition: 'all 0.2s', border: '1px solid var(--border-color)' }} onClick={() => setInput("Which functions execute background tasks or jobs?")}>
+                        <span className="text-sm">"Which functions execute background tasks or jobs?"</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("How many customers currently have an ACTIVE status?")}>
+                        <span className="text-sm">"How many customers currently have an ACTIVE status?"</span>
+                      </div>
+                      <div className="card hover-bg-light" style={{ padding: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setInput("Show me top 5 users by created_at date")}>
+                        <span className="text-sm">"Show me top 5 users by created_at date"</span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {renderedMessages}
-          {/* Initial live loading state with live thought timer */}
-          {loading && !messages.some(m => m.status === 'processing') && (
-            <div className="message-bubble assistant">
-              <div className="message-content">
-                <ThoughtSteps isLoading={true} />
+            {renderedMessages}
+            {/* Initial live loading state with live thought timer */}
+            {loading && !messages.some(m => m.status === 'processing') && (
+              <div className="message-bubble assistant">
+                <div className="message-content">
+                  <ThoughtSteps isLoading={true} />
+                </div>
               </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} style={{ height: '1px' }} />
+            )}
+            <div ref={messagesEndRef} style={{ height: '1px' }} />
           </div>
         </div>
 

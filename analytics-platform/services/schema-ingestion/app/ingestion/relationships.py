@@ -45,7 +45,14 @@ def run_relationship_detection(session: Session, source: DataSource, engine: Eng
             if target is None:
                 continue
             target_table, target_pk = target
-            if (col.id, target_pk.id) in existing or t.id == target_table.id:
+            is_hierarchy_self_fk = (
+                t.id == target_table.id
+                and any(
+                    hint in col.column_name.lower()
+                    for hint in ("parent_", "reports_to", "manager_", "ultimate_parent")
+                )
+            )
+            if (col.id, target_pk.id) in existing or (t.id == target_table.id and not is_hierarchy_self_fk):
                 continue
             stats["naming_candidates"] += 1
 

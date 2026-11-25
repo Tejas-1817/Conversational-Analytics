@@ -231,20 +231,25 @@ def submit_feedback(
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
         
-    if msg.role != "assistant" or not msg.generated_sql:
-        raise HTTPException(status_code=400, detail="Feedback can only be provided for assistant messages with SQL")
+    if msg.role != "assistant":
+        raise HTTPException(status_code=400, detail="Feedback can only be provided for assistant messages")
 
-    fb = UserFeedback(
-        message_id=msg.id,
-        is_positive=feedback.is_positive,
-        correction=feedback.correction
-    )
-    db.add(fb)
+    # Upsert feedback record (prevents duplicates when toggling)
+    fb = db.scalar(select(UserFeedback).where(UserFeedback.message_id == msg.id))
+    if fb:
+        fb.is_positive = feedback.is_positive
+        fb.correction = feedback.correction
+    else:
+        fb = UserFeedback(
+            message_id=msg.id,
+            is_positive=feedback.is_positive,
+            correction=feedback.correction
+        )
+        db.add(fb)
     db.commit()
 
-    # --- Automated Learning & Self-Healing ---
-    if feedback.is_positive:
-        # Locate corresponding user prompt
+    # --- Automated Learning & Self-Healing (only for SQL responses) ---
+    if feedback.is_positive and msg.generated_sql:
         user_msg = db.scalar(
             select(ConversationMessage).where(
                 ConversationMessage.conversation_id == conv.id,
@@ -269,8 +274,7 @@ def submit_feedback(
                 db.add(example)
                 db.commit()
                 background_tasks.add_task(_embed_approved_examples_tenant, str(user.tenant_id))
-    else:
-        # Negative feedback: If this query was previously learned, delete it so it stops poisoning RAG
+    elif not feedback.is_positive and msg.generated_sql:
         bad_example = db.scalar(
             select(ApprovedSQLExample).where(
                 ApprovedSQLExample.tenant_id == user.tenant_id,

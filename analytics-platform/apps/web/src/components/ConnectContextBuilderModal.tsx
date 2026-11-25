@@ -787,7 +787,7 @@ export const ConnectContextBuilderModal: React.FC<ConnectContextBuilderModalProp
                 multiple
                 style={{ display: 'none' }}
                 onChange={handleFileInputChange}
-                accept=".txt,.md,.sql,.yml,.yaml,.json,.csv,.lkml,.lookml,.pbix,.pbit,.twb,.twbx,.tds,.tdsx,.tfl,.tflx,.pdf,.docx,.doc,.rtf"
+                accept=".txt,.md,.sql,.yml,.yaml,.json,.csv,.lkml,.lookml,.pbix,.pbit,.twb,.twbx,.tds,.tdsx,.tfl,.tflx,.pptx,.pdf,.docx,.doc,.rtf"
               />
 
               {/* Cloud Illustration with badges */}

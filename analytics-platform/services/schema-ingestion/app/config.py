@@ -102,6 +102,10 @@ class Settings(BaseSettings):
     rag_max_query_variants: int = 4
     rerank_provider: str = "flashrank"
     
+    # Domain Document Parsing (Docling — MIT)
+    domain_use_docling: bool = True
+    domain_docling_ocr: bool = False  # Enable only for scanned image-only PDFs
+    
     # Text-to-SQL-specific retrieval and prompt limits
     chat_sql_rag_top_k: int = 12
     chat_sql_rag_distance_threshold: float = 0.75

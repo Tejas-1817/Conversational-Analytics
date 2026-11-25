@@ -702,7 +702,14 @@ def _process_document_background(
         # 2. Extract domain business terms via LLM (safe non-blocking extraction)
         extracted_terms = []
         try:
-            extracted_terms = extract_domain_terms(raw_text[:8000], domain_name)
+            seen_terms: set[str] = set()
+            for offset in range(0, min(len(raw_text), 24000), 8000):
+                window_terms = extract_domain_terms(raw_text[offset:offset + 8000], domain_name)
+                for t in window_terms:
+                    key = (t.term or "").strip().lower()
+                    if key and key not in seen_terms:
+                        seen_terms.add(key)
+                        extracted_terms.append(t)
             for term_obj in extracted_terms:
                 term_rec = DomainTerm(
                     domain_id=domain_id,

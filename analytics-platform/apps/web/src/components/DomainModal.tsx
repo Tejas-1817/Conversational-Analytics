@@ -630,7 +630,7 @@ export const DomainModal: React.FC<DomainModalProps> = ({
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept=".pdf,.docx,.csv,.xlsx,.md"
+                  accept=".pdf,.docx,.pptx,.csv,.xlsx,.md"
                   style={{ display: 'none' }}
                   onChange={handleFileInputChange}
                 />

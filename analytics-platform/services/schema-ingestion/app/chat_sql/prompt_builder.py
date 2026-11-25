@@ -6,7 +6,7 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-MAX_DOMAIN_CONTEXT_CHARS = 4_000
+MAX_DOMAIN_CONTEXT_CHARS = 12_000
 
 
 class PromptBuilder:
@@ -234,6 +234,10 @@ SQL CORRECTNESS RULES:
   * If joining a parent table to multiple child tables (e.g. patients to admissions AND bills), pre-aggregate each child table separately in CTEs (WITH child1 AS (...), child2 AS (...)) before joining to the parent.
 - Always use COUNT(DISTINCT entity_id) instead of COUNT(*) when joining dimension tables to fact tables to prevent duplicate row counts.
 - Never sum or average values across an inflated join grain.
+- ENTITY MATCHING RULE: When filtering by company, vendor, or executive names, use case-insensitive ILIKE ('%name%') or match aliases rather than brittle exact '=' matches.
+- HIERARCHY & ROLLUP RULE: For parent-subsidiary or executive reporting rollups, prefer closure tables (e.g., org_hierarchy_closure) or PostgreSQL WITH RECURSIVE CTEs, and filter budget_scope = 'STANDALONE' when summing child budgets to prevent double-counting.
+- PRE-AGGREGATED SUMMARY RULE: For multi-pillar single-account Customer360 summaries, prefer pre-aggregated views (e.g., v_customer_360_summary) instead of joining multiple 1-to-many child tables directly.
+- ENUM VALUE GROUNDING RULE: Always match literal filter values strictly to the 'Values: [...]' hints listed in DATABASE SCHEMA.
 {time_trunc_rule}
 - When SELECT contains aggregates, every selected non-aggregate column
   or expression must also appear in GROUP BY.
