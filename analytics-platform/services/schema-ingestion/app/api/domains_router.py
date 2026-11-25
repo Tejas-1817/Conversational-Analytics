@@ -584,10 +584,15 @@ async def upload_domain_document(
     verify_user_has_domain_access(session, current_user, domain)
 
     content_bytes = await file.read()
-    file_name = file.filename or "uploaded_document"
+    raw_name = file.filename or "uploaded_document"
+    file_name = os.path.basename(raw_name).strip() or "uploaded_document"
     file_size = len(content_bytes)
-    sha256_hash = hashlib.sha256(content_bytes).hexdigest()
+    if file_size > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File exceeds 20MB maximum limit.")
     ext = file_name.split(".")[-1].lower() if "." in file_name else "txt"
+    if ext not in {"pdf", "docx", "xlsx", "csv", "md", "txt", "pptx", "html"}:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: .{ext}")
+    sha256_hash = hashlib.sha256(content_bytes).hexdigest()
 
     # Save to local storage directory immediately
     domain_dir = os.path.join(STORAGE_BASE, str(current_user.tenant_id), str(domain.id))

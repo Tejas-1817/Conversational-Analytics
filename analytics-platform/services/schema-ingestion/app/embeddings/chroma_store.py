@@ -166,11 +166,12 @@ class ChromaStore:
     def _get_or_create_collection(
         self,
         tenant_id: str | uuid.UUID,
-        source_id: str | uuid.UUID | None = None
+        source_id: str | uuid.UUID | None = None,
+        collection_suffix: str | None = None,
     ) -> Collection | None:
         if self._client is None:
             return None
-        name = _collection_name(tenant_id, source_id=source_id)
+        name = _collection_name(tenant_id, source_id=source_id, collection_suffix=collection_suffix )
         return self._client.get_or_create_collection(
             name=name,
             metadata={"hnsw:space": "cosine"},
@@ -184,14 +185,15 @@ class ChromaStore:
         self,
         tenant_id: str | uuid.UUID,
         objects: list[EmbeddedObject],
-        source_id: str | uuid.UUID | None = None
+        source_id: str | uuid.UUID | None = None,
+        collection_suffix: str | None = None,
     ) -> int:
         """Upsert a batch of embedded objects into the tenant's/source's collection."""
         if not objects:
             return 0
 
         tenant_str = str(tenant_id)
-        col_name = _collection_name(tenant_id, source_id=source_id)
+        col_name = _collection_name(tenant_id, source_id=source_id, collection_suffix=collection_suffix)
 
         if self._client is None:
             if col_name not in self._fallback_store:
@@ -209,7 +211,7 @@ class ChromaStore:
                 }
             return len(objects)
 
-        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
+        collection = self._get_or_create_collection(tenant_id, source_id=source_id, collection_suffix=collection_suffix)
         ids: list[str] = []
         embeddings: list[list[float]] = []
         documents: list[str] = []
@@ -242,10 +244,11 @@ class ChromaStore:
         n_results: int = 5,
         source_id: str | uuid.UUID | None = None,
         object_types: list[str] | None = None,
+        collection_suffix: str | None = None,
     ) -> list[RetrievalResult]:
         """Query the tenant's/source's collection."""
         tenant_str = str(tenant_id)
-        col_name = _collection_name(tenant_id, source_id=source_id)
+        col_name = _collection_name(tenant_id, source_id=source_id, collection_suffix=collection_suffix)
 
         if self._client is None:
             col_data = self._fallback_store.get(col_name, {})
@@ -274,7 +277,7 @@ class ChromaStore:
                 ))
             return hits
 
-        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
+        collection = self._get_or_create_collection(tenant_id, source_id=source_id, collection_suffix=collection_suffix)
         count = collection.count()
         if count == 0:
             return []
@@ -321,26 +324,32 @@ class ChromaStore:
         self,
         tenant_id: str | uuid.UUID,
         object_id: str,
-        source_id: str | uuid.UUID | None = None
+        source_id: str | uuid.UUID | None = None,
+        collection_suffix: str | None = None,
     ) -> None:
         """Remove a single vector by its object ID."""
-        col_name = _collection_name(tenant_id, source_id=source_id)
+        col_name = _collection_name(tenant_id, source_id=source_id, collection_suffix=collection_suffix)
         if self._client is None:
             if col_name in self._fallback_store and object_id in self._fallback_store[col_name]:
                 del self._fallback_store[col_name][object_id]
             return
-        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
+        collection = self._get_or_create_collection(
+            tenant_id, source_id=source_id, collection_suffix=collection_suffix
+        )
         collection.delete(ids=[object_id])
 
     def count(
         self,
         tenant_id: str | uuid.UUID,
-        source_id: str | uuid.UUID | None = None
+        source_id: str | uuid.UUID | None = None,
+        collection_suffix: str | None = None,
     ) -> int:
         """Return the number of vectors in the collection."""
-        col_name = _collection_name(tenant_id, source_id=source_id)
+        col_name = _collection_name(tenant_id, source_id=source_id, collection_suffix=collection_suffix)
         if self._client is None:
             return len(self._fallback_store.get(col_name, {}))
-        collection = self._get_or_create_collection(tenant_id, source_id=source_id)
+        collection = self._get_or_create_collection(
+            tenant_id, source_id=source_id, collection_suffix=collection_suffix
+        )
         return collection.count()
 

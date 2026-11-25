@@ -40,6 +40,10 @@ def _get_docling_converter():
         pdf_opts = PdfPipelineOptions()
         pdf_opts.do_ocr = bool(getattr(settings, "domain_docling_ocr", False))
         pdf_opts.do_table_structure = True
+        pdf_opts.enable_remote_services = False      # Security: block remote calls during parse
+        pdf_opts.document_timeout = 120.0            # Security: prevent hung worker on corrupt PDFs
+        pdf_opts.generate_page_images = False        # Perf/Memory: avoid base64 page image bloat
+        pdf_opts.generate_picture_images = False
 
         _DOCLING_CONVERTER = DocumentConverter(
             format_options={
@@ -53,6 +57,9 @@ def _get_docling_converter():
 def _parse_with_docling(file_bytes: bytes, file_name: str) -> str:
     """Convert PDF/DOCX/PPTX/XLSX to layout-aware Markdown via Docling."""
     ext = file_name.split(".")[-1].lower() if "." in file_name else "pdf"
+    if ext == "pdf" and not file_bytes.lstrip().startswith(b"%PDF-"):
+        raise ValueError("Invalid PDF file header.")
+
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
@@ -60,7 +67,11 @@ def _parse_with_docling(file_bytes: bytes, file_name: str) -> str:
             tmp_path = tmp.name
 
         converter = _get_docling_converter()
-        result = converter.convert(tmp_path)
+        result = converter.convert(
+            tmp_path,
+            max_num_pages=200,
+            max_file_size=20 * 1024 * 1024,  # 20 MB cap
+        )
         return (result.document.export_to_markdown() or "").strip()
     finally:
         if tmp_path and os.path.exists(tmp_path):
