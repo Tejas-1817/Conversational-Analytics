@@ -49,12 +49,15 @@
   /* Status */
   --success: #16A34A;
   --success-light: #F0FDF4;
+  --success-text: #15803D;
   --warning: #D97706;
   --warning-light: #FFFBEB;
+  --warning-text: #B45309;
   --danger: #DC2626;
   --danger-light: #FEF2F2;
   --info: #0EA5E9;
   --info-light: #F0F9FF;
+  --info-text: #0369A1;
 
   /* Radii */
   --radius: 10px;
@@ -536,7 +539,7 @@ tr:last-child td {
 
 /* SIDEBAR */
 .sidebar {
-  width: 260px;
+  width: 180px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -599,6 +602,36 @@ tr:last-child td {
   background: var(--primary-light);
   color: var(--primary);
   font-weight: 600;
+}
+
+.sidebar.collapsed {
+  width: 48px;
+}
+
+.sidebar.collapsed .sidebar-header {
+  padding: 0;
+  justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-nav {
+  padding: 0.75rem 0;
+  align-items: center;
+}
+
+.sidebar.collapsed .sidebar-link {
+  justify-content: center;
+  align-items: center;
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  margin: 2px auto;
+  gap: 0;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar.collapsed .sidebar-link svg {
+  flex-shrink: 0;
+  margin: 0;
 }
 
 /* TOP NAV */
@@ -840,7 +873,7 @@ tr:last-child td {
 .message-bubble.user .message-content {
   font-size: 1rem;
   font-weight: 500;
-  text-align: right;
+  text-align: left;
   background: #eff6ff;
   color: black;
   padding: 1rem 1.25rem;
@@ -1032,13 +1065,44 @@ tr:last-child td {
   border-radius: var(--radius);
 }
 
-.react-resizable-handle {
-  opacity: 0.4;
-  transition: opacity 0.15s;
+.react-grid-item > .react-resizable-handle {
+  z-index: 20;
+  background-image: none !important;
+  opacity: 0 !important;
 }
 
-.react-grid-item:hover .react-resizable-handle {
-  opacity: 0.7;
+.react-grid-item > .react-resizable-handle::after {
+  display: none !important;
+  content: none !important;
+}
+
+.react-grid-item > .react-resizable-handle.react-resizable-handle-e,
+.react-grid-item > .react-resizable-handle.react-resizable-handle-w {
+  top: 10px;
+  bottom: 10px;
+  height: auto;
+  width: 10px;
+  margin-top: 0;
+  transform: none !important;
+}
+
+.react-grid-item > .react-resizable-handle.react-resizable-handle-n,
+.react-grid-item > .react-resizable-handle.react-resizable-handle-s {
+  left: 10px;
+  right: 10px;
+  width: auto;
+  height: 10px;
+  margin-left: 0;
+  transform: none !important;
+}
+
+.react-grid-item > .react-resizable-handle.react-resizable-handle-ne,
+.react-grid-item > .react-resizable-handle.react-resizable-handle-nw,
+.react-grid-item > .react-resizable-handle.react-resizable-handle-se,
+.react-grid-item > .react-resizable-handle.react-resizable-handle-sw {
+  width: 14px;
+  height: 14px;
+  transform: none !important;
 }
 
 /* ==========================================================================
@@ -1076,4 +1140,19 @@ hr {
 
 .raw-data-accordion>summary::-webkit-details-marker {
   font-size: 0.6em;
+}
+
+/* Chat Answer Cards Responsive 2-Column Grid */
+.chat-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  width: 100%;
+  align-items: stretch;
+}
+
+@media (max-width: 680px) {
+  .chat-cards-grid {
+    grid-template-columns: 1fr !important;
+  }
 }

@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     job_timeout_seconds: int = 3600
 
+    # Dashboard Result Cache Settings (Phase 2)
+    dashboard_cache_enabled: bool = True
+    dashboard_cache_ttl_seconds: int = 300  # 5 minutes
+    dashboard_cache_max_bytes: int = 1_048_576  # 1 MB per result
+
     # JWT Auth settings
     jwt_secret: str = "super-secret-change-in-production"
     jwt_algorithm: str = "HS256"

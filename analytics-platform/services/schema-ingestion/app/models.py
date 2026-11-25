@@ -602,37 +602,61 @@ class ConversationMessage(Base):
 
 class SavedInsight(Base):
     __tablename__ = "saved_insights"
-    __table_args__ = (UniqueConstraint("tenant_id", "name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=True)
+    domain_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("domains.id", ondelete="SET NULL"), nullable=True)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True)
+    message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("conversation_messages.id", ondelete="SET NULL"), nullable=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
 
-    # Store the query intent or exactly what was asked so it can be re-run
+    # Store the query intent or verified SQL so it can be re-run
     query: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Optionally store the last known result snapshot or chart config
+    # Chart visualization type and configuration settings
+    chart_type: Mapped[str | None] = mapped_column(Text)
     chart_config: Mapped[dict | None] = mapped_column(JSONB)
+    last_run_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+
+class DashboardTab(Base):
+    __tablename__ = "dashboard_tabs"
+    __table_args__ = (UniqueConstraint("dashboard_id", "name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    dashboard_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("dashboards.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
+
+    dashboard: Mapped["Dashboard"] = relationship(back_populates="tabs")
+    widgets: Mapped[list["DashboardWidget"]] = relationship(back_populates="tab", cascade="all, delete-orphan")
 
 
 class Dashboard(Base):
     __tablename__ = "dashboards"
-    __table_args__ = (UniqueConstraint("tenant_id", "name"),)
+    __table_args__ = (UniqueConstraint("tenant_id", "user_id", "name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    visibility: Mapped[str] = mapped_column(Text, nullable=False, server_default="published")
+    overview_summary: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=text("now()"))
 
+    tabs: Mapped[list["DashboardTab"]] = relationship(back_populates="dashboard", cascade="all, delete-orphan", order_by="DashboardTab.position")
     widgets: Mapped[list["DashboardWidget"]] = relationship(back_populates="dashboard", cascade="all, delete-orphan")
 
 
@@ -641,7 +665,9 @@ class DashboardWidget(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     dashboard_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("dashboards.id", ondelete="CASCADE"), nullable=False)
-    insight_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("saved_insights.id", ondelete="CASCADE"), nullable=False)
+    tab_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dashboard_tabs.id", ondelete="CASCADE"))
+    insight_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("saved_insights.id", ondelete="CASCADE"), nullable=True)
+    widget_type: Mapped[str] = mapped_column(Text, nullable=False, server_default="insight")
 
     # Layout positions for grid
     x: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
@@ -649,8 +675,15 @@ class DashboardWidget(Base):
     w: Mapped[int] = mapped_column(Integer, nullable=False, server_default="4")
     h: Mapped[int] = mapped_column(Integer, nullable=False, server_default="3")
 
+    # Customization overrides & multi-breakpoint layout
+    title_override: Mapped[str | None] = mapped_column(Text)
+    chart_type_override: Mapped[str | None] = mapped_column(Text)
+    settings: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    layouts: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
     dashboard: Mapped[Dashboard] = relationship(back_populates="widgets")
-    insight: Mapped[SavedInsight] = relationship()
+    tab: Mapped["DashboardTab | None"] = relationship(back_populates="widgets")
+    insight: Mapped["SavedInsight | None"] = relationship()
 
 
 # =============================================================================

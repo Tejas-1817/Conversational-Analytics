@@ -14,6 +14,7 @@ import { ReliabilityDashboard } from './pages/admin/ReliabilityDashboard';
 import { Benchmarks } from './pages/admin/Benchmarks';
 import { EvaluationRunDetails } from './pages/admin/EvaluationRunDetails';
 import { ChatInterface } from './pages/business/ChatInterface';
+import { ChatHistoryPage } from './pages/business/ChatHistoryPage';
 import { Dashboards } from './pages/business/Dashboards';
 import { Domains } from './pages/business/Domains';
 import { DomainDetail } from './pages/business/DomainDetail';
@@ -38,6 +39,7 @@ export default function App() {
           {/* Business Routes */}
           <Route path="/" element={<Navigate to="/domains" replace />} />
           <Route path="/chat" element={<ProtectedRoute><ChatInterface /></ProtectedRoute>} />
+          <Route path="/chats" element={<ProtectedRoute><ChatHistoryPage /></ProtectedRoute>} />
           <Route path="/dashboards" element={<ProtectedRoute><Dashboards /></ProtectedRoute>} />
           <Route path="/domains" element={<ProtectedRoute><Domains /></ProtectedRoute>} />
           <Route path="/domains/:domainId" element={<ProtectedRoute><DomainDetail /></ProtectedRoute>} />

@@ -38,25 +38,23 @@ export const FollowUpSuggestions: React.FC<FollowUpSuggestionsProps> = ({ questi
           gap: '0.6rem',
           background: 'transparent',
           border: 'none',
-          borderRadius: '8px',
-          padding: '0.45rem 0.75rem',
+          outline: 'none',
+          boxShadow: 'none',
+          padding: '0.25rem 0',
           cursor: 'pointer',
           color: 'var(--text-muted, #64748B)',
           fontSize: '0.9rem',
           fontWeight: 600,
           userSelect: 'none',
           marginBottom: isOpen ? '1.15rem' : '0',
-          transition: 'all 0.15s ease',
+          transition: 'color 0.15s ease',
           textAlign: 'left',
-          marginLeft: '-0.35rem',
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.color = 'var(--text-main, #0F172A)';
-          e.currentTarget.style.backgroundColor = 'rgba(241, 245, 249, 0.6)';
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.color = 'var(--text-muted, #64748B)';
-          e.currentTarget.style.backgroundColor = 'transparent';
         }}
       >
         {isOpen ? (
@@ -77,7 +75,6 @@ export const FollowUpSuggestions: React.FC<FollowUpSuggestionsProps> = ({ questi
             width: '100%',
             alignItems: 'flex-start',
             textAlign: 'left',
-            paddingLeft: '0.5rem',
             animation: 'fadeIn 0.2s ease-in-out',
             boxSizing: 'border-box',
           }}
@@ -94,8 +91,9 @@ export const FollowUpSuggestions: React.FC<FollowUpSuggestionsProps> = ({ questi
                 gap: '0.75rem',
                 background: 'transparent',
                 border: 'none',
-                borderRadius: '8px',
-                padding: '0.45rem 0.75rem',
+                outline: 'none',
+                boxShadow: 'none',
+                padding: '0.25rem 0',
                 margin: 0,
                 cursor: 'pointer',
                 textAlign: 'left',
@@ -103,12 +101,11 @@ export const FollowUpSuggestions: React.FC<FollowUpSuggestionsProps> = ({ questi
                 fontSize: '0.91rem',
                 lineHeight: 1.6,
                 fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)',
-                transition: 'all 0.15s ease',
+                transition: 'color 0.15s ease',
                 boxSizing: 'border-box',
                 maxWidth: '100%',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(241, 245, 249, 0.8)';
                 e.currentTarget.style.color = '#2563EB';
                 const arrowSpan = e.currentTarget.querySelector('.arrow-icon') as HTMLElement;
                 if (arrowSpan) {
@@ -122,7 +119,6 @@ export const FollowUpSuggestions: React.FC<FollowUpSuggestionsProps> = ({ questi
                 }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
                 e.currentTarget.style.color = 'var(--text-main, #334155)';
                 const arrowSpan = e.currentTarget.querySelector('.arrow-icon') as HTMLElement;
                 if (arrowSpan) {

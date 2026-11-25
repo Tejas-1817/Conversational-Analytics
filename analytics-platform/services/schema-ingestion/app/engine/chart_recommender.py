@@ -6,25 +6,85 @@ from app.engine.result_inspector import ResultInspector
 
 log = structlog.get_logger(__name__)
 
+CAROUSEL_MAX_CARDS = 10
+PIE_MAX_SLICES = 7
 
-def _infer_title(question: str, columns: List[str], visualization: str) -> str:
-    """Infers clean, non-hardcoded title from user question or column names."""
-    if question and question.strip():
-        clean_q = question.strip()
-        clean_q = re.sub(r"\?$", "", clean_q)
-        words = clean_q.split()
-        if len(words) <= 8:
-            return clean_q.title()
-        return clean_q
 
-    if columns:
-        col_name = columns[0].replace("_", " ").title()
-        if len(columns) > 1:
-            val_name = columns[1].replace("_", " ").title()
-            return f"{col_name} vs {val_name}"
-        return col_name
+def _format_col(col: str, is_dim: bool = False) -> str:
+    """Formats column names into human-readable business titles."""
+    c = col.strip()
+    if is_dim:
+        cleaned = re.sub(r"_(name|id|code|pk|fk|uuid)$", "", c, flags=re.IGNORECASE)
+        if len(cleaned) >= 2:
+            c = cleaned
+    parts = c.replace("_", " ").replace("-", " ").split()
+    capitalized = []
+    acronyms = {"id": "ID", "kpi": "KPI", "mrr": "MRR", "arr": "ARR", "sla": "SLA", "url": "URL", "api": "API", "sku": "SKU", "sql": "SQL"}
+    for p in parts:
+        low = p.lower()
+        if low in acronyms:
+            capitalized.append(acronyms[low])
+        else:
+            capitalized.append(p.capitalize())
+    return " ".join(capitalized)
 
-    return "Query Results"
+
+def _infer_title(question: str, columns: List[str], visualization: str, profile: Optional[Dict[str, Any]] = None) -> str:
+    """Infers Pattern A data-driven title ('[Metric 1] & [Metric 2] by [Dimension]') from dataset metadata."""
+    if not columns and not profile:
+        return "Query Results"
+
+    cols = columns or (profile.get("columns", []) if profile else [])
+    num_cols = list(profile.get("numeric_columns", [])) if profile else []
+    cat_cols = list(profile.get("categorical_columns", [])) if profile else []
+    time_cols = list(profile.get("time_columns", [])) if profile else []
+
+    # If profile was not provided, categorize heuristically from column names
+    if not profile and cols:
+        for c in cols:
+            low = c.lower()
+            if any(k in low for k in ["date", "time", "timestamp", "month", "year", "day", "quarter"]):
+                time_cols.append(c)
+            elif any(k in low for k in ["count", "sum", "total", "amount", "revenue", "cost", "price", "score", "rate", "pct", "risk", "num", "value", "quantity"]):
+                num_cols.append(c)
+            else:
+                cat_cols.append(c)
+
+    # Filter out pure ID columns from metrics
+    pure_metrics = [c for c in num_cols if not re.search(r"(_id|id|_pk|_fk|_uuid)$", c, re.IGNORECASE)]
+    if not pure_metrics and num_cols:
+        pure_metrics = num_cols
+
+    # Primary Dimension: prefer categorical unless time series visualization
+    primary_dim = None
+    is_time_dim = False
+    if visualization in ["line_chart", "area_chart"] and time_cols:
+        primary_dim = time_cols[0]
+        is_time_dim = True
+    elif cat_cols:
+        primary_dim = cat_cols[0]
+    elif time_cols:
+        primary_dim = time_cols[0]
+        is_time_dim = True
+
+    # Construct Metric part
+    if pure_metrics:
+        if len(pure_metrics) == 1:
+            metric_part = _format_col(pure_metrics[0])
+        elif len(pure_metrics) == 2:
+            metric_part = f"{_format_col(pure_metrics[0])} & {_format_col(pure_metrics[1])}"
+        else:
+            metric_part = f"{_format_col(pure_metrics[0])} & {_format_col(pure_metrics[1])}"
+    else:
+        metric_part = _format_col(cols[0]) if cols else "Query Results"
+
+    # Construct Pattern A: "[Metric(s)] by/over [Dimension]"
+    if primary_dim and primary_dim not in pure_metrics[:2]:
+        dim_str = _format_col(primary_dim, is_dim=True)
+        connector = "over" if is_time_dim else "by"
+        return f"{metric_part} {connector} {dim_str}"
+
+    return metric_part or "Query Results"
 
 
 class ChartRecommender:
@@ -42,7 +102,7 @@ class ChartRecommender:
         rc = profile["row_count"]
         cols = profile["columns"]
         cc = profile["column_count"]
-        title = _infer_title(question, cols, "")
+        title = _infer_title(question, cols, "", profile=profile)
 
         num_cols = profile["numeric_columns"]
         cat_cols = profile["categorical_columns"]
@@ -86,6 +146,12 @@ class ChartRecommender:
             chart_type = "area_chart"
             rendered_component = "AreaChart"
             reason = "User explicitly requested an area chart."
+
+        elif any(k in (question or "").lower() for k in ["combo", "dual axis", "dual-axis", "two axes", "secondary axis", "combo chart"]) and len(num_cols) >= 2:
+            visualization = "combo"
+            chart_type = "combo"
+            rendered_component = "ComboChart"
+            reason = "User explicitly requested a dual-axis combo chart."
 
         # 2. Single-scalar KPI Card (renders with embedded Sparkline)
         elif rc == 1 and cc == 1:
@@ -155,11 +221,28 @@ class ChartRecommender:
             reason = "80/20 Pareto distribution & cumulative percentage analysis."
 
         # 11. Scatter Chart (Multi-metric correlation)
-        elif (len(num_cols) >= 2 or any(kw in (question or "").lower() for kw in ["scatter", "correlation", "relationship", "vs", "versus"])) and len(num_cols) >= 2 and rc >= 4:
+        elif (len(num_cols) >= 2 or any(kw in (question or "").lower() for kw in ["scatter", "correlation", "relationship", "vs", "versus"])) and len(num_cols) >= 2 and rc >= 4 and not (len(cat_cols) > 0 or len(time_cols) > 0):
             visualization = "scatter_chart"
             chart_type = "scatter_chart"
             rendered_component = "ScatterPlot"
             reason = "Multi-variable numeric correlation & scatter distribution."
+
+        # 11b. Dual-scale measures comparison -> Combo (dual-axis) chart
+        elif len(num_cols) >= 2 and (len(cat_cols) > 0 or len(time_cols) > 0) and 2 <= rc <= 50 and (
+            (any(p in num_cols[0].lower() for p in ["pct", "percent", "margin", "rate", "ratio"]) != any(p in num_cols[1].lower() for p in ["pct", "percent", "margin", "rate", "ratio"]))
+            or (
+                max((abs(r.get(num_cols[1]) or 0) for r in rows), default=0) > 0
+                and (
+                    max((abs(r.get(num_cols[0]) or 0) for r in rows), default=0)
+                    / max((abs(r.get(num_cols[1]) or 1) for r in rows), default=1)
+                    >= 10.0
+                )
+            )
+        ):
+            visualization = "combo"
+            chart_type = "combo"
+            rendered_component = "ComboChart"
+            reason = "Metrics detected on distinctly different numeric scales."
 
         # -------------------------------------------------------------
         # STANDARD VISUALIZATIONS & FALLBACKS
@@ -207,6 +290,9 @@ class ChartRecommender:
             rendered_component = "BarChart"
             reason = "Categorical metric comparison."
 
+        # Compute Pattern A title using resolved visualization and profile
+        title = _infer_title(question, cols, visualization, profile=profile)
+
 
         log.info(
             "visualization_decision",
@@ -220,6 +306,30 @@ class ChartRecommender:
             rendered_component=rendered_component
         )
 
+        combo_spec = None
+        if visualization == "combo" and len(num_cols) >= 2:
+            x_col = time_cols[0] if time_cols else (cat_cols[0] if cat_cols else cols[0])
+            c1_is_pct = any(p in num_cols[0].lower() for p in ["pct", "percent", "margin", "rate", "ratio"])
+            c2_is_pct = any(p in num_cols[1].lower() for p in ["pct", "percent", "margin", "rate", "ratio"])
+            combo_spec = {
+                "schema_version": 1,
+                "x_axis": x_col,
+                "y_axes": [
+                    {
+                        "position": "left",
+                        "series_type": "bar" if not c1_is_pct else "line",
+                        "columns": [num_cols[0]],
+                        "unit": "%" if c1_is_pct else None,
+                    },
+                    {
+                        "position": "right",
+                        "series_type": "line" if c2_is_pct else "bar",
+                        "columns": [num_cols[1]],
+                        "unit": "%" if c2_is_pct else None,
+                    },
+                ],
+            }
+
         return {
             "visualization": visualization,
             "chart_type": chart_type,
@@ -229,12 +339,46 @@ class ChartRecommender:
             "columns": cols,
             "profile": profile,
             "reason": reason,
-            "rendered_component": rendered_component
+            "rendered_component": rendered_component,
+            "combo_spec": combo_spec,
         }
 
     @staticmethod
+    def infer_title(
+        rows: Optional[List[Dict[str, Any]]] = None,
+        columns: Optional[List[str]] = None,
+        question: str = "",
+        sql: str = ""
+    ) -> str:
+        """Universal title inference without requiring a full chart recommendation."""
+        profile = None
+        cols = columns or []
+        if rows is not None and (columns or (len(rows) > 0 and isinstance(rows[0], dict))):
+            c = columns or list(rows[0].keys())
+            profile = ResultInspector.profile_dataset(rows, c, sql=sql)
+            cols = profile.get("columns", c)
+        return _infer_title(question, cols, "", profile=profile)
+
+    @staticmethod
     def recommend(data_or_plan: Any, row_count: int = 0, column_count: int = 0, as_dict: bool = False, question: str = "") -> Any:
-        """Backward-compatible recommendation helper."""
+        """Backward-compatible recommendation helper supporting both datasets and LogicalQueryPlans."""
+        if hasattr(data_or_plan, "chart_recommendation"):
+            plan = data_or_plan
+            if plan.chart_recommendation:
+                return plan.chart_recommendation
+            if row_count == 0 or (row_count == 1 and column_count <= 1 and len(getattr(plan, "dimension_ids", [])) == 0):
+                return "kpi_card"
+            if getattr(plan, "time_granularity", None) or getattr(plan, "time_intelligence", None):
+                return "line_chart"
+            dim_count = len(getattr(plan, "dimension_ids", []))
+            if dim_count == 1 and 2 <= row_count <= PIE_MAX_SLICES:
+                return "pie_chart"
+            if (dim_count >= 2 or column_count > 3) and 2 <= row_count <= CAROUSEL_MAX_CARDS:
+                return "carousel_cards"
+            if dim_count == 1:
+                return "bar_chart"
+            return "table"
+
         if isinstance(data_or_plan, list):
             cols = list(data_or_plan[0].keys()) if len(data_or_plan) > 0 and isinstance(data_or_plan[0], dict) else []
             res = ChartRecommender.recommend_visualization(data_or_plan, cols, question=question)
