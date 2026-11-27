@@ -32,7 +32,7 @@ describe('ChartRenderer', () => {
       ]
     };
     render(<ChartRenderer data={data} chartType="table" />);
-    expect(screen.getByText(/Region/i)).toBeDefined();
+    expect(screen.getByText('Region')).toBeDefined();
     expect(screen.getByText('North America')).toBeDefined();
     expect(screen.getByText('Europe')).toBeDefined();
   });
@@ -111,5 +111,60 @@ describe('ChartRenderer', () => {
       />
     );
     expect(screen.getByText('Negative News Count & Revenue At Risk by Customer')).toBeDefined();
+  });
+
+  it('resolves numeric Y-axis keys when columnTypes uses lowercase number/string from dashboards API', () => {
+    const data = [
+      { severity: 'high', category: 'Application', unresolved_count: 14 },
+      { severity: 'medium', category: 'Integration', unresolved_count: 9 }
+    ];
+    render(
+      <ChartRenderer
+        data={data}
+        chartType="bar_chart"
+        columns={['severity', 'category', 'unresolved_count']}
+        columnTypes={{ severity: 'string', category: 'string', unresolved_count: 'number' }}
+      />
+    );
+    expect(screen.getByText('Unresolved Count by Category')).toBeDefined();
+    expect(screen.getByTestId('echarts-mock')).toBeDefined();
+  });
+
+  it('shows 3-dots menu with Save insight to dashboard on KPI cards', () => {
+    const onSaveInsight = vi.fn();
+    render(
+      <ChartRenderer
+        data={[{ total_revenue: 950000 }]}
+        chartType="kpi_card"
+        onSaveInsight={onSaveInsight}
+      />
+    );
+    const moreBtn = screen.getByTitle('More options');
+    fireEvent.click(moreBtn);
+    const saveItem = screen.getByText('Save insight to dashboard');
+    expect(saveItem).toBeDefined();
+    fireEvent.click(saveItem);
+    expect(onSaveInsight).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps chart type switcher toolbar visible in Data Table view so user can switch back', () => {
+    const data = [
+      { Category: 'Electronics', Sales: 12000 },
+      { Category: 'Clothing', Sales: 8000 }
+    ];
+    render(<ChartRenderer data={data} chartType="bar_chart" title="Sales by Category" />);
+
+    // Switch to Data Table
+    fireEvent.click(screen.getByTitle('Data Table'));
+    expect(screen.getByPlaceholderText('Search loaded rows...')).toBeDefined();
+
+    // Chart type options remain visible in Data Table view
+    const barBtn = screen.getByTitle('Bar Chart');
+    expect(barBtn).toBeDefined();
+    expect(screen.getByTitle('Line Chart')).toBeDefined();
+
+    // Switch back to Bar Chart
+    fireEvent.click(barBtn);
+    expect(screen.getByTestId('echarts-mock')).toBeDefined();
   });
 });

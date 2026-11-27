@@ -193,12 +193,32 @@ export function parseMarkdownToCards(rawMarkdown: string, metadata?: { isCodeInt
   let currentCard: Partial<CardModel> | null = null;
   let cardIndex = 0;
 
+  // Helper to determine if a list/point card has concise content suited for a vertical 2-column card
+  const isCompactCardContent = (c: Partial<CardModel>): boolean => {
+    const items = c.listItems || [];
+    const fields = c.fields || [];
+    const totalChars =
+      (c.leadParagraph?.length || 0) +
+      items.join(' ').length +
+      fields.map(f => `${f.label} ${f.contentMarkdown}`).join(' ').length;
+    return items.length <= 5 && totalChars <= 750;
+  };
+
   // Helper to commit current card
   const commitCurrentCard = () => {
     if (currentCard && (currentCard.title || currentCard.leadParagraph || currentCard.fields?.length || currentCard.listItems?.length || currentCard.rawTableMarkdown)) {
+      const kind = currentCard.kind || 'point';
+      const compact = isCompactCardContent(currentCard);
+      const isListKind = kind === 'ordered_list' || kind === 'bullet_list';
+      const defaultFullWidth =
+        kind === 'summary' ||
+        kind === 'conclusion' ||
+        kind === 'table' ||
+        (isListKind && !compact);
+
       const card: CardModel = {
         id: `card-${cardIndex++}`,
-        kind: currentCard.kind || 'point',
+        kind,
         tone: currentCard.tone || 'primary',
         title: currentCard.title || 'Analysis Point',
         leadParagraph: currentCard.leadParagraph,
@@ -207,12 +227,11 @@ export function parseMarkdownToCards(rawMarkdown: string, metadata?: { isCodeInt
         rawTableMarkdown: currentCard.rawTableMarkdown,
         fullMarkdown: currentCard.fullMarkdown || '',
         isFullWidth: Boolean(
-          currentCard.isFullWidth ||
-          currentCard.kind === 'summary' ||
-          currentCard.kind === 'ordered_list' ||
-          currentCard.kind === 'bullet_list' ||
-          currentCard.kind === 'conclusion' ||
-          currentCard.kind === 'table'
+          kind === 'summary' ||
+          kind === 'conclusion' ||
+          kind === 'table' ||
+          (isListKind ? !compact : (currentCard.isFullWidth && !compact)) ||
+          defaultFullWidth
         ),
       };
       currentSection.cards.push(card);
@@ -351,7 +370,6 @@ export function parseMarkdownToCards(rawMarkdown: string, metadata?: { isCodeInt
         // Numbered lists are structured action plans / sequential steps
         if (currentCard && (currentCard.kind === 'ordered_list' || !currentCard.leadParagraph)) {
           currentCard.kind = 'ordered_list';
-          currentCard.isFullWidth = true;
           currentCard.listItems = items;
           currentCard.fullMarkdown = (currentCard.fullMarkdown || '') + items.map((it, idx) => `${idx + 1}. ${it}`).join('\n') + '\n\n';
           commitCurrentCard();
@@ -368,7 +386,7 @@ export function parseMarkdownToCards(rawMarkdown: string, metadata?: { isCodeInt
             title: 'Action Roadmap',
             listItems: items,
             fullMarkdown: items.map((it, idx) => `${idx + 1}. ${it}`).join('\n'),
-            isFullWidth: true,
+            isFullWidth: items.length > 5 || items.join(' ').length > 750,
             fields: [],
           };
           currentSection.cards.push(listCard);
@@ -396,7 +414,6 @@ export function parseMarkdownToCards(rawMarkdown: string, metadata?: { isCodeInt
           // it represents a standalone list card!
           if (!currentCard.leadParagraph && (!currentCard.fields || currentCard.fields.length === 0) && nonFieldItems.length > 0) {
             currentCard.kind = 'bullet_list';
-            currentCard.isFullWidth = true;
             currentCard.listItems = nonFieldItems;
             currentCard.fullMarkdown = (currentCard.fullMarkdown || '') + nonFieldItems.map(it => `- ${it}`).join('\n') + '\n\n';
             commitCurrentCard();
@@ -416,7 +433,7 @@ export function parseMarkdownToCards(rawMarkdown: string, metadata?: { isCodeInt
             title: 'Key Items',
             listItems: nonFieldItems,
             fullMarkdown: nonFieldItems.map(it => `- ${it}`).join('\n'),
-            isFullWidth: true,
+            isFullWidth: nonFieldItems.length > 5 || nonFieldItems.join(' ').length > 750,
             fields: [],
           };
           currentSection.cards.push(bulletCard);

@@ -24,6 +24,49 @@ export interface SaveInsightModalProps {
   onSaved: (insightOrResult: any, targetDashboardId: string, dashboardName: string) => void;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const asUuid = (val: unknown): string | undefined =>
+  typeof val === 'string' && UUID_RE.test(val) ? val : undefined;
+
+const resolveChartType = (msg: any): string => {
+  const rows = msg?.result_data || msg?.rows || [];
+  const cols =
+    msg?.columns ||
+    (Array.isArray(rows) && rows.length > 0 && typeof rows[0] === 'object' ? Object.keys(rows[0]) : []);
+
+  let resolvedType = msg?.visualization || msg?.chart_recommendation;
+  if (typeof msg?.recommended_visualization === 'object' && msg?.recommended_visualization !== null) {
+    resolvedType =
+      msg.recommended_visualization.visualization ||
+      msg.recommended_visualization.chart_type ||
+      resolvedType;
+  } else if (typeof msg?.recommended_visualization === 'string') {
+    resolvedType = msg.recommended_visualization;
+  }
+
+  const qLower = (msg?.question || '').toLowerCase();
+  if (rows.length > 0 && cols.length >= 2) {
+    if (qLower.includes('bar chart') || qLower.includes('bar graph') || qLower.includes('horizontal bar')) {
+      resolvedType = 'bar_chart';
+    } else if (qLower.includes('line chart') || qLower.includes('line graph') || qLower.includes('trend') || qLower.includes('over time')) {
+      resolvedType = 'line_chart';
+    } else if (qLower.includes('pie chart') || qLower.includes('donut chart') || qLower.includes('share of') || qLower.includes('percentage distribution')) {
+      resolvedType = 'pie_chart';
+    } else if (qLower.includes('area chart')) {
+      resolvedType = 'area_chart';
+    }
+  }
+
+  if (!resolvedType || resolvedType === 'table') {
+    if (rows.length === 1 && cols.length === 1) resolvedType = 'kpi_card';
+    else if (rows.length === 1 && cols.length > 1) resolvedType = 'detail_card';
+    else if (rows.length > 1 && rows.length <= 20 && cols.length >= 2 && cols.length <= 5) resolvedType = 'bar_chart';
+    else resolvedType = resolvedType || 'table';
+  }
+
+  return resolvedType;
+};
+
 export const SaveInsightModal: React.FC<SaveInsightModalProps> = ({
   isOpen,
   onClose,
@@ -140,13 +183,7 @@ export const SaveInsightModal: React.FC<SaveInsightModalProps> = ({
     try {
       if (isBulk && messages) {
         const items = messages.map((m: any, idx: number) => {
-          let resolvedChartType =
-            m.visualization ||
-            m.chart_recommendation ||
-            (m.recommended_visualization && typeof m.recommended_visualization === 'object'
-              ? m.recommended_visualization.chart_type
-              : m.recommended_visualization) ||
-            'table';
+          const resolvedChartType = resolveChartType(m);
 
           const columns =
             m.columns ||
@@ -172,10 +209,10 @@ export const SaveInsightModal: React.FC<SaveInsightModalProps> = ({
               columns,
               columnTypes: m.column_types || {},
             },
-            source_id: sourceId || m.source_id || undefined,
-            domain_id: domainId || m.domain_id || undefined,
-            conversation_id: conversationId || m.conversation_id || undefined,
-            message_id: m.id || undefined,
+            source_id: asUuid(sourceId || m.source_id),
+            domain_id: asUuid(domainId || m.domain_id),
+            conversation_id: asUuid(conversationId || m.conversation_id),
+            message_id: asUuid(m.id),
           };
         });
 
@@ -199,14 +236,8 @@ export const SaveInsightModal: React.FC<SaveInsightModalProps> = ({
         return;
       }
 
-      // 1. Determine resolved chart type
-      let resolvedChartType =
-        message?.visualization ||
-        message?.chart_recommendation ||
-        (message?.recommended_visualization && typeof message.recommended_visualization === 'object'
-          ? message.recommended_visualization.chart_type
-          : message.recommended_visualization) ||
-        'table';
+      // 1. Determine resolved chart type (matching ChatInterface rendering heuristics)
+      const resolvedChartType = resolveChartType(message);
 
       const columns =
         message?.columns ||
@@ -225,10 +256,10 @@ export const SaveInsightModal: React.FC<SaveInsightModalProps> = ({
           columns: columns,
           columnTypes: message?.column_types || {},
         },
-        source_id: sourceId || message?.source_id || undefined,
-        domain_id: domainId || message?.domain_id || undefined,
-        conversation_id: conversationId || message?.conversation_id || undefined,
-        message_id: message?.id || undefined,
+        source_id: asUuid(sourceId || message?.source_id),
+        domain_id: asUuid(domainId || message?.domain_id),
+        conversation_id: asUuid(conversationId || message?.conversation_id),
+        message_id: asUuid(message?.id),
       };
 
       const createdInsight = await fetchApi('/dashboards/insights', {

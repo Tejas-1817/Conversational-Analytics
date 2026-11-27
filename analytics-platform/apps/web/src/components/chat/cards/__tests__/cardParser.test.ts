@@ -202,11 +202,11 @@ Pipeline visibility for upcoming renewals requires immediate operational focus:
     expect(point3?.isFullWidth).toBe(false);
     expect(point3?.listItems?.length).toBe(2);
 
-    // 4. Strategic recommendations should be a full-width ordered list card
+    // 4. Compact strategic recommendations should render as a vertical 2-column card
     const recCard = allCards.find(c => c.title.includes('Recommendations'));
     expect(recCard).toBeDefined();
     expect(recCard?.kind).toBe('ordered_list');
-    expect(recCard?.isFullWidth).toBe(true);
+    expect(recCard?.isFullWidth).toBe(false);
     expect(recCard?.listItems?.length).toBe(3);
   });
 
@@ -273,14 +273,13 @@ Overall, the data is strong enough to build a complete distribution intelligence
     expect(riskCard?.isFullWidth).toBe(false);
     expect(riskCard?.tone).toBe('warning');
 
-    // High-value analytics is full-width ordered list
+    // Compact list cards render as vertical 2-column cards
     const actionCard = allCards.find(c => c.title.includes('High-value analytics'));
-    expect(actionCard?.isFullWidth).toBe(true);
+    expect(actionCard?.isFullWidth).toBe(false);
     expect(actionCard?.kind).toBe('ordered_list');
 
-    // Advanced analytics is full-width bullet list
     const advCard = allCards.find(c => c.title.includes('More advanced analytics'));
-    expect(advCard?.isFullWidth).toBe(true);
+    expect(advCard?.isFullWidth).toBe(false);
     expect(advCard?.kind).toBe('bullet_list');
 
     // Conclusion is full-width

@@ -230,6 +230,237 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     }
   };
 
+  const renderMoreMenu = (includePng: boolean) => (
+    <div ref={menuRef} style={{ position: 'relative', zIndex: 30 }}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsMenuOpen((prev) => !prev);
+        }}
+        title="More options"
+        style={{
+          padding: '4px 6px',
+          borderRadius: '6px',
+          color: isMenuOpen ? 'var(--primary, #6366F1)' : 'var(--text-muted)',
+          background: 'transparent',
+          backgroundColor: 'transparent',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          border: 'none',
+          outline: 'none',
+          boxShadow: 'none',
+          transition: 'color 0.15s ease',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = 'transparent';
+          e.currentTarget.style.color = 'var(--primary, #6366F1)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = 'transparent';
+          e.currentTarget.style.color = isMenuOpen ? 'var(--primary, #6366F1)' : 'var(--text-muted)';
+        }}
+      >
+        <MoreVertical size={14} />
+      </button>
+
+      {isMenuOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            right: 0,
+            marginTop: '4px',
+            backgroundColor: 'var(--bg-card, #FFFFFF)',
+            border: '1px solid var(--border-color, #E2E8F0)',
+            borderRadius: '8px',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+            zIndex: 50,
+            minWidth: '220px',
+            padding: '6px 0',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {onSaveInsight && (
+            <button
+              type="button"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                gap: '10px',
+                width: '100%',
+                padding: '8px 14px',
+                fontSize: '0.82rem',
+                fontWeight: 500,
+                color: isSaved ? '#10B981' : 'var(--text-main, #0F172A)',
+                background: 'transparent',
+                backgroundColor: 'transparent',
+                border: 'none',
+                outline: 'none',
+                boxShadow: 'none',
+                textAlign: 'left',
+                cursor: isSaved ? 'default' : 'pointer',
+                opacity: isSaved ? 0.8 : 1,
+                transition: 'color 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                if (!isSaved) e.currentTarget.style.color = 'var(--primary, #6366F1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = isSaved ? '#10B981' : 'var(--text-main, #0F172A)';
+              }}
+              onClick={() => {
+                if (!isSaved) {
+                  onSaveInsight();
+                  setIsMenuOpen(false);
+                }
+              }}
+              disabled={isSaved}
+            >
+              <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {isSaved ? <Check size={14} style={{ color: '#10B981' }} /> : <Save size={14} />}
+              </span>
+              <span style={{ whiteSpace: 'nowrap' }}>{isSaved ? 'Insight saved' : 'Save insight to dashboard'}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              gap: '10px',
+              width: '100%',
+              padding: '8px 14px',
+              fontSize: '0.82rem',
+              fontWeight: 500,
+              color: 'var(--text-main, #0F172A)',
+              background: 'transparent',
+              backgroundColor: 'transparent',
+              border: 'none',
+              outline: 'none',
+              boxShadow: 'none',
+              textAlign: 'left',
+              cursor: 'pointer',
+              transition: 'color 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = 'var(--primary, #6366F1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = 'var(--text-main, #0F172A)';
+            }}
+            onClick={() => {
+              if (onDownloadCSV) {
+                onDownloadCSV();
+              } else {
+                handleExportCSV();
+              }
+              setIsMenuOpen(false);
+            }}
+          >
+            <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Download size={14} />
+            </span>
+            <span style={{ whiteSpace: 'nowrap' }}>Download CSV</span>
+          </button>
+
+          {includePng && (
+            <button
+              type="button"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                gap: '10px',
+                width: '100%',
+                padding: '8px 14px',
+                fontSize: '0.82rem',
+                fontWeight: 500,
+                color: 'var(--text-main, #0F172A)',
+                background: 'transparent',
+                backgroundColor: 'transparent',
+                border: 'none',
+                outline: 'none',
+                boxShadow: 'none',
+                textAlign: 'left',
+                cursor: 'pointer',
+                transition: 'color 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = 'var(--primary, #6366F1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = 'var(--text-main, #0F172A)';
+              }}
+              onClick={() => {
+                handleExportPNG();
+                setIsMenuOpen(false);
+              }}
+            >
+              <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <ImageIcon size={14} />
+              </span>
+              <span style={{ whiteSpace: 'nowrap' }}>Download PNG image</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              gap: '10px',
+              width: '100%',
+              padding: '8px 14px',
+              fontSize: '0.82rem',
+              fontWeight: 500,
+              color: 'var(--text-main, #0F172A)',
+              background: 'transparent',
+              backgroundColor: 'transparent',
+              border: 'none',
+              outline: 'none',
+              boxShadow: 'none',
+              textAlign: 'left',
+              cursor: 'pointer',
+              transition: 'color 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = 'var(--primary, #6366F1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = 'var(--text-main, #0F172A)';
+            }}
+            onClick={() => {
+              handleExportCSV();
+              setIsMenuOpen(false);
+            }}
+          >
+            <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <FileSpreadsheet size={14} />
+            </span>
+            <span style={{ whiteSpace: 'nowrap' }}>Export CSV</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   // Rule 1: KPI Single Card (rows == 1 AND columns == 1)
   if (activeType === 'kpi_card' || (rows.length === 1 && columns.length === 1)) {
     const rawVal = rows[0][firstCol];
@@ -252,29 +483,37 @@ export const ChartRenderer: React.FC<ChartProps> = ({
         border: '1px solid rgba(99, 102, 241, 0.18)',
         boxShadow: '0 8px 24px -4px rgba(0, 0, 0, 0.06)',
         position: 'relative',
-        overflow: 'hidden',
         width: '100%',
         height: '100%',
         fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)',
         boxSizing: 'border-box'
       }}>
-        <div style={{
-          position: 'absolute', top: '-30px', right: '-30px',
-          width: '120px', height: '120px',
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(99, 102, 241, 0.2) 0%, transparent 70%)',
-          pointerEvents: 'none'
-        }} />
+        <div style={{ position: 'absolute', inset: 0, borderRadius: '16px', overflow: 'hidden', pointerEvents: 'none' }}>
+          <div style={{
+            position: 'absolute', top: '-30px', right: '-30px',
+            width: '120px', height: '120px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(99, 102, 241, 0.2) 0%, transparent 70%)',
+          }} />
+        </div>
 
         <div style={{
-          fontSize: '0.75rem',
-          fontWeight: 700,
-          color: 'var(--text-muted, #64748B)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
           marginBottom: '0.5rem'
         }}>
-          {shortLabel}
+          <div style={{
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            color: 'var(--text-muted, #64748B)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+          }}>
+            {shortLabel}
+          </div>
+          {!hideToolbar && renderMoreMenu(false)}
         </div>
 
         {/* Metric Value Display */}
@@ -333,6 +572,11 @@ export const ChartRenderer: React.FC<ChartProps> = ({
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', fontFamily: 'var(--font-results, "Helvetica Neue", Helvetica, Arial, sans-serif)' }}>
+        {!hideToolbar && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+            {renderMoreMenu(false)}
+          </div>
+        )}
         <div style={{
           display: 'grid',
           gridTemplateColumns: `repeat(${Math.min(primaryCols.length, 3)}, 1fr)`,
@@ -427,13 +671,16 @@ export const ChartRenderer: React.FC<ChartProps> = ({
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748B)' }}>Structured Record Profile</span>
             </div>
           </div>
-          <button
-            onClick={() => setActiveType('table')}
-            className="btn-ghost"
-            style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
-          >
-            <TableIcon size={14} /> View Table
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button
+              onClick={() => setActiveType('table')}
+              className="btn-ghost"
+              style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
+              <TableIcon size={14} /> View Table
+            </button>
+            {!hideToolbar && renderMoreMenu(false)}
+          </div>
         </div>
 
         <div style={{
@@ -468,23 +715,19 @@ export const ChartRenderer: React.FC<ChartProps> = ({
     );
   }
 
-  // Interactive Table View with Instant Filters
-  if (activeType === 'table') {
-    return (
-      <div style={{ width: '100%', height: '100%', minHeight: '260px', display: 'flex', flexDirection: 'column' }}>
-        <InstantFilterTable
-          data={rows}
-          columns={columns}
-          columnTypes={columnTypes}
-          truncated={Boolean((data as any)?.truncated || rows.length >= 10000)}
-          title={title}
-        />
-      </div>
-    );
-  }
-
   // ECharts axis key resolution
   const hasColumnTypes = Object.keys(columnTypes).length > 0;
+
+  const isNumericColType = (t?: string) => {
+    if (!t) return false;
+    const up = t.toUpperCase();
+    return up === 'NUMERIC' || up === 'PERCENTAGE' || up === 'NUMBER' || up === 'INT' || up === 'INTEGER' || up === 'FLOAT' || up === 'DECIMAL';
+  };
+  const isCategoricalColType = (t?: string) => {
+    if (!t) return false;
+    const up = t.toUpperCase();
+    return up === 'CATEGORICAL' || up === 'TIME_SERIES' || up === 'STRING' || up === 'TEXT' || up === 'DATE' || up === 'DATETIME';
+  };
 
   const isIdColumn = (col: string) => /(_id|id|_pk|_fk)$/i.test(col.trim());
   const isCodeOrSkuCol = (col: string) => /(_sku|sku|_code|code|_uuid|uuid|hash)$/i.test(col.trim());
@@ -498,7 +741,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
   // 3. Fallback to first non-ID column
   const preferredNameCol = columns.find(col => isNameOrTitleCol(col));
   const categoricalCols = hasColumnTypes
-    ? columns.filter(col => (columnTypes[col] === 'CATEGORICAL' || columnTypes[col] === 'TIME_SERIES') && !isIdColumn(col))
+    ? columns.filter(col => isCategoricalColType(columnTypes[col]) && !isIdColumn(col))
     : columns.filter(col => !isIdColumn(col) && rows.some(r => typeof r[col] === 'string' && isNaN(Number(r[col]))));
 
   let resolvedXAxisKey = firstCol;
@@ -513,14 +756,18 @@ export const ChartRenderer: React.FC<ChartProps> = ({
 
   const xAxisKey = resolvedXAxisKey;
 
-  const yAxisKeys = hasColumnTypes
-    ? columns.filter(col => col !== xAxisKey && !isIdColumn(col) && !isCodeOrSkuCol(col) && (columnTypes[col] === 'NUMERIC' || columnTypes[col] === 'PERCENTAGE'))
-    : columns.slice(1).filter(col =>
-      col !== xAxisKey &&
-      !isIdColumn(col) &&
-      !isCodeOrSkuCol(col) &&
-      rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && !isNaN(Number(r[col]))))
-    );
+  const typedYAxisKeys = hasColumnTypes
+    ? columns.filter(col => col !== xAxisKey && !isIdColumn(col) && !isCodeOrSkuCol(col) && isNumericColType(columnTypes[col]))
+    : [];
+
+  const inferredYAxisKeys = columns.filter(col =>
+    col !== xAxisKey &&
+    !isIdColumn(col) &&
+    !isCodeOrSkuCol(col) &&
+    rows.some(r => typeof r[col] === 'number' || (typeof r[col] === 'string' && r[col].trim() !== '' && !isNaN(Number(r[col]))))
+  );
+
+  const yAxisKeys = typedYAxisKeys.length > 0 ? typedYAxisKeys : inferredYAxisKeys;
 
   const activeYKeys = yAxisKeys.length > 0 ? yAxisKeys : [secondCol];
 
@@ -1513,7 +1760,7 @@ export const ChartRenderer: React.FC<ChartProps> = ({
   return (
     <div style={{
       width: '100%',
-      height: '100%',
+      height: activeType === 'table' ? 'auto' : '100%',
       minHeight: '260px',
       position: 'relative',
       display: 'flex',
@@ -1669,256 +1916,43 @@ export const ChartRenderer: React.FC<ChartProps> = ({
             </div>
 
             {/* Dropdown Options (3 Vertical Dots) */}
-            <div ref={menuRef} style={{ position: 'relative' }}>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMenuOpen((prev) => !prev);
-                }}
-                title="More options"
-                style={{
-                  padding: '4px 6px',
-                  borderRadius: '6px',
-                  color: isMenuOpen ? 'var(--primary, #6366F1)' : 'var(--text-muted)',
-                  background: 'transparent',
-                  backgroundColor: 'transparent',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  border: 'none',
-                  outline: 'none',
-                  boxShadow: 'none',
-                  transition: 'color 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = 'var(--primary, #6366F1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = isMenuOpen ? 'var(--primary, #6366F1)' : 'var(--text-muted)';
-                }}
-              >
-                <MoreVertical size={14} />
-              </button>
-
-              {isMenuOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '100%',
-                    right: 0,
-                    marginTop: '4px',
-                    backgroundColor: 'var(--bg-card, #FFFFFF)',
-                    border: '1px solid var(--border-color, #E2E8F0)',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
-                    zIndex: 50,
-                    minWidth: '220px',
-                    padding: '6px 0',
-                    display: 'flex',
-                    flexDirection: 'column',
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {onSaveInsight && (
-                    <button
-                      type="button"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'flex-start',
-                        gap: '10px',
-                        width: '100%',
-                        padding: '8px 14px',
-                        fontSize: '0.82rem',
-                        fontWeight: 500,
-                        color: isSaved ? '#10B981' : 'var(--text-main, #0F172A)',
-                        background: 'transparent',
-                        backgroundColor: 'transparent',
-                        border: 'none',
-                        outline: 'none',
-                        boxShadow: 'none',
-                        textAlign: 'left',
-                        cursor: isSaved ? 'default' : 'pointer',
-                        opacity: isSaved ? 0.8 : 1,
-                        transition: 'color 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        if (!isSaved) e.currentTarget.style.color = 'var(--primary, #6366F1)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = isSaved ? '#10B981' : 'var(--text-main, #0F172A)';
-                      }}
-                      onClick={() => {
-                        if (!isSaved) {
-                          onSaveInsight();
-                          setIsMenuOpen(false);
-                        }
-                      }}
-                      disabled={isSaved}
-                    >
-                      <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {isSaved ? <Check size={14} style={{ color: '#10B981' }} /> : <Save size={14} />}
-                      </span>
-                      <span style={{ whiteSpace: 'nowrap' }}>{isSaved ? 'Insight saved' : 'Save insight to dashboard'}</span>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-start',
-                      gap: '10px',
-                      width: '100%',
-                      padding: '8px 14px',
-                      fontSize: '0.82rem',
-                      fontWeight: 500,
-                      color: 'var(--text-main, #0F172A)',
-                      background: 'transparent',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      outline: 'none',
-                      boxShadow: 'none',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      transition: 'color 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--primary, #6366F1)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--text-main, #0F172A)';
-                    }}
-                    onClick={() => {
-                      if (onDownloadCSV) {
-                        onDownloadCSV();
-                      } else {
-                        handleExportCSV();
-                      }
-                      setIsMenuOpen(false);
-                    }}
-                  >
-                    <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Download size={14} />
-                    </span>
-                    <span style={{ whiteSpace: 'nowrap' }}>Download CSV</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-start',
-                      gap: '10px',
-                      width: '100%',
-                      padding: '8px 14px',
-                      fontSize: '0.82rem',
-                      fontWeight: 500,
-                      color: 'var(--text-main, #0F172A)',
-                      background: 'transparent',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      outline: 'none',
-                      boxShadow: 'none',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      transition: 'color 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--primary, #6366F1)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--text-main, #0F172A)';
-                    }}
-                    onClick={() => {
-                      handleExportPNG();
-                      setIsMenuOpen(false);
-                    }}
-                  >
-                    <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <ImageIcon size={14} />
-                    </span>
-                    <span style={{ whiteSpace: 'nowrap' }}>Download PNG image</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-start',
-                      gap: '10px',
-                      width: '100%',
-                      padding: '8px 14px',
-                      fontSize: '0.82rem',
-                      fontWeight: 500,
-                      color: 'var(--text-main, #0F172A)',
-                      background: 'transparent',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      outline: 'none',
-                      boxShadow: 'none',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      transition: 'color 0.15s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--primary, #6366F1)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                      e.currentTarget.style.color = 'var(--text-main, #0F172A)';
-                    }}
-                    onClick={() => {
-                      handleExportCSV();
-                      setIsMenuOpen(false);
-                    }}
-                  >
-                    <span style={{ width: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <FileSpreadsheet size={14} />
-                    </span>
-                    <span style={{ whiteSpace: 'nowrap' }}>Export CSV</span>
-                  </button>
-                </div>
-              )}
-            </div>
+            {renderMoreMenu(activeType !== 'table')}
           </div>
         </div>
       )}
 
-      {/* Chart Canvas Area */}
-      <div style={{ flex: 1, minHeight: 0, width: '100%' }}>
-        <ReactECharts
-          ref={echartsRef}
-          option={selectedOption}
-          style={{ width: '100%', height: '100%' }}
-          opts={{ renderer: 'svg' }}
-          notMerge={true}
-          lazyUpdate={true}
-          onEvents={onPointClick ? {
-            click: (params: any) => {
-              onPointClick({
-                category: params.name || params.axisValueLabel,
-                value: params.value,
-                seriesName: params.seriesName
-              });
-            }
-          } : undefined}
-        />
-      </div>
+      {/* Chart Canvas or Data Table Area */}
+      {activeType === 'table' ? (
+        <div style={{ flex: 1, minHeight: 0, width: '100%' }}>
+          <InstantFilterTable
+            data={rows}
+            columns={columns}
+            columnTypes={columnTypes}
+            truncated={Boolean((data as any)?.truncated || rows.length >= 10000)}
+            title={title}
+          />
+        </div>
+      ) : (
+        <div style={{ flex: 1, minHeight: 0, width: '100%' }}>
+          <ReactECharts
+            ref={echartsRef}
+            option={selectedOption}
+            style={{ width: '100%', height: '100%' }}
+            opts={{ renderer: 'svg' }}
+            notMerge={true}
+            lazyUpdate={true}
+            onEvents={onPointClick ? {
+              click: (params: any) => {
+                onPointClick({
+                  category: params.name || params.axisValueLabel,
+                  value: params.value,
+                  seriesName: params.seriesName
+                });
+              }
+            } : undefined}
+          />
+        </div>
+      )}
     </div>
   );
 };

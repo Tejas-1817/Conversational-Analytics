@@ -1154,7 +1154,7 @@ export const Dashboards: React.FC = () => {
       setIsDashDropdownOpen(false);
       return;
     }
-    if (hasUnsavedLayout) {
+    if (hasUnsavedLayout && layoutSaveFailed) {
       if (!confirm('You have unsaved layout changes. Discard them?')) return;
     }
     setActiveDashboardId(nextId);
@@ -1169,6 +1169,7 @@ export const Dashboards: React.FC = () => {
 
   // Layout state
   const [hasUnsavedLayout, setHasUnsavedLayout] = useState(false);
+  const [layoutSaveFailed, setLayoutSaveFailed] = useState(false);
   const [currentLayouts, setCurrentLayouts] = useState<any>({});
   const [activeBreakpoint, setActiveBreakpoint] = useState<string>('lg');
   const [layoutVersion, setLayoutVersion] = useState(0);
@@ -1304,25 +1305,60 @@ export const Dashboards: React.FC = () => {
     });
   }, [activeDashboard, activeTabId]);
 
-  // Initialize layout when active tab widgets change
+  const prevLayoutContextRef = useRef<string>('');
+
+  // Initialize or synchronize layout when active dashboard/tab or widgets change
   useEffect(() => {
     if (!activeDashboard) {
+      prevLayoutContextRef.current = '';
       setCurrentLayouts({});
       setHasUnsavedLayout(false);
       return;
     }
-    const lgLayout = activeTabWidgets.map((w) => ({
-      i: w.id,
-      x: w.x ?? 0,
-      y: w.y ?? 0,
-      w: w.w || 6,
-      h: w.h || 4,
-      minW: 2,
-      minH: 2,
-    }));
-    setCurrentLayouts({ lg: lgLayout });
-    setHasUnsavedLayout(false);
-  }, [activeDashboard?.id, activeTabId, activeTabWidgets.length]);
+
+    const contextKey = `${activeDashboard.id}:${activeTabId || 'all'}`;
+    const isContextSwitch = prevLayoutContextRef.current !== contextKey;
+    prevLayoutContextRef.current = contextKey;
+
+    if (isContextSwitch) {
+      const lgLayout = activeTabWidgets.map((w) => ({
+        i: w.id,
+        x: w.x ?? 0,
+        y: w.y ?? 0,
+        w: w.w || 6,
+        h: w.h || 4,
+        minW: 2,
+        minH: 2,
+      }));
+      setCurrentLayouts({ lg: lgLayout });
+      setHasUnsavedLayout(false);
+      return;
+    }
+
+    // Same dashboard & tab: keep existing layout positions/sizes and only add/prune changed widget IDs
+    const activeIds = new Set(activeTabWidgets.map((w) => w.id));
+    setCurrentLayouts((prev: Record<string, any[]>) => {
+      const next: Record<string, any[]> = {};
+      const bps = Object.keys(prev).length > 0 ? Object.keys(prev) : ['lg'];
+      for (const bp of bps) {
+        const existing = (prev[bp] || []).filter((item) => activeIds.has(item.i));
+        const existingIds = new Set(existing.map((item) => item.i));
+        const added = activeTabWidgets
+          .filter((w) => !existingIds.has(w.id))
+          .map((w) => ({
+            i: w.id,
+            x: w.x ?? 0,
+            y: w.y ?? 0,
+            w: w.w || 6,
+            h: w.h || 4,
+            minW: 2,
+            minH: 2,
+          }));
+        next[bp] = [...existing, ...added];
+      }
+      return next;
+    });
+  }, [activeDashboard?.id, activeTabId, activeTabWidgets]);
 
   // Handle Tab Switch
   const handleSelectTab = (tabId: string) => {
@@ -1580,6 +1616,13 @@ export const Dashboards: React.FC = () => {
             : dash
         )
       );
+      setCurrentLayouts((prev: Record<string, any[]>) => {
+        const next: Record<string, any[]> = {};
+        for (const bp of Object.keys(prev)) {
+          next[bp] = (prev[bp] || []).filter((item) => item.i !== widgetId);
+        }
+        return next;
+      });
     } catch (err: any) {
       alert(err.message || 'Failed to remove widget');
     }
@@ -1670,8 +1713,8 @@ export const Dashboards: React.FC = () => {
     }
   };
 
-  // Save layout in-place via PUT
-  const handleSaveLayout = async () => {
+  // Save layout in-place via PUT (shared by autosave and manual save)
+  const persistLayout = useCallback(async (remountGrid = false) => {
     if (!activeDashboard || !canEditActiveDashboard) return;
     setIsSavingLayout(true);
 
@@ -1708,13 +1751,32 @@ export const Dashboards: React.FC = () => {
 
       setDashboards((prev) => prev.map((d) => (d.id === updatedDash.id ? updatedDash : d)));
       setHasUnsavedLayout(false);
-      setLayoutVersion((v) => v + 1);
+      setLayoutSaveFailed(false);
+      if (remountGrid) {
+        setLayoutVersion((v) => v + 1);
+      }
     } catch (err: any) {
-      alert(err.message || 'Failed to save layout');
+      setLayoutSaveFailed(true);
+      if (remountGrid) {
+        alert(err.message || 'Failed to save layout');
+      } else {
+        console.error('Failed to autosave layout:', err);
+      }
     } finally {
       setIsSavingLayout(false);
     }
-  };
+  }, [activeDashboard, canEditActiveDashboard, currentLayouts, activeBreakpoint]);
+
+  const handleSaveLayout = () => persistLayout(true);
+
+  // Debounced autosave whenever layout changes via drag or resize
+  useEffect(() => {
+    if (!hasUnsavedLayout || !activeDashboard || !canEditActiveDashboard) return;
+    const timer = setTimeout(() => {
+      persistLayout(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [hasUnsavedLayout, currentLayouts, activeDashboard?.id, canEditActiveDashboard, persistLayout]);
 
   // Discard layout changes
   const handleDiscardLayout = () => {
@@ -1879,8 +1941,8 @@ export const Dashboards: React.FC = () => {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          {/* Unsaved Changes Banner */}
-          {hasUnsavedLayout && (
+          {/* Unsaved Changes Fallback Banner (only shown if background autosave fails) */}
+          {hasUnsavedLayout && layoutSaveFailed && (
             <div
               style={{
                 background: 'rgba(99, 102, 241, 0.12)',

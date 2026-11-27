@@ -918,18 +918,11 @@ def run_insight(
     except Exception:
         db.rollback()
 
-    # Column type resolution
+    # Column type resolution (aligned with ResultInspector for ChartRenderer)
     column_types = {}
     if masked_data and len(masked_data) > 0:
-        first_row = masked_data[0]
-        for col in columns:
-            val = first_row.get(col)
-            if isinstance(val, (int, float)):
-                column_types[col] = "number"
-            elif isinstance(val, bool):
-                column_types[col] = "boolean"
-            else:
-                column_types[col] = "string"
+        from app.engine.result_inspector import ResultInspector
+        column_types = ResultInspector.profile_dataset(masked_data, columns, sql=clean_sql).get("column_types", {})
 
     result_payload = {
         "status": "success",

@@ -40,7 +40,7 @@ export const CardShell: React.FC<CardShellProps> = ({ card, isComplete, children
           marginBottom: '0.85rem',
         }}
       >
-        {card.kind !== 'ordered_list' && card.kind !== 'bullet_list' && (
+        {(!card.isFullWidth || (card.kind !== 'ordered_list' && card.kind !== 'bullet_list')) && (
           <IconBadge kind={card.kind} tone={card.tone} />
         )}
         <h3
